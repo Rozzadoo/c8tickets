@@ -51,6 +51,9 @@ const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { w
 const fmtCurrency = (n) => n === 0 ? "FREE" : "$" + Number(n).toFixed(2);
 const genId = () => "id-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+// Admin PIN — change this to your own PIN
+const ADMIN_PIN = "8888";
+
 // ── QR Code ──
 const QRCode = ({ value, size = 160 }) => {
   const cells = useMemo(() => { let h = 0; for (let i = 0; i < value.length; i++) h = ((h << 5) - h + value.charCodeAt(i)) | 0; const g = [], n = 21; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const tl = r < 7 && c < 7, tr = r < 7 && c >= n - 7, bl = r >= n - 7 && c < 7; if (tl || tr || bl) { const lr = tl ? r : tr ? r : r - (n - 7), lc = tl ? c : tr ? c - (n - 7) : c; g.push({ r, c, on: lr === 0 || lr === 6 || lc === 0 || lc === 6 || (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4) }); } else { h = ((h * 1103515245 + 12345) & 0x7fffffff); g.push({ r, c, on: (h % 3) !== 0 }); } } return g; }, [value]);
@@ -191,6 +194,36 @@ export default function App() {
   const [filter, setFilter] = useState("All");
   const [editEvt, setEditEvt] = useState(null);
   const [modal, setModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState(false);
+
+  const handleAdminLogin = () => {
+    if (pin === ADMIN_PIN) {
+      setIsAdmin(true);
+      setPinError(false);
+      setPin("");
+      setView("admin");
+    } else {
+      setPinError(true);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    setView("home");
+    setATab("dashboard");
+  };
+
+  const handleAdminClick = () => {
+    if (isAdmin) {
+      setView("admin");
+    } else {
+      setView("login");
+      setPin("");
+      setPinError(false);
+    }
+  };
 
   const venue = venues[0] || DEFAULT_VENUE;
   const vEvents = events.filter(e => e.venueId === venue.id);
@@ -226,7 +259,12 @@ export default function App() {
           <div className="nav-logo" onClick={() => setView("home")}><img src={LOGO_SRC} alt="Crooked 8" /></div>
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={() => setView("home")}>Events</button>
-            <button className={`btn ${view === "admin" ? "on" : ""}`} onClick={() => setView("admin")}>Admin</button>
+            {isAdmin ? <>
+              <button className={`btn ${view === "admin" ? "on" : ""}`} onClick={() => setView("admin")}>Admin</button>
+              <button className="btn" onClick={handleAdminLogout} style={{color:"var(--text3)",fontSize:11}}>Logout</button>
+            </> : (
+              <button className="btn" onClick={handleAdminClick} style={{color:"var(--text3)",fontSize:11}}>Admin</button>
+            )}
           </div>
         </nav>
 
@@ -296,8 +334,29 @@ export default function App() {
             <button className="buy" style={{marginTop:20}} onClick={() => setView("home")}>Browse More Events</button>
           </div>); })()}
 
-        {view === "admin" && <div className="admin fade">
-          <div className="aside">{["dashboard","events","orders","check-in"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":"✅ "}{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
+        {view === "login" && <div className="fade" style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"calc(100vh - 61px)"}}>
+          <div className="tkt-sec" style={{maxWidth:360,width:"100%",margin:"0 20px",textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🔒</div>
+            <h2 className="dsp" style={{fontSize:24,marginBottom:4}}>Admin Access</h2>
+            <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>Enter your PIN to continue</p>
+            <div className="fg">
+              <input className="fi" type="password" inputMode="numeric" maxLength={8} value={pin} placeholder="Enter PIN"
+                onChange={e => { setPin(e.target.value); setPinError(false); }}
+                onKeyDown={e => { if (e.key === "Enter") handleAdminLogin(); }}
+                style={{textAlign:"center",fontSize:20,letterSpacing:8,...(pinError ? {borderColor:"var(--red)"} : {})}}
+                autoFocus />
+            </div>
+            {pinError && <p style={{color:"var(--red)",fontSize:12,marginBottom:12}}>Incorrect PIN. Try again.</p>}
+            <button className="buy" onClick={handleAdminLogin} disabled={!pin}>Sign In</button>
+            <div className="back" style={{marginTop:16,justifyContent:"center"}} onClick={() => setView("home")}>← Back to Events</div>
+          </div>
+        </div>}
+
+        {view === "admin" && isAdmin && <div className="admin fade">
+          <div className="aside">{["dashboard","events","orders","check-in"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":"✅ "}{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}
+            <div style={{flex:1}}></div>
+            <button className="aside-btn" onClick={handleAdminLogout} style={{color:"var(--text3)",marginTop:8}}>🚪 Logout</button>
+          </div>
           <div className="amain">
             {aTab === "dashboard" && (() => { const vo=orders.filter(o=>o.venueId===venue.id),rev=vo.reduce((s,o)=>s+o.total,0),tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0),ci=vo.filter(o=>o.checkedIn).length; return <>
               <h2 className="dsp" style={{fontSize:26,marginBottom:20}}>Dashboard</h2>
@@ -331,3 +390,4 @@ export default function App() {
     </>
   );
 }
+
