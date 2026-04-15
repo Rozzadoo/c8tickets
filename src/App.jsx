@@ -52,7 +52,7 @@ const fmtCurrency = (n) => n === 0 ? "FREE" : "$" + Number(n).toFixed(2);
 const genId = () => "id-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 // Admin PIN — change this to your own PIN
-const ADMIN_PIN = "8888";
+const ADMIN_PIN = "2868";
 
 // ── QR Code ──
 const QRCode = ({ value, size = 160 }) => {
