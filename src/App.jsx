@@ -221,8 +221,28 @@ export default function App() {
   const [filter, setFilter] = useState("All");
   const [editEvt, setEditEvt] = useState(null);
   const [modal, setModal] = useState(false);
+  const [session, setSession] = useState(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
 
   const venue = venues[0] || DEFAULT_VENUE;
+  useEffect(() => {
+  supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+  return () => subscription.unsubscribe();
+}, []);
+
+const login = async () => {
+  setAuthError('');
+  const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+  if (error) setAuthError(error.message);
+};
+
+const logout = async () => {
+  await supabase.auth.signOut();
+  setView('home');
+};
   const vEvents = events.filter(e => e.venueId === venue.id);
   const CATS = ["All", "Live Music", "Rodeo", "Family", "Other Events"];
   const filtered = filter === "All" ? vEvents : vEvents.filter(e => e.category === filter);
@@ -302,7 +322,8 @@ export default function App() {
           <div className="nav-logo" onClick={() => setView("home")}><img src={LOGO_SRC} alt="Crooked 8" /></div>
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={() => setView("home")}>Events</button>
-            <button className={`btn ${view === "admin" ? "on" : ""}`} onClick={() => setView("admin")}>Admin</button>
+            {session && <button className={`btn ${view === "admin" ? "on" : ""}`} onClick={() => setView("admin")}>Admin</button>}
+            <button className="btn" onClick={() => session ? logout() : setView("login")}>{session ? "Logout" : "Login"}</button>
           </div>
         </nav>
 
@@ -371,7 +392,22 @@ export default function App() {
             </div>
             <button className="buy" style={{marginTop:20}} onClick={() => setView("home")}>Browse More Events</button>
           </div>); })()}
-
+        {view === "login" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
+  <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Admin Login</h1>
+  <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Crooked 8 staff only</p>
+  <div className="tkt-sec">
+    <div className="fg">
+      <label className="fl">Email</label>
+      <input className="fi" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="admin@crooked8.com" />
+    </div>
+    <div className="fg">
+      <label className="fl">Password</label>
+      <input className="fi" type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="••••••••" />
+    </div>
+    {authError && <p style={{ color: "var(--red)", fontSize: 12, marginBottom: 10 }}>{authError}</p>}
+    <button className="buy" onClick={login}>Sign In</button>
+  </div>
+</div>}
         {view === "admin" && <div className="admin fade">
           <div className="aside">{["dashboard","events","orders","check-in"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":"✅ "}{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
