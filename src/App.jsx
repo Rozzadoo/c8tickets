@@ -309,9 +309,54 @@ const logout = async () => {
   await supabase.from('orders').update({ status: 'checked_in' }).eq('id', oid);
   updateOrders(orders.map(o => o.id === oid ? { ...o, checkedIn: true } : o));
   };
-  const blank = () => ({ id: genId(), venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
-  const saveEvt = (e) => { const ex = events.find(x => x.id === e.id); updateEvents(ex ? events.map(x => x.id === e.id ? e : x) : [...events, e]); setModal(false); setEditEvt(null); };
-  const delEvt = (id) => updateEvents(events.filter(e => e.id !== id));
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
+  const saveEvt = async (e) => {
+  if (e.id) {
+    // Update existing event
+    await supabase.from('events').update({
+      title: e.title,
+      description: e.description,
+      category: e.category,
+      event_date: e.date + 'T' + (e.time || '00:00'),
+      doors_open: e.date + 'T' + (e.doors || '00:00'),
+      image_url: e.image,
+    }).eq('id', e.id);
+    updateEvents(events.map(x => x.id === e.id ? e : x));
+  } else {
+    // Insert new event
+    const { data: newEvt, error } = await supabase.from('events').insert({
+      tenant_id: CROOKED_8_TENANT_ID,
+      title: e.title,
+      description: e.description,
+      category: e.category,
+      event_date: e.date + 'T' + (e.time || '00:00'),
+      doors_open: e.date + 'T' + (e.doors || '00:00'),
+      image_url: e.image,
+      venue_name: 'Crooked 8',
+      is_published: true,
+    }).select().single();
+    if (error) { console.error(error); return; }
+    // Insert ticket types
+    await supabase.from('ticket_types').insert(
+      e.tickets.map(t => ({
+        event_id: newEvt.id,
+        name: t.type,
+        price: t.price,
+        quantity_total: t.available,
+        quantity_sold: 0,
+      }))
+    );
+    // Add to local state with real ID
+    const mapped = { ...e, id: newEvt.id, venueId: "crooked8" };
+    updateEvents([...events, mapped]);
+  }
+  setModal(false);
+  setEditEvt(null);
+};
+  const delEvt = async (id) => {
+  await supabase.from('events').delete().eq('id', id);
+  updateEvents(events.filter(e => e.id !== id));
+};
 
   if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0c0a07" }}><img src={LOGO_SRC} alt="Crooked 8" style={{ height: 80, filter: "invert(1)", opacity: .7, animation: "fi .6s ease" }} /></div>;
 
