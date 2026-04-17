@@ -92,13 +92,14 @@ const QRCode = ({ value, size = 160 }) => {
   return (<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><rect width={size} height={size} fill="white" rx="4" />{cells.filter(c => c.on).map((c, i) => <rect key={i} x={c.c * s} y={c.r * s} width={s + .5} height={s + .5} fill="#1a1007" rx=".5" />)}</svg>);
 };
 // ── Stripe Checkout Form ──
-const CheckoutForm = ({ cartTotal, totalTickets, onSuccess, onBack }) => {
+const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBack }) => {
   const stripe = useStripe();
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const serviceFees = totalTickets * 2;
-  const grandTotal = cartTotal + serviceFees;
+  const processingFee = paymentAmounts?.processingFee || 0;
+  const grandTotal = paymentAmounts?.grandTotal || (cartTotal + serviceFees);
 
   const handleSubmit = async () => {
     if (!stripe || !elements) return;
@@ -126,8 +127,9 @@ const CheckoutForm = ({ cartTotal, totalTickets, onSuccess, onBack }) => {
       <div className="tkt-sec" style={{ marginBottom: 16 }}>
         <h3 className="dsp">Order Summary</h3>
         <div className="cart-ln"><span>Ticket Subtotal</span><span>{fmtCurrency(cartTotal)}</span></div>
-        <div className="cart-ln"><span>Service Fee ({totalTickets} × $2.00)</span><span>{fmtCurrency(serviceFees)}</span></div>
-        <div className="cart-tot"><span>Total</span><span>{fmtCurrency(grandTotal)}</span></div>
+<div className="cart-ln"><span>Service Fee ({totalTickets} × $2.00)</span><span>{fmtCurrency(serviceFees)}</span></div>
+<div className="cart-ln"><span>Payment Processing Fee</span><span>{fmtCurrency(processingFee)}</span></div>
+<div className="cart-tot"><span>Total</span><span>{fmtCurrency(grandTotal)}</span></div>
       </div>
       <div className="tkt-sec" style={{ marginBottom: 16 }}>
         <h3 className="dsp" style={{ marginBottom: 16 }}>Payment</h3>
@@ -494,10 +496,11 @@ const logout = async () => {
     {buyer.name && buyer.email && (
       <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#c8922a', borderRadius: '6px' }}}}>
         <CheckoutForm
-          cartTotal={paymentAmounts.ticketTotal}
-          totalTickets={Object.values(cart).reduce((a,b) => a+b, 0)}
-          onBack={() => setView("detail")}
-          onSuccess={async (paymentIntentId) => {
+        cartTotal={paymentAmounts.ticketTotal}
+        totalTickets={Object.values(cart).reduce((a,b) => a+b, 0)}
+        paymentAmounts={paymentAmounts}
+        onBack={() => setView("detail")}
+        onSuccess={async (paymentIntentId) => {
             const items = sel.tickets
               .map((t, i) => ({ type: t.type, qty: cart[i] || 0, price: t.price, ticketTypeId: t.id }))
               .filter(i => i.qty > 0);

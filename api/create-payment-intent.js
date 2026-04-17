@@ -2,7 +2,9 @@ import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const SERVICE_FEE = 2.00;
+const SERVICE_FEE_PER_TICKET = 2.00;
+const PROCESSING_FEE_RATE = 0.035;
+const PROCESSING_FEE_FLAT = 0.30;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,26 +14,24 @@ export default async function handler(req, res) {
   try {
     const { items, eventId, tenantId } = req.body;
 
-    // Calculate total: sum of (qty * price) + $2 service fee per ticket
     const ticketTotal = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
     const totalTickets = items.reduce((sum, item) => sum + item.qty, 0);
-    const serviceFees = totalTickets * SERVICE_FEE;
-    const grandTotal = ticketTotal + serviceFees;
+    const serviceFees = totalTickets * SERVICE_FEE_PER_TICKET;
+    const subtotal = ticketTotal + serviceFees;
+    const processingFee = Math.round((subtotal * PROCESSING_FEE_RATE + PROCESSING_FEE_FLAT) * 100) / 100;
+    const grandTotal = subtotal + processingFee;
 
-    // Stripe amounts are in cents
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(grandTotal * 100),
       currency: 'usd',
-      metadata: {
-        eventId,
-        tenantId,
-      },
+      metadata: { eventId, tenantId },
     });
 
     res.status(200).json({
       clientSecret: paymentIntent.client_secret,
       ticketTotal,
       serviceFees,
+      processingFee,
       grandTotal,
     });
   } catch (error) {
