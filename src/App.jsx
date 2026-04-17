@@ -98,7 +98,7 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const serviceFees = totalTickets * 2;
-  const processingFee = paymentAmounts?.processingFee || 0;
+  const processingFee = paymentAmounts?.processingFee ?? 0;
   const grandTotal = paymentAmounts?.grandTotal || (cartTotal + serviceFees);
 
   const handleSubmit = async () => {
@@ -128,7 +128,7 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
         <h3 className="dsp">Order Summary</h3>
         <div className="cart-ln"><span>Ticket Subtotal</span><span>{fmtCurrency(cartTotal)}</span></div>
 <div className="cart-ln"><span>Service Fee ({totalTickets} × $2.00)</span><span>{fmtCurrency(serviceFees)}</span></div>
-<div className="cart-ln"><span>Payment Processing Fee</span><span>{fmtCurrency(processingFee)}</span></div>
+<div className="cart-ln"><span>Payment Processing Fee</span><span>${Number(processingFee).toFixed(2)}</span></div>
 <div className="cart-tot"><span>Total</span><span>{fmtCurrency(grandTotal)}</span></div>
       </div>
       <div className="tkt-sec" style={{ marginBottom: 16 }}>
