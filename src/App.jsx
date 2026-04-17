@@ -477,7 +477,7 @@ const logout = async () => {
   });
   const data = await res.json();
   setClientSecret(data.clientSecret);
-  setPaymentAmounts({ ticketTotal: data.ticketTotal, serviceFees: data.serviceFees, grandTotal: data.grandTotal });
+  setPaymentAmounts({ ticketTotal: data.ticketTotal, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
   setView("checkout");
 }}>{cartN===0 ? "Select Tickets" : `Checkout · ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
           </div>
