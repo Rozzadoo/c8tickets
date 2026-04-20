@@ -467,7 +467,7 @@ const logout = async () => {
             {sel.tickets.map((t, i) => <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4><p>{t.available} left</p></div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv">{cart[i]||0}</div><button className="qb" disabled={(cart[i]||0) >= t.available} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>)}
             {cartN > 0 && <div className="cart-sum">{sel.tickets.map((t,i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i]*t.price)}</span></div>)}<div className="cart-tot"><span>Total</span><span>{fmtCurrency(cartTotal)}</span></div></div>}
             <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
-              <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> A $2.00 service fee per ticket plus a payment processing fee (3.5% + $0.30) will be added at checkout.
+              <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
               </div>
             <button className="buy" disabled={cartN===0} onClick={async () => {
   if (cartN === 0) return;
