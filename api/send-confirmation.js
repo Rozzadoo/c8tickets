@@ -78,12 +78,17 @@ export default async function handler(req, res) {
               <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${order.id}</div>
             </div>
 
-            <!-- QR Notice -->
-            <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:20px;margin-bottom:20px;text-align:center">
-              <div style="font-size:13px;color:#b5a78a;line-height:1.7">
-                📱 <strong style="color:#f0e9da">Show your QR code at the gate</strong><br>
-                Log back into <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a> and find your order to display your QR code.
-              </div>
+            <!-- QR Code -->
+            <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
+            <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
+            <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${order.id}" alt="QR Code" width="180" height="180" style="display:block" />
+            </div>
+            <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${order.id.toUpperCase()}</div>
+            <div style="font-size:12px;color:#b5a78a;line-height:1.7">
+            📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>
+            You can also access your ticket at <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a>
+            </div>
             </div>
 
             <!-- Footer -->
