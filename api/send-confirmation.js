@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     `).join('');
 
     const { data, error } = await resend.emails.send({
-      from: 'Crooked 8 Tickets <onboarding@resend.dev>',
+      from: 'Crooked 8 Tickets <tickets@crooked8.com>',
       to: order.buyer.email,
       subject: `Your tickets for ${event.title}`,
       html: `
