@@ -5,6 +5,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const SERVICE_FEE_PER_TICKET = 2.00;
 const PROCESSING_FEE_RATE = 0.035;
 const PROCESSING_FEE_FLAT = 0.30;
+const SALES_TAX_RATE = 0.06; // Idaho state sales tax - confirm with accountant
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -16,8 +17,9 @@ export default async function handler(req, res) {
 
     const ticketTotal = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
     const totalTickets = items.reduce((sum, item) => sum + item.qty, 0);
+    const salesTax = Math.round(ticketTotal * SALES_TAX_RATE * 100) / 100;
     const serviceFees = totalTickets * SERVICE_FEE_PER_TICKET;
-    const subtotal = ticketTotal + serviceFees;
+    const subtotal = ticketTotal + salesTax + serviceFees;
     const processingFee = Math.round((subtotal * PROCESSING_FEE_RATE + PROCESSING_FEE_FLAT) * 100) / 100;
     const grandTotal = subtotal + processingFee;
 
@@ -30,6 +32,7 @@ export default async function handler(req, res) {
     res.status(200).json({
       clientSecret: paymentIntent.client_secret,
       ticketTotal,
+      salesTax,
       serviceFees,
       processingFee,
       grandTotal,

@@ -98,6 +98,7 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const serviceFees = totalTickets * 2;
+  const salesTax = paymentAmounts?.salesTax ?? 0;
   const processingFee = paymentAmounts?.processingFee ?? 0;
   const grandTotal = paymentAmounts?.grandTotal || (cartTotal + serviceFees);
 
@@ -127,9 +128,10 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
       <div className="tkt-sec" style={{ marginBottom: 16 }}>
         <h3 className="dsp">Order Summary</h3>
         <div className="cart-ln"><span>Ticket Subtotal</span><span>{fmtCurrency(cartTotal)}</span></div>
-<div className="cart-ln"><span>Service Fee ({totalTickets} × $2.00)</span><span>{fmtCurrency(serviceFees)}</span></div>
-<div className="cart-ln"><span>Payment Processing Fee</span><span>${Number(processingFee).toFixed(2)}</span></div>
-<div className="cart-tot"><span>Total</span><span>{fmtCurrency(grandTotal)}</span></div>
+        <div className="cart-ln"><span>Sales Tax (6%)</span><span>${Number(salesTax).toFixed(2)}</span></div>
+        <div className="cart-ln"><span>Service Fee ({totalTickets} × $2.00)</span><span>{fmtCurrency(serviceFees)}</span></div>
+        <div className="cart-ln"><span>Payment Processing Fee</span><span>${Number(processingFee).toFixed(2)}</span></div>
+        <div className="cart-tot"><span>Total</span><span>{fmtCurrency(grandTotal)}</span></div>
       </div>
       <div className="tkt-sec" style={{ marginBottom: 16 }}>
         <h3 className="dsp" style={{ marginBottom: 16 }}>Payment</h3>
@@ -477,7 +479,7 @@ const logout = async () => {
   });
   const data = await res.json();
   setClientSecret(data.clientSecret);
-  setPaymentAmounts({ ticketTotal: data.ticketTotal, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
+  setPaymentAmounts({ ticketTotal: data.ticketTotal, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
   setView("checkout");
 }}>{cartN===0 ? "Select Tickets" : `Checkout · ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
           </div>
@@ -544,6 +546,7 @@ const logout = async () => {
               buyer: { ...buyer },
               items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
               ticketTotal: paymentAmounts.ticketTotal,
+              salesTax: paymentAmounts.salesTax,
               serviceFees: paymentAmounts.serviceFees,
               processingFee: paymentAmounts.processingFee,
               total: paymentAmounts.grandTotal, date: new Date().toISOString(), checkedIn: false,
@@ -578,8 +581,9 @@ const logout = async () => {
               <div className="cid">ID: {lastOrder.id.toUpperCase()}</div>
               <ul className="tkt-items">
                 {lastOrder.items.map((it,i) => <li key={i}><span>{it.qty}× {it.type}</span><span>{fmtCurrency(it.qty*it.price)}</span></li>)}
+                {lastOrder.salesTax > 0 && <li><span>Sales Tax (6%)</span><span>${Number(lastOrder.salesTax).toFixed(2)}</span></li>}
                 {lastOrder.serviceFees > 0 && <li><span>Service Fees</span><span>{fmtCurrency(lastOrder.serviceFees)}</span></li>}
-                {lastOrder.processingFee > 0 && <li><span>Processing Fee</span><span>{fmtCurrency(lastOrder.processingFee)}</span></li>}
+                {lastOrder.processingFee > 0 && <li><span>Processing Fee</span><span>${Number(lastOrder.processingFee).toFixed(2)}</span></li>}
                 <li style={{fontWeight:700,color:"var(--text)",borderTop:"1px solid var(--bg4)",paddingTop:6,marginTop:6}}><span>Total</span><span>{fmtCurrency(lastOrder.total)}</span></li>
                 </ul>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} · {lastOrder.buyer.email}<br/>Crooked 8 · {venue.location}</p>
