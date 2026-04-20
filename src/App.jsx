@@ -297,6 +297,7 @@ const login = async () => {
   setAuthError('');
   const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
   if (error) setAuthError(error.message);
+  else setView('admin');
 };
 
 const logout = async () => {
