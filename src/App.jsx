@@ -560,6 +560,22 @@ const logout = async () => {
             setBuyer({ name: "", email: "", phone: "" });
             setCart({});
             setClientSecret(null);
+
+// Send confirmation email
+fetch('/api/send-confirmation', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    order: localOrder,
+    event: {
+      title: sel.title,
+      date: fmtDate(sel.date),
+      time: sel.time,
+      doors: sel.doors,
+      category: sel.category,
+    },
+  }),
+}).catch(err => console.error('Email error:', err));
           }}
         />
       </Elements>
