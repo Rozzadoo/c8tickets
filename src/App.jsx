@@ -744,8 +744,7 @@ fetch('/api/send-confirmation', {
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
           <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date} onClick={()=>saveEvt(editEvt)}>Save Event</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
-      </div>
-    <footer className="footer">
+      <footer className="footer">
           <div className="footer-links">
             <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
@@ -756,5 +755,3 @@ fetch('/api/send-confirmation', {
         </footer>
       </div>
     </>
-  );
-}
