@@ -265,6 +265,18 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .ci-btn.dn{border-color:var(--text3);color:var(--text3);cursor:default;opacity:.5}
 .fade{animation:fi .35s ease}
 @keyframes fi{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.footer{background:var(--bg2);border-top:1px solid var(--border);padding:28px 20px;text-align:center;margin-top:auto}
+.footer-links{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-bottom:12px}
+.footer-links a{color:var(--text3);font-size:12px;text-decoration:none;transition:color .2s}
+.footer-links a:hover{color:var(--gold)}
+.footer-copy{font-size:11px;color:var(--text3)}
+.legal{max-width:700px;margin:0 auto;padding:40px 20px;color:var(--text2);line-height:1.8}
+.legal h1{font-size:28px;margin-bottom:8px;color:var(--text)}
+.legal h2{font-size:16px;margin:28px 0 10px;color:var(--text);text-transform:uppercase;letter-spacing:1px}
+.legal p{margin-bottom:14px;font-size:14px}
+.legal ul{margin:0 0 14px 20px;font-size:14px}
+.legal ul li{margin-bottom:6px}
+.legal .date{font-size:12px;color:var(--text3);margin-bottom:28px}
 `;
 
 export default function App() {
@@ -612,6 +624,79 @@ fetch('/api/send-confirmation', {
             </div>
             <button className="buy" style={{marginTop:20}} onClick={() => setView("home")}>Browse More Events</button>
           </div>); })()}
+        {view === "terms" && <div className="legal fade">
+  <div className="back" onClick={() => setView("home")}>← Back</div>
+  <h1 className="dsp">Terms of Service</h1>
+  <p className="date">Effective Date: April 21, 2026</p>
+
+  <h2>1. About C8Tickets</h2>
+  <p>C8Tickets is a ticketing platform operated in Kuna, Idaho. We provide ticket sales services on behalf of event organizers. C8Tickets is the ticketing platform — we are not the event organizer and are not responsible for the events themselves.</p>
+
+  <h2>2. Ticket Sales</h2>
+  <p>All ticket sales are final. We do not offer refunds except in the case of event cancellation by the organizer. If an event is cancelled, refund policies are determined by the event organizer.</p>
+
+  <h2>3. Fees</h2>
+  <p>Ticket purchases are subject to the following fees in addition to the base ticket price:</p>
+  <ul>
+    <li>Idaho State Sales Tax (6%) on ticket subtotal</li>
+    <li>Service fee of $2.00 per ticket</li>
+    <li>Payment processing fee of 3.5% + $0.30 per transaction</li>
+  </ul>
+  <p>All fees are displayed and itemized before you complete your purchase.</p>
+
+  <h2>4. Payment</h2>
+  <p>Payments are processed securely through Stripe. C8Tickets does not store your credit card information. By completing a purchase you agree to Stripe's terms of service.</p>
+
+  <h2>5. Tickets and Entry</h2>
+  <p>Your ticket confirmation and QR code will be emailed to you after purchase. You are responsible for presenting your QR code at the event. C8Tickets is not responsible for lost or stolen tickets.</p>
+
+  <h2>6. Limitation of Liability</h2>
+  <p>C8Tickets is not liable for any damages arising from your use of this platform, attendance at events, or event cancellations. Our liability is limited to the amount you paid for your tickets.</p>
+
+  <h2>7. Contact</h2>
+  <p>For questions or support, contact us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a>.</p>
+</div>}
+
+{view === "privacy" && <div className="legal fade">
+  <div className="back" onClick={() => setView("home")}>← Back</div>
+  <h1 className="dsp">Privacy Policy</h1>
+  <p className="date">Effective Date: April 21, 2026</p>
+
+  <h2>1. Information We Collect</h2>
+  <p>When you purchase tickets through C8Tickets, we collect:</p>
+  <ul>
+    <li>Your name, email address, and phone number</li>
+    <li>Payment information (processed securely by Stripe — we do not store card numbers)</li>
+    <li>Order details including events attended and tickets purchased</li>
+  </ul>
+
+  <h2>2. How We Use Your Information</h2>
+  <p>We use your information to:</p>
+  <ul>
+    <li>Process and confirm your ticket purchase</li>
+    <li>Send you your ticket confirmation and QR code</li>
+    <li>Provide customer support</li>
+    <li>Comply with applicable tax and legal requirements</li>
+  </ul>
+
+  <h2>3. Payment Processing</h2>
+  <p>All payments are processed by Stripe, Inc. Your credit card information is transmitted directly to Stripe and is never stored on our servers. Stripe's privacy policy is available at stripe.com/privacy.</p>
+
+  <h2>4. Data Sharing</h2>
+  <p>We do not sell your personal information. We may share your information with event organizers for the purpose of event entry and check-in. We may also disclose information as required by law.</p>
+
+  <h2>5. Data Retention</h2>
+  <p>We retain order and customer data for a minimum of 7 years as required for tax and accounting purposes.</p>
+
+  <h2>6. Your Rights</h2>
+  <p>You may request access to or deletion of your personal data by contacting us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a>. Note that some data may be retained as required by law.</p>
+
+  <h2>7. Jurisdiction</h2>
+  <p>This platform is operated from Kuna, Idaho, USA. By using this platform you agree that any disputes will be governed by the laws of the State of Idaho.</p>
+
+  <h2>8. Contact</h2>
+  <p>For privacy questions, contact us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a>.</p>
+</div>}
         {view === "login" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
   <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Admin Login</h1>
   <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Crooked 8 staff only</p>
@@ -659,6 +744,16 @@ fetch('/api/send-confirmation', {
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
           <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date} onClick={()=>saveEvt(editEvt)}>Save Event</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
+      </div>
+    <footer className="footer">
+          <div className="footer-links">
+            <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
+            <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
+            <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
+            <a href="mailto:support@c8tickets.com">Contact Support</a>
+          </div>
+          <div className="footer-copy">© 2026 C8Tickets · Kuna, Idaho · All rights reserved</div>
+        </footer>
       </div>
     </>
   );
