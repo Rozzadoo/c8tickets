@@ -752,7 +752,7 @@ fetch('/api/send-confirmation', {
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
             <a href="mailto:support@c8tickets.com">Contact Support</a>
           </div>
-          <div className="footer-copy">© 2026 C8Tickets · Kuna, Idaho · All rights reserved</div>
+          <div className="footer-copy">© 2026 C8Tickets - Kuna, Idaho · All rights reserved</div>
         </footer>
       </div>
     </>
