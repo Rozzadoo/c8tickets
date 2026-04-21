@@ -755,3 +755,5 @@ fetch('/api/send-confirmation', {
         </footer>
       </div>
     </>
+    );
+}
