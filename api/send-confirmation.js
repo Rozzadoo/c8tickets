@@ -95,8 +95,8 @@ export default async function handler(req, res) {
             <div style="text-align:center;font-size:11px;color:#7a6c54;line-height:1.8">
             Questions? Contact us at <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a><br>
             C8Tickets - Kuna, ID 83634<br>
-            <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a> · 
-            <a href="https://c8tickets.com/terms" style="color:#c8922a">Terms</a> · 
+            <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a> - 
+            <a href="https://c8tickets.com/terms" style="color:#c8922a">Terms</a> - 
             <a href="https://c8tickets.com/privacy" style="color:#c8922a">Privacy</a><br><br>
             <span style="color:#3a3028">You received this email because you purchased tickets through C8Tickets. This is a transactional email confirming your order.</span>
             </div>

@@ -465,7 +465,7 @@ const logout = async () => {
                 <div key={ev.id} className="card" onClick={() => open(ev.id)}>
                   <div className="card-img">{ev.image}<div className="card-cat">{ev.category}</div></div>
                   <div className="card-body">
-                    <div className="card-date">{fmtDate(ev.date)} · {ev.time}</div>
+                    <div className="card-date">{fmtDate(ev.date)} - {ev.time}</div>
                     <div className="card-title dsp">{ev.title}</div>
                     <div className="card-desc">{ev.description}</div>
                     <div className="card-foot"><div className="card-price">{fmtCurrency(mp)} {mp > 0 && <small>& up</small>}</div><button className="btn gold" onClick={e => { e.stopPropagation(); open(ev.id); }}>Tickets</button></div>
@@ -499,7 +499,7 @@ const logout = async () => {
   setClientSecret(data.clientSecret);
   setPaymentAmounts({ ticketTotal: data.ticketTotal, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
   setView("checkout");
-}}>{cartN===0 ? "Select Tickets" : `Checkout · ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
+}}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
           </div>
         </div>}
 
@@ -507,7 +507,7 @@ const logout = async () => {
   <div className="sec fade" style={{ maxWidth: 500 }}>
     <div className="back" onClick={() => setView("detail")}>← Tickets</div>
     <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Checkout</h1>
-    <p style={{ color: "var(--text2)", marginBottom: 24, fontSize: 13 }}>{sel.title} · {fmtDate(sel.date)}</p>
+    <p style={{ color: "var(--text2)", marginBottom: 24, fontSize: 13 }}>{sel.title} - {fmtDate(sel.date)}</p>
     <div className="tkt-sec" style={{ marginBottom: 20 }}>
       <h3 className="dsp">Your Info</h3>
       <div className="fg"><label className="fl">Full Name *</label><input className="fi" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" /></div>
@@ -609,7 +609,7 @@ fetch('/api/send-confirmation', {
             <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{fontSize:40,marginBottom:6}}>🎉</div><h1 className="dsp" style={{fontSize:28}}>You're In!</h1><p style={{color:"var(--text2)",fontSize:13}}>Show this QR code at the gate</p></div>
             <div className="tkt-disp">
               <div className="dsp" style={{fontSize:22,marginBottom:3}}>{ev?.title}</div>
-              <div style={{color:"var(--gold)",fontWeight:700,fontSize:13,marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>{ev ? fmtDate(ev.date) : ""} · {ev?.time}</div>
+              <div style={{color:"var(--gold)",fontWeight:700,fontSize:13,marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>{ev ? fmtDate(ev.date) : ""} - {ev?.time}</div>
               <div><span className="badge badge-ok">✓ Valid</span></div>
               <div className="qr"><QRCode value={lastOrder.id} size={160} /></div>
               <div className="cid">ID: {lastOrder.id.toUpperCase()}</div>
@@ -620,7 +620,7 @@ fetch('/api/send-confirmation', {
                 {lastOrder.processingFee > 0 && <li><span>Processing Fee</span><span>${Number(lastOrder.processingFee).toFixed(2)}</span></li>}
                 <li style={{fontWeight:700,color:"var(--text)",borderTop:"1px solid var(--bg4)",paddingTop:6,marginTop:6}}><span>Total</span><span>{fmtCurrency(lastOrder.total)}</span></li>
                 </ul>
-              <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} · {lastOrder.buyer.email}<br/>Crooked 8 · {venue.location}</p>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} - {lastOrder.buyer.email}<br/>Crooked 8 - {venue.location}</p>
             </div>
             <button className="buy" style={{marginTop:20}} onClick={() => setView("home")}>Browse More Events</button>
           </div>); })()}
@@ -752,7 +752,7 @@ fetch('/api/send-confirmation', {
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
             <a href="mailto:support@c8tickets.com">Contact Support</a>
           </div>
-          <div className="footer-copy">© 2026 C8Tickets - Kuna, Idaho · All rights reserved</div>
+          <div className="footer-copy">© 2026 C8Tickets - Kuna, Idaho - All rights reserved</div>
         </footer>
       </div>
     </>
