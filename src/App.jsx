@@ -423,19 +423,37 @@ const logout = async () => {
   const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
   const saveEvt = async (e) => {
   console.log('saveEvt called with id:', e.id);
-    if (e.id) {
-    // Update existing event
+  
+  let imageUrl = e.image;
+
+  // Upload new image if one was selected
+  if (e._imageFile) {
+    const fileExt = e._imageFile.name.split('.').pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('event-images')
+      .upload(fileName, e._imageFile, { upsert: true });
+    
+    if (uploadError) { console.error('Image upload error:', uploadError); return; }
+    
+    const { data: urlData } = supabase.storage
+      .from('event-images')
+      .getPublicUrl(fileName);
+    
+    imageUrl = urlData.publicUrl;
+  }
+
+  if (e.id) {
     await supabase.from('events').update({
       title: e.title,
       description: e.description,
       category: e.category,
       event_date: e.date + 'T00:00:00',
       doors_open: e.date + 'T00:00:00',
-      image_url: e.image,
+      image_url: imageUrl,
     }).eq('id', e.id);
-    updateEvents(events.map(x => x.id === e.id ? e : x));
+    updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl} : x));
   } else {
-    // Insert new event
     const { data: newEvt, error } = await supabase.from('events').insert({
       tenant_id: CROOKED_8_TENANT_ID,
       title: e.title,
@@ -443,12 +461,11 @@ const logout = async () => {
       category: e.category,
       event_date: e.date + 'T00:00:00',
       doors_open: e.date + 'T00:00:00',
-      image_url: e.image,
+      image_url: imageUrl,
       venue_name: 'Crooked 8',
       is_published: true,
     }).select().single();
     if (error) { console.error(error); return; }
-    // Insert ticket types
     await supabase.from('ticket_types').insert(
       e.tickets.map(t => ({
         event_id: newEvt.id,
@@ -458,8 +475,7 @@ const logout = async () => {
         quantity_sold: 0,
       }))
     );
-    // Add to local state with real ID
-    const mapped = { ...e, id: newEvt.id, venueId: "crooked8" };
+    const mapped = { ...e, id: newEvt.id, venueId: "crooked8", image: imageUrl };
     updateEvents([...events, mapped]);
   }
   setModal(false);
@@ -503,7 +519,10 @@ const logout = async () => {
             {filtered.length === 0 ? <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div> :
               <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); return (
                 <div key={ev.id} className="card" onClick={() => open(ev.id)}>
-                  <div className="card-img">{ev.image}<div className="card-cat">{ev.category}</div></div>
+                  <div className="card-img" style={{backgroundImage: ev.image && ev.image.startsWith('http') ? `url(${ev.image})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
+  {(!ev.image || !ev.image.startsWith('http')) && <span style={{fontSize:48}}>🎵</span>}
+  <div className="card-cat">{ev.category}</div>
+</div>
                   <div className="card-body">
                     <div className="card-date">{fmtDate(ev.date)} - {ev.time}</div>
                     <div className="card-title dsp">{ev.title}</div>
@@ -516,7 +535,9 @@ const logout = async () => {
 
         {view === "detail" && sel && <div className="sec fade" style={{ maxWidth: 800 }}>
           <div className="back" onClick={() => setView("home")}>← Events</div>
-          <div className="d-hero">{sel.image}</div>
+          <div className="d-hero" style={{backgroundImage: sel.image && sel.image.startsWith('http') ? `url(${sel.image})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
+  {(!sel.image || !sel.image.startsWith('http')) && <span style={{fontSize:72}}>🎵</span>}
+</div>
           <div style={{ marginBottom: 6 }}><span className="tag">{sel.category}</span></div>
           <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", marginBottom: 10, lineHeight: 1.1 }}>{sel.title}</h1>
           <div className="d-meta">
@@ -819,7 +840,28 @@ fetch('/api/send-confirmation', {
           <div className="fg"><label className="fl">Title</label><input className="fi" value={editEvt.title} onChange={e=>setEditEvt({...editEvt,title:e.target.value})} placeholder="e.g. Neon Rodeo Night"/></div>
           <div className="fr"><div className="fg"><label className="fl">Date</label><input className="fi" type="date" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})}/></div><div className="fg"><label className="fl">Show Time</label><input className="fi" value={editEvt.time} onChange={e=>setEditEvt({...editEvt,time:e.target.value})} placeholder="7:00 PM"/></div></div>
           <div className="fr"><div className="fg"><label className="fl">Doors</label><input className="fi" value={editEvt.doors} onChange={e=>setEditEvt({...editEvt,doors:e.target.value})} placeholder="6:00 PM"/></div><div className="fg"><label className="fl">Category</label><select className="fi" value={editEvt.category} onChange={e=>setEditEvt({...editEvt,category:e.target.value})}>{["Live Music","Rodeo","Family","Other Events"].map(c=><option key={c} value={c}>{c}</option>)}</select></div></div>
-          <div className="fg"><label className="fl">Emoji</label><input className="fi" value={editEvt.image} onChange={e=>setEditEvt({...editEvt,image:e.target.value})} placeholder="🎵" style={{maxWidth:80}}/></div>
+          <div className="fg">
+  <label className="fl">Event Image</label>
+  {editEvt.image && !editEvt.image.startsWith('blob:') && (
+    <img src={editEvt.image} alt="Event" style={{width:"100%",height:120,objectFit:"cover",borderRadius:"var(--rs)",marginBottom:8}} />
+  )}
+  {editEvt._imagePreview && (
+    <img src={editEvt._imagePreview} alt="Preview" style={{width:"100%",height:120,objectFit:"cover",borderRadius:"var(--rs)",marginBottom:8}} />
+  )}
+  <input 
+    className="fi" 
+    type="file" 
+    accept="image/jpeg,image/png,image/webp"
+    style={{padding:"8px 14px"}}
+    onChange={async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const preview = URL.createObjectURL(file);
+      setEditEvt({...editEvt, _imageFile: file, _imagePreview: preview});
+    }}
+  />
+  <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>JPG, PNG or WebP. Max 5MB.</p>
+</div>
           <div className="fg"><label className="fl">Description</label><textarea className="fi" rows={3} value={editEvt.description} onChange={e=>setEditEvt({...editEvt,description:e.target.value})} placeholder="What should people expect?"/></div>
           <h3 className="dsp" style={{fontSize:16,margin:"16px 0 10px"}}>Ticket Tiers</h3>
           {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Price</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100}]})}}>×</button></div>)}
