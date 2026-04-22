@@ -428,8 +428,8 @@ const logout = async () => {
       title: e.title,
       description: e.description,
       category: e.category,
-      event_date: e.date + 'T' + (e.time || '00:00'),
-      doors_open: e.date + 'T' + (e.doors || '00:00'),
+      event_date: e.date + 'T00:00:00',
+      doors_open: e.date + 'T00:00:00',
       image_url: e.image,
     }).eq('id', e.id);
     updateEvents(events.map(x => x.id === e.id ? e : x));
@@ -440,8 +440,8 @@ const logout = async () => {
       title: e.title,
       description: e.description,
       category: e.category,
-      event_date: e.date + 'T' + (e.time || '00:00'),
-      doors_open: e.date + 'T' + (e.doors || '00:00'),
+      event_date: e.date + 'T00:00:00',
+      doors_open: e.date + 'T00:00:00',
       image_url: e.image,
       venue_name: 'Crooked 8',
       is_published: true,
