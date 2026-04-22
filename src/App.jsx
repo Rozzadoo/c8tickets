@@ -21,8 +21,8 @@ const mapEvent = (e) => ({
   venueId: "crooked8",
   title: e.title,
   date: e.event_date.slice(0, 10),
-  time: new Date(e.event_date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-  doors: e.doors_open ? new Date(e.doors_open).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "",
+  time: e.event_date.slice(11, 16),
+  doors: e.doors_open ? e.doors_open.slice(11, 16) : "",
   description: e.description,
   image: e.image_url,
   category: e.category,
@@ -37,7 +37,6 @@ const mapEvent = (e) => ({
 const useStorage = () => {
   const [venues, setVenues] = useState([DEFAULT_VENUE]);
   const [events, setEvents] = useState([]);
-  const [orders, setOrders] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -69,37 +68,19 @@ if (venueData) {
       if (eventsError) console.error(eventsError);
       else setEvents((eventsData || []).map(mapEvent));
 
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('*, order_items(*)')
-        .eq('tenant_id', CROOKED_8_TENANT_ID);
-
-      if (ordersError) console.error(ordersError);
-      else setOrders((ordersData || []).map(o => ({
-        id: o.id,
-        eventId: o.event_id,
-        venueId: "crooked8",
-        buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
-        items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price) })),
-        total: Number(o.total_amount),
-        date: o.created_at,
-        checkedIn: o.status === 'checked_in',
-      })));
-
       setLoaded(true);
     };
     load();
   }, []);
 
   const updateEvents = useCallback((d) => setEvents(d), []);
-  const updateOrders = useCallback((d) => setOrders(d), []);
 
-  return { venues, events, orders, loaded, updateEvents, updateOrders };
+  return { venues, events, loaded, updateEvents };
 };
 
 const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 const fmtCurrency = (n) => n === 0 ? "FREE" : "$" + Number(n).toFixed(2);
-const genId = () => "id-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const fmtTime = (t) => t ? new Date('1970-01-01T' + t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "";
 
 // ── QR Code ──
 const QRCode = ({ value, size = 160 }) => {
@@ -297,7 +278,9 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 `;
 
 export default function App() {
-  const { venues, events, orders, loaded, updateEvents, updateOrders } = useStorage();
+  const { venues, events, loaded, updateEvents } = useStorage();
+  const [orders, setOrders] = useState([]);
+  const updateOrders = useCallback((d) => setOrders(d), []);
   const [view, setView] = useState("home");
   const [selId, setSelId] = useState(null);
   const [cart, setCart] = useState({});
@@ -320,13 +303,34 @@ const [view2, setView2] = useState(null);
 
   const venue = venues[0] || DEFAULT_VENUE;
   useEffect(() => {
-  supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    setSession(session);
-    if (_event === 'PASSWORD_RECOVERY') setView('reset');
-  });
-  return () => subscription.unsubscribe();
-}, []);
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (_event === 'PASSWORD_RECOVERY') setView('reset');
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session) { setOrders([]); return; }
+    supabase
+      .from('orders')
+      .select('*, order_items(*)')
+      .eq('tenant_id', CROOKED_8_TENANT_ID)
+      .then(({ data, error }) => {
+        if (error) { console.error(error); return; }
+        setOrders((data || []).map(o => ({
+          id: o.id,
+          eventId: o.event_id,
+          venueId: "crooked8",
+          buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
+          items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price) })),
+          total: Number(o.total_amount),
+          date: o.created_at,
+          checkedIn: o.status === 'checked_in',
+        })));
+      });
+  }, [session]);
 
 const login = async () => {
   setAuthError('');
@@ -363,58 +367,6 @@ const logout = async () => {
 
   const open = (id) => { setSelId(id); setCart({}); setView("detail"); };
 
-  const purchase = async () => {
-  if (!buyer.name || !buyer.email) return;
-
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      tenant_id: CROOKED_8_TENANT_ID,
-      event_id: sel.id,
-      buyer_name: buyer.name,
-      buyer_email: buyer.email,
-      buyer_phone: buyer.phone,
-      status: 'confirmed',
-      total_amount: cartTotal,
-    })
-    .select()
-    .single();
-
-  if (orderError) { console.error(orderError); return; }
-
-  const items = sel.tickets
-    .map((t, i) => ({ type: t.type, qty: cart[i] || 0, price: t.price, ticketTypeId: t.id }))
-    .filter(i => i.qty > 0);
-
-  await supabase.from('order_items').insert(
-    items.map(i => ({
-      order_id: order.id,
-      ticket_type_id: i.ticketTypeId,
-      ticket_type_name: i.type,
-      quantity: i.qty,
-      unit_price: i.price,
-    }))
-  );
-
-  for (const item of items) {
-    await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
-  }
-
-  const localOrder = {
-    id: order.id, eventId: sel.id, venueId: "crooked8",
-    buyer: { ...buyer },
-    items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
-    total: cartTotal, date: new Date().toISOString(), checkedIn: false,
-  };
-  updateOrders([...orders, localOrder]);
-  updateEvents(events.map(ev => ev.id !== sel.id ? ev : {
-    ...ev, tickets: ev.tickets.map((t, i) => ({ ...t, available: t.available - (cart[i] || 0) }))
-  }));
-  setLastOrder(localOrder);
-  setView("ticket");
-  setBuyer({ name: "", email: "", phone: "" });
-  setCart({});
-};
 
   const checkin = async (oid) => {
   await supabase.from('orders').update({ status: 'checked_in' }).eq('id', oid);
@@ -447,8 +399,8 @@ const logout = async () => {
       title: e.title,
       description: e.description,
       category: e.category,
-      event_date: e.date + 'T00:00:00',
-      doors_open: e.date + 'T00:00:00',
+      event_date: e.date + 'T' + (e.time || '00:00') + ':00',
+      doors_open: e.date + 'T' + (e.doors || '00:00') + ':00',
       image_url: imageUrl,
     }).eq('id', e.id);
     updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl} : x));
@@ -458,8 +410,8 @@ const logout = async () => {
       title: e.title,
       description: e.description,
       category: e.category,
-      event_date: e.date + 'T00:00:00',
-      doors_open: e.date + 'T00:00:00',
+      event_date: e.date + 'T' + (e.time || '00:00') + ':00',
+      doors_open: e.date + 'T' + (e.doors || '00:00') + ':00',
       image_url: imageUrl,
       venue_name: 'Crooked 8',
       is_published: true,
@@ -523,7 +475,7 @@ const logout = async () => {
   <div className="card-cat">{ev.category}</div>
 </div>
                   <div className="card-body">
-                    <div className="card-date">{fmtDate(ev.date)} - {ev.time}</div>
+                    <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
                     <div className="card-title dsp">{ev.title}</div>
                     <div className="card-desc">{ev.description}</div>
                     <div className="card-foot"><div className="card-price">{fmtCurrency(mp)} {mp > 0 && <small>& up</small>}</div><button className="btn gold" onClick={e => { e.stopPropagation(); open(ev.id); }}>Tickets</button></div>
@@ -541,8 +493,8 @@ const logout = async () => {
           <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", marginBottom: 10, lineHeight: 1.1 }}>{sel.title}</h1>
           <div className="d-meta">
   <span>📅 <strong>{fmtDate(sel.date)}</strong></span>
-  <span>🕐 <strong>{sel.time}</strong></span>
-  <span>🚪 Doors <strong>{sel.doors}</strong></span>
+  <span>🕐 <strong>{fmtTime(sel.time)}</strong></span>
+  <span>🚪 Doors <strong>{fmtTime(sel.doors)}</strong></span>
   <span>📍 <strong>{venue.name}</strong> — {venue.location}</span>
   {venue.phone && <span>📞 <strong>{venue.phone}</strong></span>}
   {venue.email && <span>✉️ <a href={`mailto:${venue.email}`} style={{color:"var(--gold)"}}>{venue.email}</a></span>}
@@ -613,7 +565,7 @@ const logout = async () => {
 
             if (orderError) { console.error(orderError); return; }
 
-            await supabase.from('order_items').insert(
+            const { error: itemsError } = await supabase.from('order_items').insert(
               items.map(i => ({
                 order_id: order.id,
                 ticket_type_id: i.ticketTypeId,
@@ -622,6 +574,13 @@ const logout = async () => {
                 unit_price: i.price,
               }))
             );
+
+            if (itemsError) {
+              console.error(itemsError);
+              await supabase.from('orders').delete().eq('id', order.id);
+              alert(`There was a problem saving your order. Your payment was captured — please email support@c8tickets.com with payment reference: ${paymentIntentId}`);
+              return;
+            }
 
             for (const item of items) {
               await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
@@ -656,8 +615,8 @@ fetch('/api/send-confirmation', {
     event: {
       title: sel.title,
       date: fmtDate(sel.date),
-      time: sel.time,
-      doors: sel.doors,
+      time: fmtTime(sel.time),
+      doors: fmtTime(sel.doors),
       category: sel.category,
     },
   }),
@@ -677,9 +636,9 @@ fetch('/api/send-confirmation', {
             <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{fontSize:40,marginBottom:6}}>🎉</div><h1 className="dsp" style={{fontSize:28}}>You're In!</h1><p style={{color:"var(--text2)",fontSize:13}}>Show this QR code at the gate</p></div>
             <div className="tkt-disp">
               <div className="dsp" style={{fontSize:22,marginBottom:3}}>{ev?.title}</div>
-              <div style={{color:"var(--gold)",fontWeight:700,fontSize:13,marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>{ev ? fmtDate(ev.date) : ""} - {ev?.time}</div>
+              <div style={{color:"var(--gold)",fontWeight:700,fontSize:13,marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>{ev ? fmtDate(ev.date) : ""} - {fmtTime(ev?.time)}</div>
               <div><span className="badge badge-ok">✓ Valid</span></div>
-              <div className="qr"><QRCode value={lastOrder.id} size={160} /></div>
+              <div className="qr"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${lastOrder.id}`} alt="Ticket QR Code" width={160} height={160} style={{display:"block"}} /></div>
               <div className="cid">ID: {lastOrder.id.toUpperCase()}</div>
               <ul className="tkt-items">
                 {lastOrder.items.map((it,i) => <li key={i}><span>{it.qty}× {it.type}</span><span>{fmtCurrency(it.qty*it.price)}</span></li>)}
@@ -826,7 +785,7 @@ fetch('/api/send-confirmation', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.image} {ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.image} {ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <><h2 className="dsp" style={{fontSize:26,marginBottom:20}}>All Orders</h2>{vo.length===0?<div className="empty"><div className="ic">📋</div><p>No orders.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th></tr></thead><tbody>{vo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}</td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td></tr>})}</tbody></table></div>}</>; })()}
 
@@ -837,8 +796,8 @@ fetch('/api/send-confirmation', {
         {modal && editEvt && <div className="modal-bg" onClick={()=>setModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
           <h2 className="dsp">{events.find(e=>e.id===editEvt.id)?"Edit Event":"New Event"}</h2>
           <div className="fg"><label className="fl">Title</label><input className="fi" value={editEvt.title} onChange={e=>setEditEvt({...editEvt,title:e.target.value})} placeholder="e.g. Neon Rodeo Night"/></div>
-          <div className="fr"><div className="fg"><label className="fl">Date</label><input className="fi" type="date" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})}/></div><div className="fg"><label className="fl">Show Time</label><input className="fi" value={editEvt.time} onChange={e=>setEditEvt({...editEvt,time:e.target.value})} placeholder="7:00 PM"/></div></div>
-          <div className="fr"><div className="fg"><label className="fl">Doors</label><input className="fi" value={editEvt.doors} onChange={e=>setEditEvt({...editEvt,doors:e.target.value})} placeholder="6:00 PM"/></div><div className="fg"><label className="fl">Category</label><select className="fi" value={editEvt.category} onChange={e=>setEditEvt({...editEvt,category:e.target.value})}>{["Live Music","Rodeo","Family","Other Events"].map(c=><option key={c} value={c}>{c}</option>)}</select></div></div>
+          <div className="fr"><div className="fg"><label className="fl">Date</label><input className="fi" type="date" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})}/></div><div className="fg"><label className="fl">Show Time</label><input className="fi" type="time" value={editEvt.time} onChange={e=>setEditEvt({...editEvt,time:e.target.value})} /></div></div>
+          <div className="fr"><div className="fg"><label className="fl">Doors</label><input className="fi" type="time" value={editEvt.doors} onChange={e=>setEditEvt({...editEvt,doors:e.target.value})} /></div><div className="fg"><label className="fl">Category</label><select className="fi" value={editEvt.category} onChange={e=>setEditEvt({...editEvt,category:e.target.value})}>{["Live Music","Rodeo","Family","Other Events"].map(c=><option key={c} value={c}>{c}</option>)}</select></div></div>
           <div className="fg">
   <label className="fl">Event Image</label>
   {editEvt.image && !editEvt.image.startsWith('blob:') && (
