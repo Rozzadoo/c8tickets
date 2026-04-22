@@ -422,7 +422,8 @@ const logout = async () => {
   };
   const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
   const saveEvt = async (e) => {
-  if (e.id) {
+  console.log('saveEvt called with id:', e.id);
+    if (e.id) {
     // Update existing event
     await supabase.from('events').update({
       title: e.title,
