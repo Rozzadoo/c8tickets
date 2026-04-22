@@ -313,11 +313,18 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [clientSecret, setClientSecret] = useState(null);
   const [paymentAmounts, setPaymentAmounts] = useState(null);
+  const [resetEmail, setResetEmail] = useState('');
+const [resetSent, setResetSent] = useState(false);
+const [resetError, setResetError] = useState('');
+const [view2, setView2] = useState(null);
 
   const venue = venues[0] || DEFAULT_VENUE;
   useEffect(() => {
   supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    setSession(session);
+    if (_event === 'PASSWORD_RECOVERY') setView('reset');
+  });
   return () => subscription.unsubscribe();
 }, []);
 
@@ -326,6 +333,21 @@ const login = async () => {
   const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
   if (error) setAuthError(error.message);
   else setView('admin');
+};
+
+const sendReset = async () => {
+  setResetError('');
+  const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+    redirectTo: 'https://www.c8tickets.com/?reset=true',
+  });
+  if (error) setResetError(error.message);
+  else setResetSent(true);
+};
+
+const updatePassword = async (newPassword) => {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) console.error(error);
+  else setView('home');
 };
 
 const logout = async () => {
@@ -722,6 +744,39 @@ fetch('/api/send-confirmation', {
   <h2>8. Contact</h2>
   <p>For privacy questions, contact us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a>.</p>
 </div>}
+        {view === "forgot" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
+  <div className="back" onClick={() => setView("login")}>← Back to Login</div>
+  <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Reset Password</h1>
+  <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Enter your email and we'll send you a reset link.</p>
+  <div className="tkt-sec">
+    {!resetSent ? <>
+      <div className="fg">
+        <label className="fl">Email</label>
+        <input className="fi" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="your@email.com" />
+      </div>
+      {resetError && <p style={{ color: "var(--red)", fontSize: 12, marginBottom: 10 }}>{resetError}</p>}
+      <button className="buy" onClick={sendReset} disabled={!resetEmail}>Send Reset Link</button>
+    </> : <div style={{textAlign:"center",padding:"20px 0"}}>
+      <div style={{fontSize:32,marginBottom:12}}>✉️</div>
+      <p style={{color:"var(--text2)",fontSize:14}}>Reset link sent to <strong style={{color:"var(--text)"}}>{resetEmail}</strong></p>
+      <p style={{color:"var(--text3)",fontSize:12,marginTop:8}}>Check your inbox and follow the link to reset your password.</p>
+    </div>}
+  </div>
+</div>}
+        {view === "reset" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
+  <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>New Password</h1>
+  <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Enter your new password below.</p>
+  <div className="tkt-sec">
+    <div className="fg">
+      <label className="fl">New Password</label>
+      <input className="fi" type="password" id="newpw" placeholder="Minimum 6 characters" />
+    </div>
+    <button className="buy" onClick={() => {
+      const pw = document.getElementById('newpw').value;
+      if (pw.length >= 6) updatePassword(pw);
+    }}>Update Password</button>
+  </div>
+</div>}
         {view === "login" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
   <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Admin Login</h1>
   <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Crooked 8 staff only</p>
@@ -736,6 +791,7 @@ fetch('/api/send-confirmation', {
     </div>
     {authError && <p style={{ color: "var(--red)", fontSize: 12, marginBottom: 10 }}>{authError}</p>}
     <button className="buy" onClick={login}>Sign In</button>
+<button className="btn" style={{width:"100%",marginTop:8}} onClick={() => setView("forgot")}>Forgot Password?</button>
   </div>
 </div>}
         {view === "admin" && <div className="admin fade">
