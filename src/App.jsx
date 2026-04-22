@@ -300,6 +300,7 @@ export default function App() {
 const [resetSent, setResetSent] = useState(false);
 const [resetError, setResetError] = useState('');
 const [view2, setView2] = useState(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const venue = venues[0] || DEFAULT_VENUE;
   useEffect(() => {
@@ -331,6 +332,13 @@ const [view2, setView2] = useState(null);
         })));
       });
   }, [session]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get('event');
+    if (eventId) { setSelId(eventId); setView('detail'); }
+  }, [loaded]);
 
 const login = async () => {
   setAuthError('');
@@ -365,7 +373,8 @@ const logout = async () => {
   const cartTotal = useMemo(() => sel ? sel.tickets.reduce((s, t, i) => s + (cart[i] || 0) * t.price, 0) : 0, [cart, sel]);
   const cartN = Object.values(cart).reduce((a, b) => a + b, 0);
 
-  const open = (id) => { setSelId(id); setCart({}); setView("detail"); };
+  const open = (id) => { setSelId(id); setCart({}); setView("detail"); window.history.pushState({}, '', `?event=${id}`); };
+  const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
 
 
   const checkin = async (oid) => {
@@ -443,12 +452,12 @@ const logout = async () => {
     <><style>{CSS}</style>
       <div className="app">
         <nav className="nav">
-          <div className="nav-logo" onClick={() => setView("home")} style={{position:"relative"}}>
+          <div className="nav-logo" onClick={goHome} style={{position:"relative"}}>
             <img src={LOGO_SRC} alt="Crooked 8" />
             <div style={{position:"absolute",bottom:-4,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:8,letterSpacing:3,textTransform:"uppercase",padding:"2px 6px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
             </div>
           <div className="nav-links">
-            <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={() => setView("home")}>Events</button>
+            <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={goHome}>Events</button>
             {session && <button className={`btn ${view === "admin" ? "on" : ""}`} onClick={() => setView("admin")}>Admin</button>}
             <button className="btn" onClick={() => session ? logout() : setView("login")}>{session ? "Logout" : "Login"}</button>
           </div>
@@ -485,12 +494,19 @@ const logout = async () => {
         </div>}
 
         {view === "detail" && sel && <div className="sec fade" style={{ maxWidth: 800 }}>
-          <div className="back" onClick={() => setView("home")}>← Events</div>
+          <div className="back" onClick={goHome}>← Events</div>
           <div className="d-hero" style={{backgroundImage: sel.image && sel.image.startsWith('http') ? `url(${sel.image})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
   {(!sel.image || !sel.image.startsWith('http')) && <span style={{fontSize:72}}>🎵</span>}
 </div>
           <div style={{ marginBottom: 6 }}><span className="tag">{sel.category}</span></div>
-          <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", marginBottom: 10, lineHeight: 1.1 }}>{sel.title}</h1>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10,flexWrap:"wrap"}}>
+            <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", lineHeight: 1.1 }}>{sel.title}</h1>
+            <button className="btn" style={{fontSize:11,padding:"5px 14px",flexShrink:0,marginTop:4}} onClick={() => {
+              navigator.clipboard.writeText(`${window.location.origin}/?event=${sel.id}`);
+              setCopiedLink(true);
+              setTimeout(() => setCopiedLink(false), 2000);
+            }}>{copiedLink ? "✓ Copied!" : "🔗 Share"}</button>
+          </div>
           <div className="d-meta">
   <span>📅 <strong>{fmtDate(sel.date)}</strong></span>
   <span>🕐 <strong>{fmtTime(sel.time)}</strong></span>
@@ -649,7 +665,7 @@ fetch('/api/send-confirmation', {
                 </ul>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} - {lastOrder.buyer.email}<br/>Crooked 8 - {venue.location}</p>
             </div>
-            <button className="buy" style={{marginTop:20}} onClick={() => setView("home")}>Browse More Events</button>
+            <button className="buy" style={{marginTop:20}} onClick={goHome}>Browse More Events</button>
           </div>); })()}
         {view === "terms" && <div className="legal fade">
   <div className="back" onClick={() => setView("home")}>← Back</div>
