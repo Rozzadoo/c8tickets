@@ -35,13 +35,30 @@ const mapEvent = (e) => ({
 });
 
 const useStorage = () => {
-  const [venues] = useState([DEFAULT_VENUE]);
+  const [venues, setVenues] = useState([DEFAULT_VENUE]);
   const [events, setEvents] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const load = async () => {
+      const { data: venueData } = await supabase
+  .from('tenants')
+  .select('*')
+  .eq('id', CROOKED_8_TENANT_ID)
+  .single();
+
+if (venueData) {
+  setVenues([{
+    id: "crooked8",
+    name: venueData.name,
+    tagline: "Boise's Most Exciting Event & Concert Venue",
+    location: "1882 E King Rd, Kuna, ID 83634",
+    phone: venueData.contact_phone || "",
+    email: venueData.contact_email || "",
+    website: venueData.website || "",
+  }]);
+}
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*, ticket_types(*)')
@@ -479,7 +496,15 @@ const logout = async () => {
           <div className="d-hero">{sel.image}</div>
           <div style={{ marginBottom: 6 }}><span className="tag">{sel.category}</span></div>
           <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", marginBottom: 10, lineHeight: 1.1 }}>{sel.title}</h1>
-          <div className="d-meta"><span>📅 <strong>{fmtDate(sel.date)}</strong></span><span>🕐 <strong>{sel.time}</strong></span><span>🚪 Doors <strong>{sel.doors}</strong></span><span>📍 <strong>Crooked 8</strong> — Kuna, ID</span></div>
+          <div className="d-meta">
+  <span>📅 <strong>{fmtDate(sel.date)}</strong></span>
+  <span>🕐 <strong>{sel.time}</strong></span>
+  <span>🚪 Doors <strong>{sel.doors}</strong></span>
+  <span>📍 <strong>{venue.name}</strong> — {venue.location}</span>
+  {venue.phone && <span>📞 <strong>{venue.phone}</strong></span>}
+  {venue.email && <span>✉️ <a href={`mailto:${venue.email}`} style={{color:"var(--gold)"}}>{venue.email}</a></span>}
+  {venue.website && <span>🌐 <a href={venue.website} target="_blank" rel="noopener noreferrer" style={{color:"var(--gold)"}}>{venue.website.replace('https://','')}</a></span>}
+</div>
           <p className="d-desc">{sel.description}</p>
           <div className="tkt-sec"><h3 className="dsp">Select Tickets</h3>
             {sel.tickets.map((t, i) => <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4><p>{t.available} left</p></div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv">{cart[i]||0}</div><button className="qb" disabled={(cart[i]||0) >= t.available} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>)}
