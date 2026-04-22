@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from './lib/supabase';
 import { CROOKED_8_TENANT_ID } from './constants';
 import { loadStripe } from '@stripe/stripe-js';
@@ -275,7 +276,133 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .legal ul{margin:0 0 14px 20px;font-size:14px}
 .legal ul li{margin-bottom:6px}
 .legal .date{font-size:12px;color:var(--text3);margin-bottom:28px}
+#gate-scanner,#admin-scanner{width:100%!important;border-radius:var(--r);overflow:hidden}
+#gate-scanner video,#admin-scanner video{width:100%!important;border-radius:var(--r)}
+#gate-scanner img,#admin-scanner img{display:none}
 `;
+
+// ── QR Scanner ──
+const ScannerWidget = ({ scannerId, onResult }) => {
+  const onResultRef = useRef(onResult);
+  useEffect(() => { onResultRef.current = onResult; });
+  useEffect(() => {
+    let qr;
+    qr = new Html5Qrcode(scannerId);
+    qr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (text) => { qr.stop().catch(() => {}); onResultRef.current(text.trim()); },
+      () => {}
+    ).catch(console.error);
+    return () => { if (qr) qr.stop().catch(() => {}); };
+  }, [scannerId]);
+  return <div id={scannerId} style={{width:'100%',minHeight:300,background:'var(--bg3)',borderRadius:'var(--r)'}} />;
+};
+
+// ── Gate Check-In View ──
+const GateView = ({ events, onLogout }) => {
+  const [scanning, setScanning] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleScan = async (id) => {
+    setScanning(false);
+    setResult('loading');
+    const { data: order, error } = await supabase
+      .from('orders').select('*, order_items(*)')
+      .eq('id', id).single();
+    if (error || !order) { setResult({ found: false }); return; }
+    const ev = events.find(e => e.id === order.event_id);
+    setResult({ found: true, order, event: ev, alreadyIn: order.status === 'checked_in', done: false });
+  };
+
+  const doCheckin = async () => {
+    await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
+    setResult({ ...result, alreadyIn: false, done: true });
+  };
+
+  const next = () => { setResult(null); setScanning(true); };
+
+  return (
+    <div className="app">
+      <nav className="nav">
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <img src={LOGO_SRC} alt="" style={{height:40,filter:'invert(1)',opacity:.9}} />
+          <span className="dsp" style={{fontSize:12,color:'var(--gold)',letterSpacing:2}}>Gate Check-In</span>
+        </div>
+        <button className="btn" onClick={onLogout}>Logout</button>
+      </nav>
+      <div style={{maxWidth:440,margin:'0 auto',padding:'24px 16px',width:'100%'}}>
+        {!scanning && !result && (
+          <div style={{textAlign:'center',paddingTop:60}} className="fade">
+            <div style={{fontSize:64,marginBottom:16}}>🎟️</div>
+            <h2 className="dsp" style={{fontSize:28,marginBottom:8}}>Ready to Scan</h2>
+            <p style={{color:'var(--text2)',fontSize:14,marginBottom:32}}>Point the camera at a buyer's QR code to check them in.</p>
+            <button className="buy" onClick={() => setScanning(true)}>Start Scanner</button>
+          </div>
+        )}
+        {scanning && (
+          <div className="fade">
+            <h3 className="dsp" style={{fontSize:18,marginBottom:12,textAlign:'center'}}>Scan QR Code</h3>
+            <ScannerWidget scannerId="gate-scanner" onResult={handleScan} />
+            <button className="btn" style={{width:'100%',marginTop:10}} onClick={() => setScanning(false)}>Cancel</button>
+          </div>
+        )}
+        {result === 'loading' && (
+          <div style={{textAlign:'center',padding:60}}><p style={{color:'var(--text2)'}}>Looking up ticket...</p></div>
+        )}
+        {result && result !== 'loading' && (
+          <div className="fade">
+            <div className="tkt-sec" style={{marginBottom:14}}>
+              {!result.found && (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:48,marginBottom:10}}>❌</div>
+                  <h3 className="dsp" style={{color:'var(--red)',fontSize:22,marginBottom:8}}>Ticket Not Found</h3>
+                  <p style={{color:'var(--text2)',fontSize:13}}>This QR code doesn't match any order.</p>
+                </div>
+              )}
+              {result.found && result.alreadyIn && (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:48,marginBottom:10}}>⚠️</div>
+                  <h3 className="dsp" style={{color:'var(--gold)',fontSize:22,marginBottom:8}}>Already Checked In</h3>
+                  <p style={{fontWeight:700,fontSize:16}}>{result.order.buyer_name}</p>
+                  <p style={{color:'var(--gold)',fontSize:13,marginTop:4}}>{result.event?.title}</p>
+                </div>
+              )}
+              {result.found && result.done && (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:48,marginBottom:10}}>✅</div>
+                  <h3 className="dsp" style={{color:'var(--green)',fontSize:22,marginBottom:8}}>Checked In!</h3>
+                  <p style={{fontWeight:700,fontSize:16}}>{result.order.buyer_name}</p>
+                  <p style={{color:'var(--gold)',fontSize:13,marginTop:4}}>{result.event?.title}</p>
+                </div>
+              )}
+              {result.found && !result.alreadyIn && !result.done && (
+                <div>
+                  <div style={{textAlign:'center',marginBottom:16}}>
+                    <div style={{fontSize:48,marginBottom:10}}>✅</div>
+                    <h3 className="dsp" style={{color:'var(--green)',fontSize:22,marginBottom:4}}>Valid Ticket</h3>
+                  </div>
+                  <p style={{fontWeight:700,fontSize:17,marginBottom:2}}>{result.order.buyer_name}</p>
+                  <p style={{color:'var(--text2)',fontSize:13,marginBottom:4}}>{result.order.buyer_email}</p>
+                  <p style={{color:'var(--gold)',fontWeight:700,fontSize:14,marginBottom:14}}>{result.event?.title || 'Event'}</p>
+                  <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'10px 14px',marginBottom:16}}>
+                    {(result.order.order_items || []).map((item, i) => (
+                      <div key={i} style={{fontSize:13,color:'var(--text2)',padding:'2px 0'}}>{item.quantity}× {item.ticket_type_name}</div>
+                    ))}
+                  </div>
+                  <button className="buy" onClick={doCheckin}>✓ Check In</button>
+                </div>
+              )}
+            </div>
+            <button className="btn" style={{width:'100%'}} onClick={next}>
+              {result.found && !result.alreadyIn && !result.done ? 'Cancel' : 'Scan Next Ticket'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const { venues, events, loaded, updateEvents } = useStorage();
@@ -301,8 +428,11 @@ const [resetSent, setResetSent] = useState(false);
 const [resetError, setResetError] = useState('');
 const [view2, setView2] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [adminScan, setAdminScan] = useState(false);
+  const [scanMsg, setScanMsg] = useState(null);
 
   const venue = venues[0] || DEFAULT_VENUE;
+  const isGate = session?.user?.user_metadata?.role === 'gate';
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -342,9 +472,9 @@ const [view2, setView2] = useState(null);
 
 const login = async () => {
   setAuthError('');
-  const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+  const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
   if (error) setAuthError(error.message);
-  else setView('admin');
+  else setView(data.user?.user_metadata?.role === 'gate' ? 'gate' : 'admin');
 };
 
 const sendReset = async () => {
@@ -378,8 +508,18 @@ const logout = async () => {
 
 
   const checkin = async (oid) => {
-  await supabase.from('orders').update({ status: 'checked_in' }).eq('id', oid);
-  updateOrders(orders.map(o => o.id === oid ? { ...o, checkedIn: true } : o));
+    await supabase.from('orders').update({ status: 'checked_in' }).eq('id', oid);
+    updateOrders(orders.map(o => o.id === oid ? { ...o, checkedIn: true } : o));
+  };
+
+  const handleAdminScan = async (id) => {
+    setAdminScan(false);
+    const order = orders.find(o => o.id === id);
+    if (!order) { setScanMsg({ ok: false, text: 'No order found for that QR code.' }); return; }
+    if (order.checkedIn) { setScanMsg({ ok: false, text: `${order.buyer.name} is already checked in.` }); return; }
+    await checkin(id);
+    setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
+    setTimeout(() => setScanMsg(null), 4000);
   };
   const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
   const saveEvt = async (e) => {
@@ -458,7 +598,7 @@ const logout = async () => {
             </div>
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={goHome}>Events</button>
-            {session && <button className={`btn ${view === "admin" ? "on" : ""}`} onClick={() => setView("admin")}>Admin</button>}
+            {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
             <button className="btn" onClick={() => session ? logout() : setView("login")}>{session ? "Logout" : "Login"}</button>
           </div>
         </nav>
@@ -774,8 +914,8 @@ fetch('/api/send-confirmation', {
   </div>
 </div>}
         {view === "login" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
-  <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Admin Login</h1>
-  <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Crooked 8 staff only</p>
+  <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Staff Login</h1>
+  <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Enter your staff credentials</p>
   <div className="tkt-sec">
     <div className="fg">
       <label className="fl">Email</label>
@@ -790,6 +930,8 @@ fetch('/api/send-confirmation', {
 <button className="btn" style={{width:"100%",marginTop:8}} onClick={() => setView("forgot")}>Forgot Password?</button>
   </div>
 </div>}
+        {view === "gate" && <GateView events={events} onLogout={logout} />}
+
         {view === "admin" && <div className="admin fade">
           <div className="aside">{["dashboard","events","orders","check-in"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":"✅ "}{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
@@ -805,7 +947,19 @@ fetch('/api/send-confirmation', {
 
             {aTab === "orders" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <><h2 className="dsp" style={{fontSize:26,marginBottom:20}}>All Orders</h2>{vo.length===0?<div className="empty"><div className="ic">📋</div><p>No orders.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th></tr></thead><tbody>{vo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}</td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td></tr>})}</tbody></table></div>}</>; })()}
 
-            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <><h2 className="dsp" style={{fontSize:26,marginBottom:6}}>Check-In</h2><p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Mark attendees as arrived at the gate.</p>{vo.length===0?<div className="empty"><div className="ic">✅</div><p>No tickets.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Name</th><th>Event</th><th>Tickets</th><th>Status</th><th></th></tr></thead><tbody>{vo.map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,10)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td><td><button className={`ci-btn ${o.checkedIn?"dn":""}`} disabled={o.checkedIn} onClick={()=>checkin(o.id)}>{o.checkedIn?"Done":"Check In"}</button></td></tr>})}</tbody></table></div>}</>; })()}
+            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:10}}>
+                <h2 className="dsp" style={{fontSize:26}}>Check-In</h2>
+                {!adminScan && <button className="btn gold" onClick={()=>{setAdminScan(true);setScanMsg(null);}}>📷 Scan Ticket</button>}
+              </div>
+              {adminScan && <div style={{marginBottom:16,maxWidth:400}}>
+                <ScannerWidget scannerId="admin-scanner" onResult={handleAdminScan} />
+                <button className="btn" style={{width:"100%",marginTop:8}} onClick={()=>setAdminScan(false)}>Cancel</button>
+              </div>}
+              {scanMsg && <div style={{marginBottom:16,padding:"10px 14px",borderRadius:"var(--rs)",background:scanMsg.ok?"rgba(93,138,60,.15)":"rgba(179,58,42,.15)",color:scanMsg.ok?"var(--green)":"var(--red)",fontSize:13,fontWeight:600}}>{scanMsg.text}</div>}
+              <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Or manually mark attendees below.</p>
+              {vo.length===0?<div className="empty"><div className="ic">✅</div><p>No tickets.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Name</th><th>Event</th><th>Tickets</th><th>Status</th><th></th></tr></thead><tbody>{vo.map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,10)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td><td><button className={`ci-btn ${o.checkedIn?"dn":""}`} disabled={o.checkedIn} onClick={()=>checkin(o.id)}>{o.checkedIn?"Done":"Check In"}</button></td></tr>})}</tbody></table></div>}
+            </>; })()}
           </div>
         </div>}
 
