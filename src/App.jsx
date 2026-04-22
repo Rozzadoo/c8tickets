@@ -11,7 +11,7 @@ const LOGO_SRC = "/logo.jpg";
 // ── Data & Storage ──
 const DEFAULT_VENUE = {
   id: "crooked8", name: "Crooked 8",
-  tagline: "Boise's Most Exciting Event & Concert Venue",
+  tagline: "Local Events. Easy Tickets.",
   location: "1882 E King Rd, Kuna, ID 83634",
   phone: "(208) 991-0788",
 };
