@@ -471,7 +471,7 @@ const logout = async () => {
               <div style={{position:"absolute",bottom:-10,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,letterSpacing:4,textTransform:"uppercase",padding:"3px 14px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
               </div>
             <p>{venue.tagline}</p>
-            <div className="hero-sub"><span>📍 {venue.location}</span><span>📞 {venue.phone}</span></div>
+            <div className="hero-sub"><span>Questions? <a href="mailto:support@c8tickets.com" style={{color:"var(--text2)"}}>support@c8tickets.com</a></span></div>
           </div>
           <div className="sec">
             <div className="sec-hdr"><div className="sec-title dsp">Upcoming Events</div>
