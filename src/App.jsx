@@ -28,6 +28,7 @@ const mapEvent = (e) => ({
   image: e.image_url,
   focalX: e.focal_x ?? 50,
   focalY: e.focal_y ?? 50,
+  published: e.is_published ?? true,
   category: e.category,
   tickets: (e.ticket_types || []).map(t => ({
     id: t.id,
@@ -65,7 +66,6 @@ if (venueData) {
         .from('events')
         .select('*, ticket_types(*)')
         .eq('tenant_id', CROOKED_8_TENANT_ID)
-        .eq('is_published', true)
         .order('event_date', { ascending: true });
 
       if (eventsError) console.error(eventsError);
@@ -232,6 +232,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .badge{display:inline-block;padding:3px 12px;border-radius:99px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px}
 .badge-ok{background:rgba(93,138,60,.2);color:var(--green);border:1px solid rgba(93,138,60,.3)}
 .badge-done{background:rgba(255,255,255,.05);color:var(--text3);border:1px solid rgba(255,255,255,.08)}
+.badge-sold{background:rgba(179,58,42,.15);color:var(--red);border:1px solid rgba(179,58,42,.3)}
 .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;background:rgba(200,146,42,.15);color:var(--gold)}
 
 .admin{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 61px)}
@@ -428,7 +429,8 @@ export default function App() {
   const [resetEmail, setResetEmail] = useState('');
 const [resetSent, setResetSent] = useState(false);
 const [resetError, setResetError] = useState('');
-const [view2, setView2] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [adminScan, setAdminScan] = useState(false);
   const [scanMsg, setScanMsg] = useState(null);
@@ -502,8 +504,9 @@ const logout = async () => {
   setView('home');
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
+  const publicEvents = vEvents.filter(e => e.published !== false);
   const CATS = ["All", "Live Music", "Rodeo", "Family", "Other Events"];
-  const filtered = filter === "All" ? vEvents : vEvents.filter(e => e.category === filter);
+  const filtered = (filter === "All" ? publicEvents : publicEvents.filter(e => e.category === filter));
   const sel = events.find(e => e.id === selId);
   const cartTotal = useMemo(() => sel ? sel.tickets.reduce((s, t, i) => s + (cart[i] || 0) * t.price, 0) : 0, [cart, sel]);
   const cartN = Object.values(cart).reduce((a, b) => a + b, 0);
@@ -529,9 +532,10 @@ const logout = async () => {
     setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
     setTimeout(() => setScanMsg(null), 4000);
   };
-  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
   const saveEvt = async (e) => {
-  
+  setIsSaving(true);
+  try {
   let imageUrl = e.image;
 
   // Upload new image if one was selected
@@ -561,8 +565,9 @@ const logout = async () => {
       image_url: imageUrl,
       focal_x: e.focalX ?? 50,
       focal_y: e.focalY ?? 50,
+      is_published: e.published ?? true,
     }).eq('id', e.id);
-    updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50} : x));
+    updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
   } else {
     const { data: newEvt, error } = await supabase.from('events').insert({
       tenant_id: CROOKED_8_TENANT_ID,
@@ -575,7 +580,7 @@ const logout = async () => {
       focal_x: e.focalX ?? 50,
       focal_y: e.focalY ?? 50,
       venue_name: 'Crooked 8',
-      is_published: true,
+      is_published: e.published ?? true,
     }).select().single();
     if (error) { console.error(error); return; }
     await supabase.from('ticket_types').insert(
@@ -587,15 +592,23 @@ const logout = async () => {
         quantity_sold: 0,
       }))
     );
-    const mapped = { ...e, id: newEvt.id, venueId: "crooked8", image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50 };
+    const mapped = { ...e, id: newEvt.id, venueId: "crooked8", image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
     updateEvents([...events, mapped]);
   }
   setModal(false);
   setEditEvt(null);
+  } finally {
+    setIsSaving(false);
+  }
 };
   const delEvt = async (id) => {
   await supabase.from('events').delete().eq('id', id);
   updateEvents(events.filter(e => e.id !== id));
+};
+  const togglePublish = async (ev) => {
+  const next = !ev.published;
+  await supabase.from('events').update({ is_published: next }).eq('id', ev.id);
+  updateEvents(events.map(e => e.id === ev.id ? { ...e, published: next } : e));
 };
 
   if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0c0a07" }}><img src={LOGO_SRC} alt="Crooked 8" style={{ height: 80, filter: "invert(1)", opacity: .7, animation: "fi .6s ease" }} /></div>;
@@ -629,7 +642,7 @@ const logout = async () => {
               <div className="filters">{CATS.map(c => <button key={c} className={`chip ${filter === c ? "on" : ""}`} onClick={() => setFilter(c)}>{c}</button>)}</div>
             </div>
             {filtered.length === 0 ? <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div> :
-              <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); return (
+              <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); const soldOut = ev.tickets.every(t => t.available <= 0); return (
                 <div key={ev.id} className="card" onClick={() => open(ev.id)}>
                   <div className="card-img" style={{backgroundImage: ev.image && ev.image.startsWith('http') ? `url(${ev.image})` : 'none', backgroundSize:'cover', backgroundPosition:`${ev.focalX ?? 50}% ${ev.focalY ?? 50}%`}}>
   {(!ev.image || !ev.image.startsWith('http')) && <span style={{fontSize:48}}>🎵</span>}
@@ -639,7 +652,7 @@ const logout = async () => {
                     <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
                     <div className="card-title dsp">{ev.title}</div>
                     <div className="card-desc">{ev.description}</div>
-                    <div className="card-foot"><div className="card-price">{fmtCurrency(mp)} {mp > 0 && <small>& up</small>}</div><button className="btn gold" onClick={e => { e.stopPropagation(); open(ev.id); }}>Tickets</button></div>
+                    <div className="card-foot"><div className="card-price">{soldOut ? "Sold Out" : <>{fmtCurrency(mp)}{mp > 0 && <small> & up</small>}</>}</div>{soldOut ? <span className="badge badge-sold">Sold Out</span> : <button className="btn gold" onClick={e => { e.stopPropagation(); open(ev.id); }}>Tickets</button>}</div>
                   </div>
                 </div>); })}</div>}
           </div>
@@ -921,12 +934,9 @@ fetch('/api/send-confirmation', {
   <div className="tkt-sec">
     <div className="fg">
       <label className="fl">New Password</label>
-      <input className="fi" type="password" id="newpw" placeholder="Minimum 6 characters" />
+      <input className="fi" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Minimum 6 characters" />
     </div>
-    <button className="buy" onClick={() => {
-      const pw = document.getElementById('newpw').value;
-      if (pw.length >= 6) updatePassword(pw);
-    }}>Update Password</button>
+    <button className="buy" onClick={() => { if (newPassword.length >= 6) { updatePassword(newPassword); setNewPassword(''); } }}>Update Password</button>
   </div>
 </div>}
         {view === "login" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
@@ -959,7 +969,7 @@ fetch('/api/send-confirmation', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.image} {ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <><h2 className="dsp" style={{fontSize:26,marginBottom:20}}>All Orders</h2>{vo.length===0?<div className="empty"><div className="ic">📋</div><p>No orders.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th></tr></thead><tbody>{vo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}</td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td></tr>})}</tbody></table></div>}</>; })()}
 
@@ -1018,7 +1028,7 @@ fetch('/api/send-confirmation', {
           <h3 className="dsp" style={{fontSize:16,margin:"16px 0 10px"}}>Ticket Tiers</h3>
           {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Price</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100}]})}}>×</button></div>)}
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
-          <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date} onClick={()=>saveEvt(editEvt)}>Save Event</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
+          <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date||isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
       <footer className="footer">
           <div className="footer-links">
