@@ -200,6 +200,13 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .d-meta{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px;font-size:13px;color:var(--text2)}
 .d-meta strong{color:var(--text)}
 .d-desc{color:var(--text2);line-height:1.7;font-size:14px;margin-bottom:28px;max-width:700px}
+.share-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.share-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;border:none;transition:opacity .2s,transform .1s;white-space:nowrap}
+.share-btn:hover{opacity:.85;transform:translateY(-1px)}
+.share-fb{background:#1877f2;color:#fff}
+.share-tw{background:#000;color:#fff;border:1px solid #333}
+.share-ig{background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff}
+.share-sms{background:#5d8a3c;color:#fff}
 
 .tkt-sec{background:var(--bg2);border-radius:var(--r);padding:24px;border:1px solid var(--border)}
 .tkt-sec h3{font-size:20px;margin-bottom:16px}
@@ -924,13 +931,24 @@ const generatePhotoTickets = async (ev) => {
   {(!sel.image || !sel.image.startsWith('http')) && <span style={{fontSize:72}}>🎵</span>}
 </div>
           <div style={{ marginBottom: 6 }}><span className="tag">{sel.category}</span></div>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10,flexWrap:"wrap"}}>
-            <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", lineHeight: 1.1 }}>{sel.title}</h1>
-            <button className="btn" style={{fontSize:11,padding:"5px 14px",flexShrink:0,marginTop:4}} onClick={() => {
-              navigator.clipboard.writeText(`${window.location.origin}/e/${sel.id}`);
-              setCopiedLink(true);
-              setTimeout(() => setCopiedLink(false), 2000);
-            }}>{copiedLink ? "✓ Copied!" : "🔗 Share"}</button>
+          <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", lineHeight: 1.1, marginBottom: 14 }}>{sel.title}</h1>
+          <div className="share-row">
+            <a className="share-btn share-fb" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+              Facebook
+            </a>
+            <a className="share-btn share-tw" href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(sel.title+' — grab your tickets!')}&url=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              X / Twitter
+            </a>
+            <button className="share-btn share-ig" onClick={() => { navigator.clipboard.writeText(window.location.origin+'/e/'+sel.id); setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+              {copiedLink ? "✓ Copied!" : "Instagram"}
+            </button>
+            <a className="share-btn share-sms" href={`sms:?body=${encodeURIComponent(sel.title+' — get tickets: '+window.location.origin+'/e/'+sel.id)}`}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              Text
+            </a>
           </div>
           <div className="d-meta">
   <span>📅 <strong>{fmtDate(sel.date)}</strong></span>

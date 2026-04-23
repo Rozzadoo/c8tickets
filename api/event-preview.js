@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   const image = event.image_url ?? 'https://c8tickets.com/logo.jpg';
   const date = event.event_date ? new Date(event.event_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '';
   const canonical = `https://c8tickets.com/e/${id}`;
-  const dest = `/e/${id}`;
+  const dest = `/?event=${id}`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
