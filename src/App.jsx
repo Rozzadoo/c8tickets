@@ -169,7 +169,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.09) 0%,transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
 .hero-logo{height:120px;filter:invert(1);opacity:.9;margin-bottom:12px}
-.hero p{color:var(--text2);font-size:15px;font-weight:300;letter-spacing:.3px}
+.hero p{color:var(--text);font-size:18px;font-weight:400;letter-spacing:1.5px;text-transform:uppercase;opacity:.75}
 .hero-sub{display:flex;justify-content:center;gap:16px;margin-top:12px;font-size:12px;color:var(--text3);flex-wrap:wrap}
 
 .sec{padding:20px;max-width:1200px;margin:0 auto;width:100%;position:relative;z-index:1}
