@@ -25,6 +25,34 @@ export default async function handler(req, res) {
   const date = event.event_date ? new Date(event.event_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '';
   const canonical = `https://c8tickets.com/e/${id}`;
   const dest = `/?event=${id}`;
+  const jsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    name: title,
+    description: description,
+    startDate: event.event_date,
+    image: image,
+    url: canonical,
+    location: {
+      '@type': 'Place',
+      name: 'Crooked 8',
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: '1882 E King Rd',
+        addressLocality: 'Kuna',
+        addressRegion: 'ID',
+        postalCode: '83634',
+        addressCountry: 'US',
+      },
+    },
+    organizer: {
+      '@type': 'Organization',
+      name: 'C8Tickets',
+      url: 'https://c8tickets.com',
+    },
+    eventStatus: 'https://schema.org/EventScheduled',
+    eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+  });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
@@ -47,6 +75,7 @@ export default async function handler(req, res) {
 <meta name="twitter:description" content="${escHtml(date ? date + ' · ' + description : description)}">
 <meta name="twitter:image" content="${escHtml(image)}">
 <link rel="canonical" href="${canonical}">
+<script type="application/ld+json">${jsonLd}</script>
 <meta http-equiv="refresh" content="0;url=${dest}">
 <script>window.location.replace("${dest}");</script>
 </head>

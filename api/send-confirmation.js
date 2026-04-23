@@ -8,7 +8,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { order, event } = req.body;
+    const { order, event, venue } = req.body;
+    const venueName = venue?.name || 'Crooked 8';
+    const venueAddress = venue?.location || '1882 E King Rd, Kuna, ID 83634';
 
     const itemsHtml = order.items.map(i => `
       <tr>
@@ -30,8 +32,8 @@ export default async function handler(req, res) {
             
             <!-- Header -->
             <div style="text-align:center;margin-bottom:32px">
-              <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">Crooked 8</div>
-              <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">Kuna, Idaho</div>
+              <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${venueName}</div>
+              <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">${venueAddress}</div>
             </div>
 
             <!-- You're In -->
@@ -49,7 +51,7 @@ export default async function handler(req, res) {
                 📅 <strong style="color:#f0e9da">${event.date}</strong><br>
                 🕐 <strong style="color:#f0e9da">${event.time}</strong><br>
                 🚪 Doors <strong style="color:#f0e9da">${event.doors}</strong><br>
-                📍 <strong style="color:#f0e9da">Crooked 8</strong> — 1882 E King Rd, Kuna, ID 83634
+                📍 <strong style="color:#f0e9da">${venueName}</strong> — ${venueAddress}
               </div>
             </div>
 
@@ -94,7 +96,7 @@ export default async function handler(req, res) {
             <!-- Footer -->
             <div style="text-align:center;font-size:11px;color:#7a6c54;line-height:1.8">
             Questions? Contact us at <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a><br>
-            C8Tickets - Kuna, ID 83634<br>
+            C8Tickets<br>
             <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a> - 
             <a href="https://c8tickets.com/terms" style="color:#c8922a">Terms</a> - 
             <a href="https://c8tickets.com/privacy" style="color:#c8922a">Privacy</a><br><br>

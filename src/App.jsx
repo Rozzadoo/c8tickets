@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from './lib/supabase';
-import { CROOKED_8_TENANT_ID } from './constants';
+import { TENANT_ID } from './constants';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
@@ -11,7 +11,7 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 const LOGO_SRC = "/logo.jpg";
 // ── Data & Storage ──
 const DEFAULT_VENUE = {
-  id: "crooked8", name: "Crooked 8",
+  id: TENANT_ID, name: "Crooked 8",
   tagline: "Local Events, Easy Tickets.",
   location: "1882 E King Rd, Kuna, ID 83634",
   phone: "(208) 991-0788",
@@ -19,7 +19,7 @@ const DEFAULT_VENUE = {
 
 const mapEvent = (e) => ({
   id: e.id,
-  venueId: "crooked8",
+  venueId: TENANT_ID,
   title: e.title,
   date: e.event_date.slice(0, 10),
   time: e.event_date.slice(11, 16),
@@ -51,15 +51,15 @@ const useStorage = () => {
       const { data: venueData } = await supabase
   .from('tenants')
   .select('*')
-  .eq('id', CROOKED_8_TENANT_ID)
+  .eq('id', TENANT_ID)
   .single();
 
 if (venueData) {
   setVenues([{
-    id: "crooked8",
+    id: TENANT_ID,
     name: venueData.name,
     tagline: "Local Events, Easy Tickets.",
-    location: "1882 E King Rd, Kuna, ID 83634",
+    location: venueData.address || DEFAULT_VENUE.location,
     phone: venueData.contact_phone || "",
     email: venueData.contact_email || "",
     website: venueData.website || "",
@@ -68,7 +68,7 @@ if (venueData) {
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*, ticket_types(*)')
-        .eq('tenant_id', CROOKED_8_TENANT_ID)
+        .eq('tenant_id', TENANT_ID)
         .order('event_date', { ascending: true });
 
       if (eventsError) console.error(eventsError);
@@ -200,6 +200,8 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .d-meta{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px;font-size:13px;color:var(--text2)}
 .d-meta strong{color:var(--text)}
 .d-desc{color:var(--text2);line-height:1.7;font-size:14px;margin-bottom:28px;max-width:700px}
+.directions-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--rs);font-size:12px;font-weight:600;color:var(--text2);border:1px solid var(--border);text-decoration:none;margin-bottom:16px;transition:color .2s,border-color .2s}
+.directions-btn:hover{color:var(--gold);border-color:var(--gold)}
 .share-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
 .share-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;cursor:pointer;text-decoration:none;border:none;transition:opacity .2s,transform .1s;flex-shrink:0}
 .share-btn:hover{opacity:.85;transform:translateY(-1px)}
@@ -562,13 +564,13 @@ const [resetError, setResetError] = useState('');
     supabase
       .from('orders')
       .select('*, order_items(*)')
-      .eq('tenant_id', CROOKED_8_TENANT_ID)
+      .eq('tenant_id', TENANT_ID)
       .then(({ data, error }) => {
         if (error) { console.error(error); return; }
         setOrders((data || []).map(o => ({
           id: o.id,
           eventId: o.event_id,
-          venueId: "crooked8",
+          venueId: TENANT_ID,
           buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
           items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price) })),
           total: Number(o.total_amount),
@@ -584,6 +586,16 @@ const [resetError, setResetError] = useState('');
     const eventId = pathMatch ? pathMatch[1] : new URLSearchParams(window.location.search).get('event');
     if (eventId) { setSelId(eventId); setCart({}); setView('detail'); }
   }, [loaded]);
+
+  useEffect(() => {
+    const base = 'C8Tickets';
+    if (view === 'detail' && sel) document.title = `${sel.title} — ${base}`;
+    else if (view === 'checkout') document.title = `Checkout — ${base}`;
+    else if (view === 'ticket') document.title = `Your Tickets — ${base}`;
+    else if (view === 'admin') document.title = `Admin — ${base}`;
+    else if (view === 'lookup') document.title = `Find My Tickets — ${base}`;
+    else document.title = `${venue.name} Events — ${base}`;
+  }, [view, sel, venue]);
 
 const login = async () => {
   setAuthError('');
@@ -623,14 +635,14 @@ const lookupTickets = async () => {
     .from('orders')
     .select('*, order_items(*)')
     .eq('buyer_email', email)
-    .eq('tenant_id', CROOKED_8_TENANT_ID)
+    .eq('tenant_id', TENANT_ID)
     .order('created_at', { ascending: false });
   setLookupLoading(false);
   if (error) { console.error(error); return; }
   setLookupOrders(data || []);
 };
 
-const openPrintPage = (ev, tickets) => {
+const openPrintPage = (ev, tickets, venue) => {
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Physical Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
@@ -654,14 +666,14 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; Use "Save as PDF" in the print dialog to send to a print shop</p></div>
 <div class="sheet">
-${tickets.map(t=>`<div class="tkt"><div class="gold-bar"></div><div class="tkt-body"><div><div class="brand">Crooked 8</div><div class="brand-loc">Kuna, Idaho</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 1882 E King Rd, Kuna, ID 83634</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=${t.id}" width="88" height="88" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
+${tickets.map(t=>`<div class="tkt"><div class="gold-bar"></div><div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 ${venue.location}</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=${t.id}" width="88" height="88" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
 </div></body></html>`;
   const win = window.open('', '_blank');
   if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
   win.document.write(html); win.document.close();
 };
 
-const openPhotoPage = (ev, tickets) => {
+const openPhotoPage = (ev, tickets, venue) => {
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
@@ -696,12 +708,12 @@ ${tickets.map(t=>{const hasImg=t.image&&t.image.startsWith('http');return`<div c
   <div class="tkt-stripe"></div>
   <div class="tkt-main">
     <div>
-      <div class="brand">Crooked 8</div>
-      <div class="brand-sub">Kuna, Idaho</div>
+      <div class="brand">${venue.name}</div>
+      <div class="brand-sub">${venue.location}</div>
       <div class="gold-rule"></div>
       <div class="evt-name">${t.eventTitle}</div>
       <div class="evt-date">${t.date}${t.time?' &nbsp;·&nbsp; '+t.time:''}</div>
-      <div class="evt-venue">1882 E King Rd &nbsp;·&nbsp; Kuna, ID 83634</div>
+      <div class="evt-venue">${venue.location}</div>
     </div>
     <div class="tkt-foot">
       <div>
@@ -730,7 +742,7 @@ const fetchOrCreatePhysicalOrders = async (ev) => {
   for (const tier of ev.tickets.filter(t => (t.physicalQty ?? 0) > 0)) {
     for (let n = 0; n < tier.physicalQty; n++) {
       const { data: order, error } = await supabase.from('orders').insert({
-        tenant_id: CROOKED_8_TENANT_ID, event_id: ev.id,
+        tenant_id: TENANT_ID, event_id: ev.id,
         buyer_name: 'Walk-In', buyer_email: 'physical@c8tickets.com', buyer_phone: '',
         status: 'confirmed', total_amount: tier.price, source: 'physical',
       }).select().single();
@@ -753,7 +765,7 @@ const generatePhysicalTickets = async (ev) => {
   setGeneratingPhysical(ev.id);
   const orders = await fetchOrCreatePhysicalOrders(ev);
   setGeneratingPhysical(false);
-  if (orders.length > 0) openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })));
+  if (orders.length > 0) openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })), venue);
 };
 
 const generatePhotoTickets = async (ev) => {
@@ -764,7 +776,7 @@ const generatePhotoTickets = async (ev) => {
   setGeneratingPhysical(ev.id + '-photo');
   const orders = await fetchOrCreatePhysicalOrders(ev);
   setGeneratingPhysical(false);
-  if (orders.length > 0) openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })));
+  if (orders.length > 0) openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })), venue);
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
   const publicEvents = vEvents.filter(e => e.published !== false);
@@ -836,7 +848,7 @@ const generatePhotoTickets = async (ev) => {
     updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
   } else {
     const { data: newEvt, error } = await supabase.from('events').insert({
-      tenant_id: CROOKED_8_TENANT_ID,
+      tenant_id: TENANT_ID,
       title: e.title,
       description: e.description,
       category: e.category,
@@ -845,7 +857,7 @@ const generatePhotoTickets = async (ev) => {
       image_url: imageUrl,
       focal_x: e.focalX ?? 50,
       focal_y: e.focalY ?? 50,
-      venue_name: 'Crooked 8',
+      venue_name: venue.name,
       is_published: e.published ?? true,
     }).select().single();
     if (error) { console.error(error); return; }
@@ -859,7 +871,7 @@ const generatePhotoTickets = async (ev) => {
         physical_qty: t.physicalQty ?? 0,
       }))
     );
-    const mapped = { ...e, id: newEvt.id, venueId: "crooked8", image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
+    const mapped = { ...e, id: newEvt.id, venueId: venue.id, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
     updateEvents([...events, mapped]);
   }
   setModal(false);
@@ -955,6 +967,7 @@ const generatePhotoTickets = async (ev) => {
   {venue.email && <span>✉️ <a href={`mailto:${venue.email}`} style={{color:"var(--gold)"}}>{venue.email}</a></span>}
   {venue.website && <span>🌐 <a href={venue.website} target="_blank" rel="noopener noreferrer" style={{color:"var(--gold)"}}>{venue.website.replace('https://','')}</a></span>}
 </div>
+          <a className="directions-btn" href={`https://maps.google.com/?q=${encodeURIComponent(venue.location)}`} target="_blank" rel="noopener noreferrer">📍 Get Directions</a>
           <p className="d-desc">{sel.description}</p>
           <div className="tkt-sec"><h3 className="dsp">Select Tickets</h3>
             {sel.tickets.map((t, i) => { const oa = Math.max(0, t.available - (t.physicalQty ?? 0)); const total = t.total ?? t.available; const lowStock = oa > 0 && total > 0 && oa / total <= 0.25; return <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4>{oa === 0 ? <p>Sold Out</p> : lowStock ? <p style={{color:'var(--red)',fontWeight:700,fontSize:12}}>Almost Gone — Grab Yours Now!</p> : null}</div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv">{cart[i]||0}</div><button className="qb" disabled={(cart[i]||0) >= oa || oa === 0} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>; })}
@@ -968,7 +981,7 @@ const generatePhotoTickets = async (ev) => {
   const res = await fetch('/api/create-payment-intent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items, eventId: sel.id, tenantId: CROOKED_8_TENANT_ID }),
+    body: JSON.stringify({ items, eventId: sel.id, tenantId: TENANT_ID }),
   });
   const data = await res.json();
   setClientSecret(data.clientSecret);
@@ -1006,7 +1019,7 @@ const generatePhotoTickets = async (ev) => {
             const { data: order, error: orderError } = await supabase
               .from('orders')
               .insert({
-                tenant_id: CROOKED_8_TENANT_ID,
+                tenant_id: TENANT_ID,
                 event_id: sel.id,
                 buyer_name: buyer.name,
                 buyer_email: buyer.email,
@@ -1046,7 +1059,7 @@ const generatePhotoTickets = async (ev) => {
             }
 
             const localOrder = {
-              id: order.id, eventId: sel.id, venueId: "crooked8",
+              id: order.id, eventId: sel.id, venueId: venue.id,
               buyer: { ...buyer },
               items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
               ticketTotal: paymentAmounts.ticketTotal,
@@ -1078,6 +1091,10 @@ fetch('/api/send-confirmation', {
       doors: fmtTime(sel.doors),
       category: sel.category,
     },
+    venue: {
+      name: venue.name,
+      location: venue.location,
+    },
   }),
 }).catch(err => console.error('Email error:', err));
           }}
@@ -1106,7 +1123,7 @@ fetch('/api/send-confirmation', {
                 {lastOrder.processingFee > 0 && <li><span>Processing Fee</span><span>${Number(lastOrder.processingFee).toFixed(2)}</span></li>}
                 <li style={{fontWeight:700,color:"var(--text)",borderTop:"1px solid var(--bg4)",paddingTop:6,marginTop:6}}><span>Total</span><span>{fmtCurrency(lastOrder.total)}</span></li>
                 </ul>
-              <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} - {lastOrder.buyer.email}<br/>Crooked 8 - {venue.location}</p>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} - {lastOrder.buyer.email}<br/>{venue.name} - {venue.location}</p>
             </div>
             <button className="buy" style={{marginTop:20}} onClick={goHome}>Browse More Events</button>
           </div>); })()}
