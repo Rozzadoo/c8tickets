@@ -12,7 +12,7 @@ const LOGO_SRC = "/logo.jpg";
 // ── Data & Storage ──
 const DEFAULT_VENUE = {
   id: "crooked8", name: "Crooked 8",
-  tagline: "Local Events. Easy Tickets.",
+  tagline: "Local Events, Easy Tickets.",
   location: "1882 E King Rd, Kuna, ID 83634",
   phone: "(208) 991-0788",
 };
@@ -56,7 +56,7 @@ if (venueData) {
   setVenues([{
     id: "crooked8",
     name: venueData.name,
-    tagline: "Boise's Most Exciting Event & Concert Venue",
+    tagline: "Local Events, Easy Tickets.",
     location: "1882 E King Rd, Kuna, ID 83634",
     phone: venueData.contact_phone || "",
     email: venueData.contact_email || "",
@@ -168,7 +168,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .hero{padding:60px 20px 48px;text-align:center;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.09) 0%,transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
-.hero-logo{height:80px;filter:invert(1);opacity:.9;margin-bottom:12px}
+.hero-logo{height:120px;filter:invert(1);opacity:.9;margin-bottom:12px}
 .hero p{color:var(--text2);font-size:15px;font-weight:300;letter-spacing:.3px}
 .hero-sub{display:flex;justify-content:center;gap:16px;margin-top:12px;font-size:12px;color:var(--text3);flex-wrap:wrap}
 
@@ -794,7 +794,7 @@ const generatePhotoTickets = async (ev) => {
           <div className="hero">
             <div style={{position:"relative",display:"inline-block",marginBottom:16}}>
               <img src={LOGO_SRC} alt="Crooked 8" className="hero-logo" style={{marginBottom:0}} />
-              <div style={{position:"absolute",bottom:-10,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,letterSpacing:4,textTransform:"uppercase",padding:"3px 14px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
+              <div style={{position:"absolute",bottom:-12,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,letterSpacing:4,textTransform:"uppercase",padding:"3px 16px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
               </div>
             <p>{venue.tagline}</p>
             <div className="hero-sub"><span>Questions? <a href="mailto:support@c8tickets.com" style={{color:"var(--text2)"}}>support@c8tickets.com</a></span></div>
