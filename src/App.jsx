@@ -26,6 +26,8 @@ const mapEvent = (e) => ({
   doors: e.doors_open ? e.doors_open.slice(11, 16) : "",
   description: e.description,
   image: e.image_url,
+  focalX: e.focal_x ?? 50,
+  focalY: e.focal_y ?? 50,
   category: e.category,
   tickets: (e.ticket_types || []).map(t => ({
     id: t.id,
@@ -521,7 +523,7 @@ const logout = async () => {
     setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
     setTimeout(() => setScanMsg(null), 4000);
   };
-  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
   const saveEvt = async (e) => {
   
   let imageUrl = e.image;
@@ -551,8 +553,10 @@ const logout = async () => {
       event_date: e.date + 'T' + (e.time || '00:00') + ':00',
       doors_open: e.date + 'T' + (e.doors || '00:00') + ':00',
       image_url: imageUrl,
+      focal_x: e.focalX ?? 50,
+      focal_y: e.focalY ?? 50,
     }).eq('id', e.id);
-    updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl} : x));
+    updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50} : x));
   } else {
     const { data: newEvt, error } = await supabase.from('events').insert({
       tenant_id: CROOKED_8_TENANT_ID,
@@ -562,6 +566,8 @@ const logout = async () => {
       event_date: e.date + 'T' + (e.time || '00:00') + ':00',
       doors_open: e.date + 'T' + (e.doors || '00:00') + ':00',
       image_url: imageUrl,
+      focal_x: e.focalX ?? 50,
+      focal_y: e.focalY ?? 50,
       venue_name: 'Crooked 8',
       is_published: true,
     }).select().single();
@@ -575,7 +581,7 @@ const logout = async () => {
         quantity_sold: 0,
       }))
     );
-    const mapped = { ...e, id: newEvt.id, venueId: "crooked8", image: imageUrl };
+    const mapped = { ...e, id: newEvt.id, venueId: "crooked8", image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50 };
     updateEvents([...events, mapped]);
   }
   setModal(false);
@@ -619,7 +625,7 @@ const logout = async () => {
             {filtered.length === 0 ? <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div> :
               <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); return (
                 <div key={ev.id} className="card" onClick={() => open(ev.id)}>
-                  <div className="card-img" style={{backgroundImage: ev.image && ev.image.startsWith('http') ? `url(${ev.image})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
+                  <div className="card-img" style={{backgroundImage: ev.image && ev.image.startsWith('http') ? `url(${ev.image})` : 'none', backgroundSize:'cover', backgroundPosition:`${ev.focalX ?? 50}% ${ev.focalY ?? 50}%`}}>
   {(!ev.image || !ev.image.startsWith('http')) && <span style={{fontSize:48}}>🎵</span>}
   <div className="card-cat">{ev.category}</div>
 </div>
@@ -635,7 +641,7 @@ const logout = async () => {
 
         {view === "detail" && sel && <div className="sec fade" style={{ maxWidth: 800 }}>
           <div className="back" onClick={goHome}>← Events</div>
-          <div className="d-hero" style={{backgroundImage: sel.image && sel.image.startsWith('http') ? `url(${sel.image})` : 'none', backgroundSize:'cover', backgroundPosition:'center'}}>
+          <div className="d-hero" style={{backgroundImage: sel.image && sel.image.startsWith('http') ? `url(${sel.image})` : 'none', backgroundSize:'cover', backgroundPosition:`${sel.focalX ?? 50}% ${sel.focalY ?? 50}%`}}>
   {(!sel.image || !sel.image.startsWith('http')) && <span style={{fontSize:72}}>🎵</span>}
 </div>
           <div style={{ marginBottom: 6 }}><span className="tag">{sel.category}</span></div>
@@ -970,22 +976,30 @@ fetch('/api/send-confirmation', {
           <div className="fr"><div className="fg"><label className="fl">Doors</label><input className="fi" type="time" value={editEvt.doors} onChange={e=>setEditEvt({...editEvt,doors:e.target.value})} /></div><div className="fg"><label className="fl">Category</label><select className="fi" value={editEvt.category} onChange={e=>setEditEvt({...editEvt,category:e.target.value})}>{["Live Music","Rodeo","Family","Other Events"].map(c=><option key={c} value={c}>{c}</option>)}</select></div></div>
           <div className="fg">
   <label className="fl">Event Image</label>
-  {editEvt.image && !editEvt.image.startsWith('blob:') && (
-    <img src={editEvt.image} alt="Event" style={{width:"100%",height:120,objectFit:"cover",borderRadius:"var(--rs)",marginBottom:8}} />
+  {(editEvt._imagePreview || (editEvt.image && editEvt.image.startsWith('http'))) && (
+    <div
+      onClick={(ev) => {
+        const rect = ev.currentTarget.getBoundingClientRect();
+        const x = Math.round(((ev.clientX - rect.left) / rect.width) * 100);
+        const y = Math.round(((ev.clientY - rect.top) / rect.height) * 100);
+        setEditEvt(prev => ({...prev, focalX: x, focalY: y}));
+      }}
+      style={{position:'relative',width:'100%',height:160,backgroundImage:`url(${editEvt._imagePreview || editEvt.image})`,backgroundSize:'cover',backgroundPosition:`${editEvt.focalX ?? 50}% ${editEvt.focalY ?? 50}%`,borderRadius:'var(--rs)',marginBottom:8,cursor:'crosshair',overflow:'hidden'}}
+    >
+      <div style={{position:'absolute',left:`${editEvt.focalX ?? 50}%`,top:`${editEvt.focalY ?? 50}%`,transform:'translate(-50%,-50%)',width:18,height:18,borderRadius:'50%',background:'var(--gold)',border:'2px solid white',boxShadow:'0 0 0 1px rgba(0,0,0,.5)',pointerEvents:'none'}} />
+      <div style={{position:'absolute',bottom:6,left:6,fontSize:10,color:'white',background:'rgba(0,0,0,.6)',padding:'2px 8px',borderRadius:4,pointerEvents:'none'}}>Click to set focal point</div>
+    </div>
   )}
-  {editEvt._imagePreview && (
-    <img src={editEvt._imagePreview} alt="Preview" style={{width:"100%",height:120,objectFit:"cover",borderRadius:"var(--rs)",marginBottom:8}} />
-  )}
-  <input 
-    className="fi" 
-    type="file" 
+  <input
+    className="fi"
+    type="file"
     accept="image/jpeg,image/png,image/webp"
     style={{padding:"8px 14px"}}
     onChange={async (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const preview = URL.createObjectURL(file);
-      setEditEvt({...editEvt, _imageFile: file, _imagePreview: preview});
+      setEditEvt(prev => ({...prev, _imageFile: file, _imagePreview: preview}));
     }}
   />
   <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>JPG, PNG or WebP. Max 5MB.</p>
