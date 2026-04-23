@@ -1436,7 +1436,7 @@ fetch('/api/send-confirmation', {
           <div className="about-cta">
             <h2 className="dsp">Ready to Sell Tickets?</h2>
             <p>Reach out and we'll get your events set up — usually the same day.</p>
-            <a href="mailto:hello@c8tickets.com">hello@c8tickets.com</a>
+            <a href="mailto:support@c8tickets.com">support@c8tickets.com</a>
           </div>
         </div>}
 
