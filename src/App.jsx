@@ -428,6 +428,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [step, setStep] = useState('select');
   const [clientSecret, setClientSecret] = useState(null);
   const [amounts, setAmounts] = useState(null);
+  const [cashAmounts, setCashAmounts] = useState(null);
   const [lastSale, setLastSale] = useState(null);
   const [loadingIntent, setLoadingIntent] = useState(false);
 
@@ -482,7 +483,46 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     setStep('confirm');
   };
 
-  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setLastSale(null); };
+  const startCash = () => {
+    if (!ev || cartN === 0) return;
+    const salesTax = Math.round(cartTotal * 0.06 * 100) / 100;
+    const serviceFees = cartN * 2.00;
+    setCashAmounts({ ticketTotal: cartTotal, salesTax, serviceFees, processingFee: 0, grandTotal: Math.round((cartTotal + salesTax + serviceFees) * 100) / 100 });
+    setStep('cash');
+  };
+
+  const handleCashSale = async () => {
+    const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
+    const ref = 'CASH-' + Date.now();
+    const { data: order, error: orderError } = await supabase.from('orders').insert({
+      tenant_id: TENANT_ID, event_id: selEventId,
+      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: '', buyer_phone: '',
+      status: 'checked_in', total_amount: cashAmounts.grandTotal,
+      stripe_payment_intent_id: ref, source: 'door_cash',
+    }).select().single();
+    if (orderError) { alert('Order save failed. Please try again.'); return; }
+    await supabase.from('order_items').insert(soldItems.map(i => ({
+      order_id: order.id, ticket_type_id: i.ticketTypeId,
+      ticket_type_name: i.type, quantity: i.qty, unit_price: i.price,
+    })));
+    for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
+    const localOrder = {
+      id: order.id, eventId: selEventId, venueId: venue.id,
+      buyer: { name: buyerName.trim() || 'Walk-In', email: '', phone: '' },
+      items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
+      ticketTotal: cashAmounts.ticketTotal, salesTax: cashAmounts.salesTax,
+      serviceFees: cashAmounts.serviceFees, processingFee: 0,
+      total: cashAmounts.grandTotal, date: new Date().toISOString(), checkedIn: true, source: 'door_cash',
+    };
+    updateOrders(prev => [...prev, localOrder]);
+    updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
+      ...e, tickets: e.tickets.map((t, i) => ({ ...t, available: t.available - (doorCart[i] || 0) }))
+    }));
+    setLastSale(localOrder);
+    setStep('confirm');
+  };
+
+  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setLastSale(null); };
 
   return (
     <div>
@@ -526,11 +566,33 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
             <label className="fl">Customer Name <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
             <input className="fi" value={buyerName} onChange={e=>setBuyerName(e.target.value)} placeholder="Walk-In" />
           </div>
-          <button className="buy" disabled={cartN===0||loadingIntent} onClick={startPayment}>
-            {loadingIntent?'Preparing…':cartN===0?'Select Tickets':`Continue to Payment — ${fmtCurrency(cartTotal)}`}
-          </button>
+          <div style={{display:'flex',gap:10}}>
+            <button className="buy" style={{flex:1}} disabled={cartN===0||loadingIntent} onClick={startPayment}>
+              {loadingIntent?'Preparing…':'💳 Charge Card'}
+            </button>
+            <button className="buy" style={{flex:1,background:'var(--green)',borderColor:'var(--green)'}} disabled={cartN===0} onClick={startCash}>
+              💵 Cash Sale
+            </button>
+          </div>
         </>}
       </>}
+
+      {step === 'cash' && cashAmounts && (
+        <div style={{maxWidth:400}}>
+          <h3 className="dsp" style={{fontSize:18,marginBottom:20}}>Collect Cash</h3>
+          <div className="tkt-sec" style={{marginBottom:20}}>
+            <div className="cart-ln"><span>Ticket Subtotal</span><span>{fmtCurrency(cashAmounts.ticketTotal)}</span></div>
+            <div className="cart-ln"><span>Sales Tax (6%)</span><span>${cashAmounts.salesTax.toFixed(2)}</span></div>
+            <div className="cart-ln"><span>Service Fee ({cartN} × $2.00)</span><span>{fmtCurrency(cashAmounts.serviceFees)}</span></div>
+            <div className="cart-tot"><span>Collect From Customer</span><span>{fmtCurrency(cashAmounts.grandTotal)}</span></div>
+          </div>
+          <p style={{fontSize:12,color:'var(--text3)',marginBottom:16}}>No card processing fee — cash only.</p>
+          <button className="buy" style={{background:'var(--green)',borderColor:'var(--green)',marginBottom:8}} onClick={handleCashSale}>
+            ✓ Cash Collected — Complete Sale
+          </button>
+          <button className="btn" style={{width:'100%'}} onClick={()=>setStep('select')}>← Back</button>
+        </div>
+      )}
 
       {step === 'payment' && clientSecret && (
         <Elements stripe={stripePromise} options={{clientSecret,appearance:{theme:'night',variables:{colorPrimary:'#c8922a',fontFamily:'Barlow, sans-serif'}}}}>
@@ -549,7 +611,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:16}}>
             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${lastSale.id}`} width={180} height={180} alt="QR" style={{display:'block'}} />
           </div>
-          <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>CHECKED IN</p>
+          <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>CHECKED IN {lastSale.source==='door_cash'?'· CASH':''}</p>
           <p style={{fontFamily:'monospace',fontSize:10,color:'var(--text3)',marginBottom:28,letterSpacing:.5}}>{lastSale.id.toUpperCase()}</p>
           <button className="buy" style={{maxWidth:260,margin:'0 auto',display:'block'}} onClick={reset}>+ New Sale</button>
         </div>
