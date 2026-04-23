@@ -475,8 +475,11 @@ const [view2, setView2] = useState(null);
 const login = async () => {
   setAuthError('');
   const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
-  if (error) setAuthError(error.message);
-  else setView(data.user?.user_metadata?.role === 'gate' ? 'gate' : 'admin');
+  if (error) { setAuthError(error.message); return; }
+  const role = data.user?.user_metadata?.role;
+  if (role === 'gate') setView('gate');
+  else if (role === 'admin') setView('admin');
+  else { await supabase.auth.signOut(); setAuthError('Access denied. Contact your administrator.'); }
 };
 
 const sendReset = async () => {
@@ -504,6 +507,9 @@ const logout = async () => {
   const sel = events.find(e => e.id === selId);
   const cartTotal = useMemo(() => sel ? sel.tickets.reduce((s, t, i) => s + (cart[i] || 0) * t.price, 0) : 0, [cart, sel]);
   const cartN = Object.values(cart).reduce((a, b) => a + b, 0);
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email);
+  const nameValid = buyer.name.trim().length >= 2;
+  const buyerReady = nameValid && emailValid;
 
   const open = (id) => { setSelId(id); setCart({}); setView("detail"); window.history.pushState({}, '', `?event=${id}`); };
   const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
@@ -692,13 +698,13 @@ const logout = async () => {
     <p style={{ color: "var(--text2)", marginBottom: 24, fontSize: 13 }}>{sel.title} - {fmtDate(sel.date)}</p>
     <div className="tkt-sec" style={{ marginBottom: 20 }}>
       <h3 className="dsp">Your Info</h3>
-      <div className="fg"><label className="fl">Full Name *</label><input className="fi" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" /></div>
+      <div className="fg"><label className="fl">Full Name *</label><input className="fi" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
       <div className="fr">
-        <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" /></div>
+        <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
         <div className="fg"><label className="fl">Phone</label><input className="fi" type="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
       </div>
     </div>
-    {buyer.name && buyer.email && (
+    {buyerReady && (
       <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#c8922a', borderRadius: '6px' }}}}>
         <CheckoutForm
         cartTotal={paymentAmounts.ticketTotal}
@@ -745,7 +751,11 @@ const logout = async () => {
             }
 
             for (const item of items) {
-              await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
+              const { error: soldError } = await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
+              if (soldError) {
+                alert(`Sorry, some tickets became unavailable during checkout. Your payment was captured — please email support@c8tickets.com with reference: ${paymentIntentId}`);
+                return;
+              }
             }
 
             const localOrder = {
@@ -787,8 +797,8 @@ fetch('/api/send-confirmation', {
         />
       </Elements>
     )}
-    {(!buyer.name || !buyer.email) && (
-      <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", marginTop: 10 }}>Fill in your name and email above to continue to payment.</p>
+    {!buyerReady && (
+      <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", marginTop: 10 }}>Enter a valid name and email above to continue to payment.</p>
     )}
   </div>
 )}
