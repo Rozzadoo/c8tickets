@@ -35,6 +35,8 @@ const mapEvent = (e) => ({
     type: t.name,
     price: Number(t.price),
     available: t.quantity_total - t.quantity_sold,
+    total: t.quantity_total,
+    sold: t.quantity_sold,
     physicalQty: t.physical_qty ?? 0,
   }))
 });
@@ -268,6 +270,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .ci-btn.dn{border-color:var(--text3);color:var(--text3);cursor:default;opacity:.5}
 .fade{animation:fi .35s ease}
 @keyframes fi{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .footer{background:var(--bg2);border-top:1px solid var(--border);padding:28px 20px;text-align:center;margin-top:auto}
 .footer-links{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-bottom:12px}
 .footer-links a{color:var(--text3);font-size:12px;text-decoration:none;transition:color .2s}
@@ -408,6 +411,101 @@ const GateView = ({ events, onLogout }) => {
   );
 };
 
+const LiveDash = ({ events, orders }) => {
+  const [selEventId, setSelEventId] = useState('');
+  const [checkedInIds, setCheckedInIds] = useState(new Set());
+
+  useEffect(() => {
+    if (selEventId || events.length === 0) return;
+    const upcoming = [...events].sort((a, b) => new Date(a.date) - new Date(b.date))
+      .find(e => new Date(e.date) >= new Date(Date.now() - 86400000));
+    setSelEventId(upcoming?.id || events[0]?.id || '');
+  }, [events, selEventId]);
+
+  useEffect(() => {
+    if (!selEventId) return;
+    const refresh = async () => {
+      const { data } = await supabase.from('orders').select('id, status').eq('event_id', selEventId);
+      if (data) setCheckedInIds(new Set(data.filter(r => r.status === 'checked_in').map(r => r.id)));
+    };
+    refresh();
+    const ch = supabase.channel('live-' + selEventId)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `event_id=eq.${selEventId}` }, refresh)
+      .subscribe();
+    const poll = setInterval(refresh, 20000);
+    return () => { supabase.removeChannel(ch); clearInterval(poll); };
+  }, [selEventId]);
+
+  const ev = events.find(e => e.id === selEventId);
+  const evOrders = orders.filter(o => o.eventId === selEventId);
+  const ciOrders = evOrders.filter(o => checkedInIds.has(o.id));
+  const totalTix = evOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
+  const ciTix = ciOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
+  const pct = totalTix > 0 ? Math.round(ciTix / totalTix * 100) : 0;
+  const capacity = ev ? ev.tickets.reduce((s, t) => s + (t.total ?? t.available), 0) : 0;
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24,flexWrap:'wrap',gap:12}}>
+        <h2 className="dsp" style={{fontSize:26}}>Live Check-In</h2>
+        <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+          <select className="fi" style={{maxWidth:280,margin:0}} value={selEventId} onChange={e=>setSelEventId(e.target.value)}>
+            {events.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}
+          </select>
+          <div style={{fontSize:11,color:'var(--green)',display:'flex',alignItems:'center',gap:5,fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>
+            <span style={{width:8,height:8,borderRadius:'50%',background:'var(--green)',display:'inline-block',animation:'pulse 2s ease-in-out infinite'}}></span>Live
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:24}}>
+        {[{l:'Checked In',v:ciTix,c:'var(--green)'},{l:'Remaining',v:totalTix-ciTix,c:'var(--gold)'},{l:'Total Sold',v:totalTix},{l:'Capacity',v:capacity}].map(s=>(
+          <div key={s.l} className="sc" style={{textAlign:'center'}}>
+            <div className="l">{s.l}</div>
+            <div className="v" style={{fontSize:42,color:s.c||'var(--text)'}}>{s.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {totalTix > 0 && <div style={{marginBottom:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--text2)',marginBottom:8}}>
+          <span>Check-in Progress</span>
+          <span style={{color:'var(--gold)',fontWeight:700,fontSize:15}}>{pct}%</span>
+        </div>
+        <div style={{height:16,background:'var(--bg3)',borderRadius:99,overflow:'hidden'}}>
+          <div style={{height:'100%',width:pct+'%',background:'linear-gradient(90deg,#5d8a3c,#7bc74d)',borderRadius:99,transition:'width .8s ease'}} />
+        </div>
+      </div>}
+
+      {ev && ev.tickets.length > 0 && <div style={{marginBottom:24}}>
+        <h3 className="dsp" style={{fontSize:15,marginBottom:14}}>By Ticket Type</h3>
+        {ev.tickets.map(t=>{
+          const tierSold = evOrders.reduce((s,o)=>s+o.items.filter(i=>i.type===t.type).reduce((a,i)=>a+i.qty,0),0);
+          const tierCi = ciOrders.reduce((s,o)=>s+o.items.filter(i=>i.type===t.type).reduce((a,i)=>a+i.qty,0),0);
+          const tPct = tierSold>0?Math.round(tierCi/tierSold*100):0;
+          return <div key={t.id} style={{marginBottom:14}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:5}}>
+              <span style={{color:'var(--text)',fontWeight:600}}>{t.type}</span>
+              <span style={{color:'var(--text2)'}}>{tierCi} / {tierSold} checked in &nbsp;·&nbsp; {t.total??t.available} cap</span>
+            </div>
+            <div style={{height:8,background:'var(--bg3)',borderRadius:99,overflow:'hidden'}}>
+              <div style={{height:'100%',width:tPct+'%',background:'var(--gold)',borderRadius:99,transition:'width .8s ease'}} />
+            </div>
+          </div>;
+        })}
+      </div>}
+
+      {ciOrders.length > 0
+        ? <div><h3 className="dsp" style={{fontSize:15,marginBottom:12}}>Checked In ({ciOrders.length} orders)</h3>
+            <div style={{overflowX:'auto'}}><table className="dt"><thead><tr><th>Name</th><th>Tickets</th></tr></thead>
+              <tbody>{ciOrders.map(o=><tr key={o.id}><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(', ')}</td></tr>)}</tbody>
+            </table></div></div>
+        : <div className="empty"><div className="ic">📡</div><p>{totalTix>0?'No check-ins yet — standing by…':'No orders found for this event.'}</p></div>
+      }
+    </div>
+  );
+};
+
 export default function App() {
   const { venues, events, loaded, updateEvents } = useStorage();
   const [orders, setOrders] = useState([]);
@@ -475,9 +573,9 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     if (!loaded) return;
-    const params = new URLSearchParams(window.location.search);
-    const eventId = params.get('event');
-    if (eventId) { setSelId(eventId); setView('detail'); }
+    const pathMatch = window.location.pathname.match(/^\/e\/([0-9a-f-]{36})$/i);
+    const eventId = pathMatch ? pathMatch[1] : new URLSearchParams(window.location.search).get('event');
+    if (eventId) { setSelId(eventId); setCart({}); setView('detail'); }
   }, [loaded]);
 
 const login = async () => {
@@ -672,7 +770,7 @@ const generatePhotoTickets = async (ev) => {
   const nameValid = buyer.name.trim().length >= 2;
   const buyerReady = nameValid && emailValid;
 
-  const open = (id) => { setSelId(id); setCart({}); setView("detail"); window.history.pushState({}, '', `?event=${id}`); };
+  const open = (id) => { setSelId(id); setCart({}); setView("detail"); window.history.pushState({}, '', `/e/${id}`); };
   const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
 
 
@@ -829,7 +927,7 @@ const generatePhotoTickets = async (ev) => {
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10,flexWrap:"wrap"}}>
             <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", lineHeight: 1.1 }}>{sel.title}</h1>
             <button className="btn" style={{fontSize:11,padding:"5px 14px",flexShrink:0,marginTop:4}} onClick={() => {
-              navigator.clipboard.writeText(`${window.location.origin}/?event=${sel.id}`);
+              navigator.clipboard.writeText(`${window.location.origin}/e/${sel.id}`);
               setCopiedLink(true);
               setTimeout(() => setCopiedLink(false), 2000);
             }}>{copiedLink ? "✓ Copied!" : "🔗 Share"}</button>
@@ -1145,7 +1243,7 @@ fetch('/api/send-confirmation', {
         {view === "gate" && <GateView events={events} onLogout={logout} />}
 
         {view === "admin" && <div className="admin fade">
-          <div className="aside">{["dashboard","events","orders","check-in"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":"✅ "}{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
+          <div className="aside">{["dashboard","events","orders","check-in","live"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":"📡 "}{t==="check-in"?"Check-In":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => { const vo=orders.filter(o=>o.venueId===venue.id),rev=vo.reduce((s,o)=>s+o.total,0),tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0),ci=vo.filter(o=>o.checkedIn).length; return <>
               <h2 className="dsp" style={{fontSize:26,marginBottom:20}}>Dashboard</h2>
@@ -1182,6 +1280,8 @@ fetch('/api/send-confirmation', {
               <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Or manually mark attendees below.</p>
               {vo.length===0?<div className="empty"><div className="ic">✅</div><p>No tickets.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Name</th><th>Event</th><th>Tickets</th><th>Status</th><th></th></tr></thead><tbody>{vo.map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,10)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td><td><button className={`ci-btn ${o.checkedIn?"dn":""}`} disabled={o.checkedIn} onClick={()=>checkin(o.id)}>{o.checkedIn?"Done":"Check In"}</button></td></tr>})}</tbody></table></div>}
             </>; })()}
+
+            {aTab === "live" && <LiveDash events={vEvents} orders={orders} />}
           </div>
         </div>}
 
