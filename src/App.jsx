@@ -429,6 +429,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [clientSecret, setClientSecret] = useState(null);
   const [amounts, setAmounts] = useState(null);
   const [cashAmounts, setCashAmounts] = useState(null);
+  const [tendered, setTendered] = useState('');
   const [lastSale, setLastSale] = useState(null);
   const [loadingIntent, setLoadingIntent] = useState(false);
 
@@ -522,7 +523,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     setStep('confirm');
   };
 
-  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setLastSale(null); };
+  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); };
 
   return (
     <div>
@@ -587,7 +588,17 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
             <div className="cart-tot"><span>Collect From Customer</span><span>{fmtCurrency(cashAmounts.grandTotal)}</span></div>
           </div>
           <p style={{fontSize:12,color:'var(--text3)',marginBottom:16}}>No card processing fee — cash only.</p>
-          <button className="buy" style={{background:'var(--green)',borderColor:'var(--green)',marginBottom:8}} onClick={handleCashSale}>
+          <div className="fg" style={{marginBottom:12}}>
+            <label className="fl">Amount Tendered</label>
+            <input className="fi" type="number" min="0" step="0.01" placeholder={`${cashAmounts.grandTotal.toFixed(2)}`} value={tendered} onChange={e=>setTendered(e.target.value)} />
+          </div>
+          {tendered !== '' && (() => {
+            const t = parseFloat(tendered); const change = t - cashAmounts.grandTotal;
+            return change < 0
+              ? <div style={{padding:'10px 14px',borderRadius:'var(--rs)',background:'rgba(179,58,42,.15)',color:'var(--red)',fontWeight:700,fontSize:14,marginBottom:12}}>Short by {fmtCurrency(Math.abs(change))}</div>
+              : <div style={{padding:'10px 14px',borderRadius:'var(--rs)',background:'rgba(93,138,60,.15)',color:'var(--green)',fontWeight:700,fontSize:22,marginBottom:12,textAlign:'center'}}>Change: {fmtCurrency(change)}</div>;
+          })()}
+          <button className="buy" style={{background:'var(--green)',borderColor:'var(--green)',marginBottom:8}} disabled={tendered!==''&&parseFloat(tendered)<cashAmounts.grandTotal} onClick={handleCashSale}>
             ✓ Cash Collected — Complete Sale
           </button>
           <button className="btn" style={{width:'100%'}} onClick={()=>setStep('select')}>← Back</button>
