@@ -459,10 +459,10 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const startPayment = async () => {
     if (!ev || cartN === 0) return;
     setLoadingIntent(true);
-    const items = cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, price: i.effectivePrice }));
+    const items = cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id }));
     const res = await fetch('/api/create-payment-intent', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, eventId: selEventId, tenantId: TENANT_ID }),
+      body: JSON.stringify({ items, eventId: selEventId, tenantId: TENANT_ID, isDoorSale: true }),
     });
     const data = await res.json();
     setLoadingIntent(false);
@@ -1209,7 +1209,7 @@ const generatePhotoTickets = async (ev) => {
               </div>
             <button className="buy" disabled={cartN===0} onClick={async () => {
   if (cartN === 0) return;
-  const items = sel.tickets.map((t, i) => ({ qty: cart[i] || 0, price: t.price })).filter(i => i.qty > 0);
+  const items = sel.tickets.map((t, i) => ({ qty: cart[i] || 0, ticketTypeId: t.id })).filter(i => i.qty > 0);
   const res = await fetch('/api/create-payment-intent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

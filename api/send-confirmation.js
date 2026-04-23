@@ -2,6 +2,14 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -14,7 +22,7 @@ export default async function handler(req, res) {
 
     const itemsHtml = order.items.map(i => `
       <tr>
-        <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">${i.qty}× ${i.type}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">${escHtml(i.qty)}× ${escHtml(i.type)}</td>
         <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${(i.qty * i.price).toFixed(2)}</td>
       </tr>
     `).join('');
@@ -22,7 +30,7 @@ export default async function handler(req, res) {
     const { data, error } = await resend.emails.send({
       from: 'C8Tickets <noreply@c8tickets.com>',
       to: order.buyer.email,
-      subject: `Your tickets for ${event.title}`,
+      subject: `Your tickets for ${escHtml(event.title)}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -32,8 +40,8 @@ export default async function handler(req, res) {
             
             <!-- Header -->
             <div style="text-align:center;margin-bottom:32px">
-              <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${venueName}</div>
-              <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">${venueAddress}</div>
+              <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${escHtml(venueName)}</div>
+              <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">${escHtml(venueAddress)}</div>
             </div>
 
             <!-- You're In -->
@@ -45,13 +53,13 @@ export default async function handler(req, res) {
 
             <!-- Event Card -->
             <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px">
-              <div style="font-size:11px;color:#c8922a;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">${event.category}</div>
-              <div style="font-size:22px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">${event.title}</div>
+              <div style="font-size:11px;color:#c8922a;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">${escHtml(event.category)}</div>
+              <div style="font-size:22px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">${escHtml(event.title)}</div>
               <div style="font-size:13px;color:#b5a78a;line-height:1.8">
-                📅 <strong style="color:#f0e9da">${event.date}</strong><br>
-                🕐 <strong style="color:#f0e9da">${event.time}</strong><br>
-                🚪 Doors <strong style="color:#f0e9da">${event.doors}</strong><br>
-                📍 <strong style="color:#f0e9da">${venueName}</strong> — ${venueAddress}
+                📅 <strong style="color:#f0e9da">${escHtml(event.date)}</strong><br>
+                🕐 <strong style="color:#f0e9da">${escHtml(event.time)}</strong><br>
+                🚪 Doors <strong style="color:#f0e9da">${escHtml(event.doors)}</strong><br>
+                📍 <strong style="color:#f0e9da">${escHtml(venueName)}</strong> — ${escHtml(venueAddress)}
               </div>
             </div>
 
@@ -77,16 +85,16 @@ export default async function handler(req, res) {
                   <td style="padding:10px 0;font-weight:700;color:#c8922a;font-size:15px;text-align:right">$${Number(order.total).toFixed(2)}</td>
                 </tr>
               </table>
-              <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${order.id}</div>
+              <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${escHtml(order.id)}</div>
             </div>
 
             <!-- QR Code -->
             <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
             <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
             <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${order.id}" alt="QR Code" width="180" height="180" style="display:block" />
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(order.id)}" alt="QR Code" width="180" height="180" style="display:block" />
             </div>
-            <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${order.id.toUpperCase()}</div>
+            <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
             <div style="font-size:12px;color:#b5a78a;line-height:1.7">
             📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>
             You can also access your ticket at <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a>
