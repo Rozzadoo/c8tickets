@@ -545,95 +545,121 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .admit{font-size:7.5px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px}
 .qr-wrap{background:#fff;padding:5px;border-radius:4px}
 .tkt-id{font-size:6.5px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center;word-break:break-all;line-height:1.4}
-@media print{
-  .toolbar{display:none}
-  body{background:#fff}
-  .sheet{padding:0.2in}
-  .tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  @page{size:letter portrait;margin:0}
-}
+@media print{.toolbar{display:none}.sheet{padding:0.2in}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:letter portrait;margin:0}}
 </style></head><body>
-<div class="toolbar">
-  <button onclick="window.print()">🖨 Print / Save as PDF</button>
-  <p>${tickets.length} ticket${tickets.length !== 1 ? 's' : ''} &nbsp;·&nbsp; Use "Save as PDF" in the print dialog to send to a print shop</p>
-</div>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; Use "Save as PDF" in the print dialog to send to a print shop</p></div>
 <div class="sheet">
-${tickets.map(t => `<div class="tkt">
-  <div class="gold-bar"></div>
-  <div class="tkt-body">
-    <div>
-      <div class="brand">Crooked 8</div>
-      <div class="brand-loc">Kuna, Idaho</div>
-    </div>
-    <div class="evt-title">${t.eventTitle}</div>
-    <div class="evt-meta">📅 ${t.date}${t.time ? '<br>🕐 ' + t.time : ''}<br>📍 1882 E King Rd, Kuna, ID 83634</div>
-    <div><span class="tkt-type">${t.type}</span></div>
-  </div>
-  <div class="tkt-stub">
-    <div class="admit">Admit One</div>
-    <div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=${t.id}" width="88" height="88" alt="QR"></div>
-    <div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div>
-  </div>
-</div>`).join('\n')}
+${tickets.map(t=>`<div class="tkt"><div class="gold-bar"></div><div class="tkt-body"><div><div class="brand">Crooked 8</div><div class="brand-loc">Kuna, Idaho</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 1882 E King Rd, Kuna, ID 83634</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=${t.id}" width="88" height="88" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
 </div></body></html>`;
   const win = window.open('', '_blank');
   if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
-  win.document.write(html);
-  win.document.close();
+  win.document.write(html); win.document.close();
+};
+
+const openPhotoPage = (ev, tickets) => {
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo Tickets — ${ev.title}</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
+.toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:1px solid #d9d0c0;display:flex;align-items:center;gap:16px}
+.toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
+.toolbar p{font-size:13px;color:#6b5e47}
+.sheet{padding:0.3in;display:grid;grid-template-columns:1fr 1fr;gap:0.18in}
+.tkt{display:flex;height:2.4in;background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;overflow:hidden;page-break-inside:avoid;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.tkt-photo{width:33%;flex-shrink:0;background-size:cover;background-repeat:no-repeat;position:relative}
+.tkt-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,rgba(28,25,20,0) 40%,rgba(28,25,20,.75) 100%)}
+.tkt-stripe{width:3px;flex-shrink:0;background:linear-gradient(to bottom,#c8922a,#f0c050,#c8922a)}
+.tkt-main{flex:1;padding:13px 12px 11px 14px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.brand{font-size:11.5px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
+.brand-sub{font-size:7px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
+.gold-rule{width:32px;height:2px;background:#c8922a;margin:7px 0 8px}
+.evt-name{font-size:15.5px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:5px}
+.evt-date{font-size:8px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.evt-venue{font-size:7px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
+.tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+.tier-label{font-size:6.5px;color:#c8922a;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:3px}
+.tier-name{font-size:10px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.tkt-code{font-size:6.5px;color:#7a6c54;font-family:monospace;letter-spacing:1px}
+.qr-box{background:#fff;padding:4px;border-radius:4px;flex-shrink:0}
+.qr-box img{display:block}
+.no-photo{background:linear-gradient(135deg,#2a2218 0%,#1c1914 60%,#0e0c09 100%)}
+@media print{.toolbar{display:none}.sheet{padding:0.2in}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-shadow:none}@page{size:letter portrait;margin:0}}
+</style></head><body>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; Save as PDF and send to your print shop for professional printing</p></div>
+<div class="sheet">
+${tickets.map(t=>{const hasImg=t.image&&t.image.startsWith('http');return`<div class="tkt">
+  <div class="tkt-photo ${hasImg?'':'no-photo'}" style="${hasImg?`background-image:url('${t.image}');background-position:${t.focalX??50}% ${t.focalY??50}%`:''}"></div>
+  <div class="tkt-stripe"></div>
+  <div class="tkt-main">
+    <div>
+      <div class="brand">Crooked 8</div>
+      <div class="brand-sub">Kuna, Idaho</div>
+      <div class="gold-rule"></div>
+      <div class="evt-name">${t.eventTitle}</div>
+      <div class="evt-date">${t.date}${t.time?' &nbsp;·&nbsp; '+t.time:''}</div>
+      <div class="evt-venue">1882 E King Rd &nbsp;·&nbsp; Kuna, ID 83634</div>
+    </div>
+    <div class="tkt-foot">
+      <div>
+        <div class="tier-label">Admit One</div>
+        <div class="tier-name">${t.type}</div>
+        <div class="tkt-code">#${t.id.slice(0,8).toUpperCase()}</div>
+      </div>
+      <div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${t.id}" width="72" height="72" alt="QR"></div>
+    </div>
+  </div>
+</div>`;}).join('\n')}
+</div></body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  win.document.write(html); win.document.close();
+};
+
+const fetchOrCreatePhysicalOrders = async (ev) => {
+  const { data: existing } = await supabase
+    .from('orders').select('id, order_items(ticket_type_name)')
+    .eq('event_id', ev.id).eq('source', 'physical');
+  if (existing && existing.length > 0) {
+    return existing.map(o => ({ id: o.id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket' }));
+  }
+  const results = [];
+  for (const tier of ev.tickets.filter(t => (t.physicalQty ?? 0) > 0)) {
+    for (let n = 0; n < tier.physicalQty; n++) {
+      const { data: order, error } = await supabase.from('orders').insert({
+        tenant_id: CROOKED_8_TENANT_ID, event_id: ev.id,
+        buyer_name: 'Walk-In', buyer_email: 'physical@c8tickets.com', buyer_phone: '',
+        status: 'confirmed', total_amount: tier.price, source: 'physical',
+      }).select().single();
+      if (error) { console.error(error); continue; }
+      await supabase.from('order_items').insert({
+        order_id: order.id, ticket_type_id: tier.id,
+        ticket_type_name: tier.type, quantity: 1, unit_price: tier.price,
+      });
+      results.push({ id: order.id, type: tier.type });
+    }
+  }
+  return results;
 };
 
 const generatePhysicalTickets = async (ev) => {
-  const tiers = ev.tickets.filter(t => (t.physicalQty ?? 0) > 0);
-  if (tiers.length === 0) {
-    alert('No physical tickets allocated for this event. Edit the event and set a "Physical" quantity on at least one ticket tier.');
+  if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
+    alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
   }
   setGeneratingPhysical(ev.id);
-  const { data: existing } = await supabase
-    .from('orders')
-    .select('id, order_items(ticket_type_name)')
-    .eq('event_id', ev.id)
-    .eq('source', 'physical');
-
-  let tickets = [];
-  if (existing && existing.length > 0) {
-    tickets = existing.map(o => ({
-      id: o.id,
-      type: o.order_items?.[0]?.ticket_type_name || 'Ticket',
-      eventTitle: ev.title,
-      date: fmtDate(ev.date),
-      time: fmtTime(ev.time),
-    }));
-  } else {
-    for (const tier of tiers) {
-      for (let n = 0; n < tier.physicalQty; n++) {
-        const { data: order, error } = await supabase
-          .from('orders')
-          .insert({
-            tenant_id: CROOKED_8_TENANT_ID,
-            event_id: ev.id,
-            buyer_name: 'Walk-In',
-            buyer_email: 'physical@c8tickets.com',
-            buyer_phone: '',
-            status: 'confirmed',
-            total_amount: tier.price,
-            source: 'physical',
-          })
-          .select().single();
-        if (error) { console.error(error); continue; }
-        await supabase.from('order_items').insert({
-          order_id: order.id,
-          ticket_type_id: tier.id,
-          ticket_type_name: tier.type,
-          quantity: 1,
-          unit_price: tier.price,
-        });
-        tickets.push({ id: order.id, type: tier.type, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) });
-      }
-    }
-  }
+  const orders = await fetchOrCreatePhysicalOrders(ev);
   setGeneratingPhysical(false);
-  if (tickets.length > 0) openPrintPage(ev, tickets);
+  if (orders.length > 0) openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })));
+};
+
+const generatePhotoTickets = async (ev) => {
+  if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
+    alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
+    return;
+  }
+  setGeneratingPhysical(ev.id + '-photo');
+  const orders = await fetchOrCreatePhysicalOrders(ev);
+  setGeneratingPhysical(false);
+  if (orders.length > 0) openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })));
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
   const publicEvents = vEvents.filter(e => e.published !== false);
@@ -1129,7 +1155,7 @@ fetch('/api/send-confirmation', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={generatingPhysical===ev.id} onClick={()=>generatePhysicalTickets(ev)}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button>}<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>generatePhysicalTickets(ev)}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>generatePhotoTickets(ev)}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
