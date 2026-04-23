@@ -34,6 +34,7 @@ const mapEvent = (e) => ({
     id: t.id,
     type: t.name,
     price: Number(t.price),
+    doorPrice: t.door_price != null ? Number(t.door_price) : null,
     available: t.quantity_total - t.quantity_sold,
     total: t.quantity_total,
     sold: t.quantity_sold,
@@ -416,6 +417,143 @@ const GateView = ({ events, onLogout }) => {
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
+  const [selEventId, setSelEventId] = useState('');
+  const [doorCart, setDoorCart] = useState({});
+  const [buyerName, setBuyerName] = useState('');
+  const [step, setStep] = useState('select');
+  const [clientSecret, setClientSecret] = useState(null);
+  const [amounts, setAmounts] = useState(null);
+  const [lastSale, setLastSale] = useState(null);
+  const [loadingIntent, setLoadingIntent] = useState(false);
+
+  const ev = events.find(e => e.id === selEventId);
+  const cartItems = ev ? ev.tickets.map((t, i) => ({ ...t, qty: doorCart[i] || 0, effectivePrice: t.doorPrice ?? t.price })) : [];
+  const cartN = cartItems.reduce((s, i) => s + i.qty, 0);
+  const cartTotal = cartItems.reduce((s, i) => s + i.qty * i.effectivePrice, 0);
+
+  const startPayment = async () => {
+    if (!ev || cartN === 0) return;
+    setLoadingIntent(true);
+    const items = cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, price: i.effectivePrice }));
+    const res = await fetch('/api/create-payment-intent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, eventId: selEventId, tenantId: TENANT_ID }),
+    });
+    const data = await res.json();
+    setLoadingIntent(false);
+    if (!data.clientSecret) { alert('Payment setup failed. Please try again.'); return; }
+    setClientSecret(data.clientSecret);
+    setAmounts(data);
+    setStep('payment');
+  };
+
+  const handleSuccess = async (paymentIntentId) => {
+    const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
+    const { data: order, error: orderError } = await supabase.from('orders').insert({
+      tenant_id: TENANT_ID, event_id: selEventId,
+      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: '', buyer_phone: '',
+      status: 'checked_in', total_amount: amounts.grandTotal,
+      stripe_payment_intent_id: paymentIntentId, source: 'door',
+    }).select().single();
+    if (orderError) { alert('Order save failed. Payment ref: ' + paymentIntentId); return; }
+    await supabase.from('order_items').insert(soldItems.map(i => ({
+      order_id: order.id, ticket_type_id: i.ticketTypeId,
+      ticket_type_name: i.type, quantity: i.qty, unit_price: i.price,
+    })));
+    for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
+    const localOrder = {
+      id: order.id, eventId: selEventId, venueId: venue.id,
+      buyer: { name: buyerName.trim() || 'Walk-In', email: '', phone: '' },
+      items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
+      ticketTotal: amounts.ticketTotal, salesTax: amounts.salesTax,
+      serviceFees: amounts.serviceFees, processingFee: amounts.processingFee,
+      total: amounts.grandTotal, date: new Date().toISOString(), checkedIn: true, source: 'door',
+    };
+    updateOrders(prev => [...prev, localOrder]);
+    updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
+      ...e, tickets: e.tickets.map((t, i) => ({ ...t, available: t.available - (doorCart[i] || 0) }))
+    }));
+    setLastSale(localOrder);
+    setStep('confirm');
+  };
+
+  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setLastSale(null); };
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24,flexWrap:'wrap',gap:10}}>
+        <h2 className="dsp" style={{fontSize:26}}>Door Sales</h2>
+        {step !== 'select' && <button className="btn" onClick={reset}>← New Sale</button>}
+      </div>
+
+      {step === 'select' && <>
+        <div className="fg" style={{marginBottom:16}}>
+          <label className="fl">Event</label>
+          <select className="fi" value={selEventId} onChange={e => { setSelEventId(e.target.value); setDoorCart({}); }}>
+            <option value="">— Select Event —</option>
+            {events.map(e => <option key={e.id} value={e.id}>{e.title} — {fmtDate(e.date)}</option>)}
+          </select>
+        </div>
+        {ev && <>
+          {ev.tickets.map((t, i) => {
+            const dp = t.doorPrice ?? t.price;
+            const qty = doorCart[i] || 0;
+            return <div className="tkt-row" key={i}>
+              <div className="tkt-info">
+                <h4>{t.type}</h4>
+                {t.doorPrice != null && t.doorPrice !== t.price
+                  ? <p style={{fontSize:11,color:'var(--text3)'}}>Presale <s>{fmtCurrency(t.price)}</s> · Door <span style={{color:'var(--gold)'}}>{fmtCurrency(t.doorPrice)}</span></p>
+                  : <p style={{fontSize:11,color:'var(--text3)'}}>Door price</p>}
+              </div>
+              <div className="tkt-price">{fmtCurrency(dp)}</div>
+              <div className="qty">
+                <button className="qb" disabled={qty===0} onClick={()=>setDoorCart({...doorCart,[i]:qty-1})}>−</button>
+                <div className="qv">{qty}</div>
+                <button className="qb" disabled={qty>=t.available||t.available===0} onClick={()=>setDoorCart({...doorCart,[i]:qty+1})}>+</button>
+              </div>
+            </div>;
+          })}
+          {cartN > 0 && <div className="cart-sum" style={{margin:'12px 0'}}>
+            {cartItems.filter(i=>i.qty>0).map((t,i)=><div className="cart-ln" key={i}><span>{t.qty}× {t.type}</span><span>{fmtCurrency(t.qty*t.effectivePrice)}</span></div>)}
+            <div className="cart-tot"><span>Subtotal (before fees)</span><span>{fmtCurrency(cartTotal)}</span></div>
+          </div>}
+          <div className="fg" style={{marginBottom:16,marginTop:4}}>
+            <label className="fl">Customer Name <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
+            <input className="fi" value={buyerName} onChange={e=>setBuyerName(e.target.value)} placeholder="Walk-In" />
+          </div>
+          <button className="buy" disabled={cartN===0||loadingIntent} onClick={startPayment}>
+            {loadingIntent?'Preparing…':cartN===0?'Select Tickets':`Continue to Payment — ${fmtCurrency(cartTotal)}`}
+          </button>
+        </>}
+      </>}
+
+      {step === 'payment' && clientSecret && (
+        <Elements stripe={stripePromise} options={{clientSecret,appearance:{theme:'night',variables:{colorPrimary:'#c8922a',fontFamily:'Barlow, sans-serif'}}}}>
+          <CheckoutForm cartTotal={cartTotal} totalTickets={cartN} paymentAmounts={amounts}
+            onSuccess={handleSuccess}
+            onBack={()=>{ setStep('select'); setClientSecret(null); setAmounts(null); }} />
+        </Elements>
+      )}
+
+      {step === 'confirm' && lastSale && (
+        <div style={{textAlign:'center',maxWidth:420,margin:'0 auto',paddingTop:20}}>
+          <div style={{fontSize:48,marginBottom:12}}>✅</div>
+          <h3 className="dsp" style={{fontSize:24,marginBottom:6}}>Sale Complete</h3>
+          <p style={{color:'var(--text2)',fontSize:14,marginBottom:4}}>{lastSale.buyer.name}</p>
+          <p style={{color:'var(--gold)',fontWeight:700,fontSize:20,marginBottom:24}}>{fmtCurrency(lastSale.total)}</p>
+          <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:16}}>
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${lastSale.id}`} width={180} height={180} alt="QR" style={{display:'block'}} />
+          </div>
+          <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>CHECKED IN</p>
+          <p style={{fontFamily:'monospace',fontSize:10,color:'var(--text3)',marginBottom:28,letterSpacing:.5}}>{lastSale.id.toUpperCase()}</p>
+          <button className="buy" style={{maxWidth:260,margin:'0 auto',display:'block'}} onClick={reset}>+ New Sale</button>
+        </div>
+      )}
     </div>
   );
 };
@@ -808,7 +946,7 @@ const generatePhotoTickets = async (ev) => {
     setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
     setTimeout(() => setScanMsg(null), 4000);
   };
-  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0 }] });
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }] });
   const saveEvt = async (e) => {
   setIsSaving(true);
   try {
@@ -844,7 +982,7 @@ const generatePhotoTickets = async (ev) => {
       is_published: e.published ?? true,
     }).eq('id', e.id);
     for (const t of e.tickets) {
-      if (t.id) await supabase.from('ticket_types').update({ physical_qty: t.physicalQty ?? 0 }).eq('id', t.id);
+      if (t.id) await supabase.from('ticket_types').update({ physical_qty: t.physicalQty ?? 0, door_price: t.doorPrice ?? null }).eq('id', t.id);
     }
     updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
   } else {
@@ -870,6 +1008,7 @@ const generatePhotoTickets = async (ev) => {
         quantity_total: t.available,
         quantity_sold: 0,
         physical_qty: t.physicalQty ?? 0,
+        door_price: t.doorPrice ?? null,
       }))
     );
     const mapped = { ...e, id: newEvt.id, venueId: venue.id, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
@@ -1275,7 +1414,7 @@ fetch('/api/send-confirmation', {
         {view === "gate" && <GateView events={events} onLogout={logout} />}
 
         {view === "admin" && <div className="admin fade">
-          <div className="aside">{["dashboard","events","orders","check-in","live"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":"📡 "}{t==="check-in"?"Check-In":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
+          <div className="aside">{["dashboard","events","orders","check-in","door","live"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":"📡 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => { const vo=orders.filter(o=>o.venueId===venue.id),rev=vo.reduce((s,o)=>s+o.total,0),tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0),ci=vo.filter(o=>o.checkedIn).length; return <>
               <h2 className="dsp" style={{fontSize:26,marginBottom:20}}>Dashboard</h2>
@@ -1312,6 +1451,8 @@ fetch('/api/send-confirmation', {
               <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Or manually mark attendees below.</p>
               {vo.length===0?<div className="empty"><div className="ic">✅</div><p>No tickets.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Name</th><th>Event</th><th>Tickets</th><th>Status</th><th></th></tr></thead><tbody>{vo.map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,10)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td><td><button className={`ci-btn ${o.checkedIn?"dn":""}`} disabled={o.checkedIn} onClick={()=>checkin(o.id)}>{o.checkedIn?"Done":"Check In"}</button></td></tr>})}</tbody></table></div>}
             </>; })()}
+
+            {aTab === "door" && <DoorSales events={vEvents} updateOrders={updateOrders} updateEvents={updateEvents} venue={venue} />}
 
             {aTab === "live" && <LiveDash events={vEvents} orders={orders} />}
           </div>
@@ -1354,7 +1495,7 @@ fetch('/api/send-confirmation', {
 </div>
           <div className="fg"><label className="fl">Description</label><textarea className="fi" rows={3} value={editEvt.description} onChange={e=>setEditEvt({...editEvt,description:e.target.value})} placeholder="What should people expect?"/></div>
           <h3 className="dsp" style={{fontSize:16,margin:"16px 0 10px"}}>Ticket Tiers</h3>
-          {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Price</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Reserve this many tickets for physical/in-person sale. They won't be available online.">Physical</label>}<input className="fi" type="number" min="0" value={t.physicalQty??0} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],physicalQty:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100,physicalQty:0}]})}}>×</button></div>)}
+          {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Presale $</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Door price shown in the at-door sales terminal. Leave blank to use presale price.">Door $</label>}<input className="fi" type="number" min="0" placeholder="same" value={t.doorPrice??''} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],doorPrice:e.target.value===''?null:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Reserve this many tickets for physical/in-person sale. They won't be available online.">Physical</label>}<input className="fi" type="number" min="0" value={t.physicalQty??0} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],physicalQty:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100,physicalQty:0,doorPrice:null}]})}}>×</button></div>)}
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
           <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date||isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
