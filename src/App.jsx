@@ -286,6 +286,24 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .footer-links a{color:var(--text3);font-size:12px;text-decoration:none;transition:color .2s}
 .footer-links a:hover{color:var(--gold)}
 .footer-copy{font-size:11px;color:var(--text3)}
+.about-hero{text-align:center;padding:72px 20px 56px;border-bottom:1px solid var(--border)}
+.about-hero h1{font-size:clamp(36px,7vw,64px);color:var(--gold);margin-bottom:12px;line-height:1}
+.about-hero p{font-size:clamp(15px,2.5vw,19px);color:var(--text2);max-width:580px;margin:0 auto;line-height:1.7}
+.about-sec{max-width:820px;margin:0 auto;padding:56px 20px}
+.about-sec h2{font-size:clamp(24px,4vw,36px);color:var(--text);margin-bottom:16px}
+.about-sec p{color:var(--text2);font-size:15px;line-height:1.8;margin-bottom:14px}
+.about-divider{width:48px;height:3px;background:linear-gradient(90deg,var(--gold-d),var(--gold));border-radius:2px;margin:0 auto 48px}
+.about-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:8px}
+.about-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:24px;transition:border-color .2s}
+.about-card:hover{border-color:rgba(200,146,42,.35)}
+.about-card-icon{font-size:28px;margin-bottom:12px}
+.about-card h3{font-size:15px;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:1.5px;font-family:'Barlow Condensed',sans-serif;font-weight:700}
+.about-card p{color:var(--text2);font-size:13px;line-height:1.7;margin:0}
+.about-cta{text-align:center;padding:56px 20px 72px;border-top:1px solid var(--border)}
+.about-cta h2{font-size:clamp(24px,4vw,36px);color:var(--text);margin-bottom:12px}
+.about-cta p{color:var(--text2);font-size:15px;margin-bottom:28px}
+.about-cta a{color:var(--gold);font-size:18px;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(200,146,42,.4);padding-bottom:2px;transition:border-color .2s}
+.about-cta a:hover{border-color:var(--gold)}
 .legal{max-width:700px;margin:0 auto;padding:40px 20px;color:var(--text2);line-height:1.8}
 .legal h1{font-size:28px;margin-bottom:8px;color:var(--text)}
 .legal h2{font-size:16px;margin:28px 0 10px;color:var(--text);text-transform:uppercase;letter-spacing:1px}
@@ -1115,6 +1133,7 @@ const generatePhotoTickets = async (ev) => {
             </div>
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={goHome}>Events</button>
+            <button className={`btn ${view === "about" ? "on" : ""}`} onClick={() => setView("about")}>About</button>
             {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
             <button className="btn" onClick={() => session ? logout() : setView("login")}>{session ? "Logout" : "Login"}</button>
           </div>
@@ -1364,6 +1383,63 @@ fetch('/api/send-confirmation', {
           )}
         </div>}
 
+        {view === "about" && <div className="fade">
+          <div className="about-hero">
+            <h1 className="dsp">Local Events,<br/>Easy Tickets.</h1>
+            <p>A ticketing platform built from the ground up for the venues, organizers, and communities that make local events worth attending.</p>
+          </div>
+
+          <div className="about-sec">
+            <h2 className="dsp">Our Story</h2>
+            <div className="about-divider" style={{margin:'0 0 28px'}}></div>
+            <p>C8Tickets was built out of years of firsthand frustration. Event organizers across the Treasure Valley were piecing together solutions never designed for selling tickets — Facebook events with Venmo payment links, handwritten lists, cash at the door — while the platforms actually built for ticketing were designed for arenas and stadium tours, not local bars, rodeos, and community gatherings.</p>
+            <p>When something went wrong with those big platforms, support meant navigating a phone tree to reach someone in another time zone who had never heard of your venue. When you needed a quick fix the night of an event, you were on your own.</p>
+            <p>We built C8Tickets to change that. Local events deserve a local solution — one built specifically for the small venue, backed by people who understand what it takes to put on an event in your own community.</p>
+          </div>
+
+          <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',borderBottom:'1px solid var(--border)',padding:'56px 20px'}}>
+            <div style={{maxWidth:820,margin:'0 auto'}}>
+              <h2 className="dsp" style={{fontSize:'clamp(24px,4vw,36px)',marginBottom:8,textAlign:'center'}}>Who We're Built For</h2>
+              <div className="about-divider" style={{marginBottom:28}}></div>
+              <p style={{color:'var(--text2)',fontSize:15,lineHeight:1.8,textAlign:'center',maxWidth:620,margin:'0 auto 36px'}}>From intimate bar shows and local rodeos to community fairs, fundraisers, and multi-night festivals — if you're putting on an event for your community, C8Tickets was built for you. We specialize in the events the big platforms overlook: the ones under a few hundred people, run by real people, that mean the most to the communities they serve.</p>
+              <div className="about-grid">
+                {[['🍺','Bars & Venues','Small clubs, bars, and music venues hosting local talent and ticketed events.'],['🤠','Rodeos & Fairs','Community rodeos, county fairs, and seasonal events that bring people together.'],['🎶','Live Music','Local and regional artists, tribute nights, open mic events, and more.'],['🏘️','Community Events','Fundraisers, charity events, festivals, and neighborhood gatherings of all sizes.']].map(([icon,title,desc])=>(
+                  <div className="about-card" key={title}>
+                    <div className="about-card-icon">{icon}</div>
+                    <h3>{title}</h3>
+                    <p>{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="about-sec">
+            <h2 className="dsp" style={{textAlign:'center'}}>Why C8Tickets</h2>
+            <div className="about-divider" style={{marginBottom:28}}></div>
+            <div className="about-grid">
+              {[
+                ['📍','Local Support','We\'re based in Kuna, Idaho. When you email us, a real person reads it and responds — not a ticketing system, not an overseas support center. We know what it\'s like to manage an event night, and we\'re here when you need us.'],
+                ['💰','Transparent Fees','Competitive, straightforward pricing with no hidden charges or surprise deductions. The big platforms take a significant cut and make it hard to understand what you\'re actually paying. We keep it simple so more of your revenue stays where it belongs — with you.'],
+                ['🎫','Built for Small Venues','Every feature in C8Tickets was designed with the small event organizer in mind. Ticket tiers, door sales, check-in tools, physical ticket printing, live dashboards. The tools you actually need, without the complexity you don\'t.'],
+                ['⚡','Easy by Design','Create an event in minutes. Your customers get a clean, mobile-friendly buying experience. You get real-time sales data, a built-in check-in scanner, and an at-door sales terminal — all from one place, on any device.'],
+              ].map(([icon,title,desc])=>(
+                <div className="about-card" key={title}>
+                  <div className="about-card-icon">{icon}</div>
+                  <h3>{title}</h3>
+                  <p>{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="about-cta">
+            <h2 className="dsp">Ready to Sell Tickets?</h2>
+            <p>Reach out and we'll get your events set up — usually the same day.</p>
+            <a href="mailto:hello@c8tickets.com">hello@c8tickets.com</a>
+          </div>
+        </div>}
+
         {view === "terms" && <div className="legal fade">
   <div className="back" onClick={() => setView("home")}>← Back</div>
   <h1 className="dsp">Terms of Service</h1>
@@ -1575,6 +1651,7 @@ fetch('/api/send-confirmation', {
       <footer className="footer">
           <div className="footer-links">
             <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
+            <a href="#" onClick={e => { e.preventDefault(); setView("about"); }}>About C8Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setLookupEmail(''); setLookupOrders(null); setView("lookup"); }}>Find My Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
