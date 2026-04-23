@@ -589,13 +589,14 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     const base = 'C8Tickets';
-    if (view === 'detail' && sel) document.title = `${sel.title} — ${base}`;
+    const selTitle = events.find(e => e.id === selId)?.title;
+    if (view === 'detail' && selTitle) document.title = `${selTitle} — ${base}`;
     else if (view === 'checkout') document.title = `Checkout — ${base}`;
     else if (view === 'ticket') document.title = `Your Tickets — ${base}`;
     else if (view === 'admin') document.title = `Admin — ${base}`;
     else if (view === 'lookup') document.title = `Find My Tickets — ${base}`;
     else document.title = `${venue.name} Events — ${base}`;
-  }, [view, sel, venue]);
+  }, [view, selId, events, venue]);
 
 const login = async () => {
   setAuthError('');
