@@ -1403,9 +1403,8 @@ fetch('/api/send-confirmation', {
               <div className="about-divider" style={{marginBottom:28}}></div>
               <p style={{color:'var(--text2)',fontSize:15,lineHeight:1.8,textAlign:'center',maxWidth:620,margin:'0 auto 36px'}}>From intimate bar shows and local rodeos to community fairs, fundraisers, and multi-night festivals — if you're putting on an event for your community, C8Tickets was built for you. We specialize in the events the big platforms overlook: the ones under a few hundred people, run by real people, that mean the most to the communities they serve.</p>
               <div className="about-grid">
-                {[['🍺','Bars & Venues','Small clubs, bars, and music venues hosting local talent and ticketed events.'],['🤠','Rodeos & Fairs','Community rodeos, county fairs, and seasonal events that bring people together.'],['🎶','Live Music','Local and regional artists, tribute nights, open mic events, and more.'],['🏘️','Community Events','Fundraisers, charity events, festivals, and neighborhood gatherings of all sizes.']].map(([icon,title,desc])=>(
+                {[['Bars & Venues','Small clubs, bars, and music venues hosting local talent and ticketed events.'],['Rodeos & Fairs','Community rodeos, county fairs, and seasonal events that bring people together.'],['Live Music','Local and regional artists, tribute nights, open mic events, and more.'],['Community Events','Fundraisers, charity events, festivals, and neighborhood gatherings of all sizes.']].map(([title,desc])=>(
                   <div className="about-card" key={title}>
-                    <div className="about-card-icon">{icon}</div>
                     <h3>{title}</h3>
                     <p>{desc}</p>
                   </div>
