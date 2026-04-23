@@ -434,6 +434,10 @@ const [resetError, setResetError] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [adminScan, setAdminScan] = useState(false);
   const [scanMsg, setScanMsg] = useState(null);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [lookupEmail, setLookupEmail] = useState('');
+  const [lookupOrders, setLookupOrders] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
 
   const venue = venues[0] || DEFAULT_VENUE;
   const isGate = session?.user?.user_metadata?.role === 'gate';
@@ -502,6 +506,21 @@ const updatePassword = async (newPassword) => {
 const logout = async () => {
   await supabase.auth.signOut();
   setView('home');
+};
+
+const lookupTickets = async () => {
+  const email = lookupEmail.toLowerCase().trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+  setLookupLoading(true);
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('buyer_email', email)
+    .eq('tenant_id', CROOKED_8_TENANT_ID)
+    .order('created_at', { ascending: false });
+  setLookupLoading(false);
+  if (error) { console.error(error); return; }
+  setLookupOrders(data || []);
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
   const publicEvents = vEvents.filter(e => e.published !== false);
@@ -836,6 +855,30 @@ fetch('/api/send-confirmation', {
             </div>
             <button className="buy" style={{marginTop:20}} onClick={goHome}>Browse More Events</button>
           </div>); })()}
+        {view === "lookup" && <div className="sec fade" style={{maxWidth:520}}>
+          <div className="back" onClick={goHome}>← Back to Events</div>
+          <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>Find My Tickets</h1>
+          <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>Enter the email address you used when purchasing to retrieve your tickets.</p>
+          <div className="tkt-sec" style={{marginBottom:20}}>
+            <div className="fg"><label className="fl">Email Address</label><input className="fi" type="email" value={lookupEmail} onChange={e=>setLookupEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&lookupTickets()} placeholder="jane@email.com" /></div>
+            <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||!lookupEmail} onClick={lookupTickets}>{lookupLoading?"Searching…":"Find My Tickets"}</button>
+          </div>
+          {lookupOrders !== null && (lookupOrders.length === 0
+            ? <div className="empty"><div className="ic">🎫</div><p>No tickets found for that email address.</p></div>
+            : lookupOrders.map(o => {
+                const ev = events.find(e => e.id === o.event_id);
+                return <div key={o.id} className="tkt-disp" style={{marginBottom:20}}>
+                  <div className="dsp" style={{fontSize:20,marginBottom:4}}>{ev?.title||"Event"}</div>
+                  <div style={{color:"var(--gold)",fontWeight:700,fontSize:12,marginBottom:12,textTransform:"uppercase",letterSpacing:1}}>{ev?fmtDate(ev.date):""}</div>
+                  <div style={{marginBottom:12}}>{(o.order_items||[]).map((i,idx)=><div key={idx} style={{fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</div>)}</div>
+                  <span className={`badge ${o.status==="checked_in"?"badge-done":"badge-ok"}`} style={{marginBottom:12,display:"inline-block"}}>{o.status==="checked_in"?"Checked In":"Valid"}</span>
+                  <div className="qr"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${o.id}`} alt="QR Code" width={150} height={150} style={{display:"block"}} /></div>
+                  <div className="cid">ID: {o.id.toUpperCase()}</div>
+                </div>;
+              })
+          )}
+        </div>}
+
         {view === "terms" && <div className="legal fade">
   <div className="back" onClick={() => setView("home")}>← Back</div>
   <h1 className="dsp">Terms of Service</h1>
@@ -971,7 +1014,17 @@ fetch('/api/send-confirmation', {
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
               {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
-            {aTab === "orders" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <><h2 className="dsp" style={{fontSize:26,marginBottom:20}}>All Orders</h2>{vo.length===0?<div className="empty"><div className="ic">📋</div><p>No orders.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th></tr></thead><tbody>{vo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}</td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td></tr>})}</tbody></table></div>}</>; })()}
+            {aTab === "orders" && (()=>{
+              const vo=orders.filter(o=>o.venueId===venue.id);
+              const q=orderSearch.toLowerCase().trim();
+              const fo=q?vo.filter(o=>{const ev=events.find(e=>e.id===o.eventId);return o.buyer.name.toLowerCase().includes(q)||o.buyer.email.toLowerCase().includes(q)||(ev?.title||'').toLowerCase().includes(q);}):vo;
+              return <>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
+                  <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
+                  <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
+                </div>
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}</td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td></tr>})}</tbody></table></div>}
+              </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:10}}>
@@ -1033,6 +1086,7 @@ fetch('/api/send-confirmation', {
       <footer className="footer">
           <div className="footer-links">
             <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
+            <a href="#" onClick={e => { e.preventDefault(); setLookupEmail(''); setLookupOrders(null); setView("lookup"); }}>Find My Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
             <a href="mailto:support@c8tickets.com">Contact Support</a>
