@@ -35,6 +35,7 @@ const mapEvent = (e) => ({
     type: t.name,
     price: Number(t.price),
     available: t.quantity_total - t.quantity_sold,
+    physicalQty: t.physical_qty ?? 0,
   }))
 });
 
@@ -438,6 +439,7 @@ const [resetError, setResetError] = useState('');
   const [lookupEmail, setLookupEmail] = useState('');
   const [lookupOrders, setLookupOrders] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [generatingPhysical, setGeneratingPhysical] = useState(false);
 
   const venue = venues[0] || DEFAULT_VENUE;
   const isGate = session?.user?.user_metadata?.role === 'gate';
@@ -522,6 +524,117 @@ const lookupTickets = async () => {
   if (error) { console.error(error); return; }
   setLookupOrders(data || []);
 };
+
+const openPrintPage = (ev, tickets) => {
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Physical Tickets — ${ev.title}</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
+.toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:1px solid #d9d0c0;display:flex;align-items:center;gap:16px}
+.toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
+.toolbar p{font-size:13px;color:#6b5e47}
+.sheet{padding:0.3in;display:grid;grid-template-columns:1fr 1fr;gap:0.15in}
+.tkt{width:100%;background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;display:flex;overflow:hidden;position:relative;page-break-inside:avoid}
+.tkt-body{flex:1;padding:14px 12px 12px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.35)}
+.tkt-stub{width:108px;flex-shrink:0;padding:12px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a)}
+.brand{font-size:13px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
+.brand-loc{font-size:7.5px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
+.evt-title{font-size:15px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:8px 0 6px}
+.evt-meta{font-size:8.5px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;line-height:2}
+.tkt-type{margin-top:8px;font-size:8px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px;border:1px solid rgba(200,146,42,.5);border-radius:3px;padding:2px 7px;display:inline-block}
+.admit{font-size:7.5px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px}
+.qr-wrap{background:#fff;padding:5px;border-radius:4px}
+.tkt-id{font-size:6.5px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center;word-break:break-all;line-height:1.4}
+@media print{
+  .toolbar{display:none}
+  body{background:#fff}
+  .sheet{padding:0.2in}
+  .tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @page{size:letter portrait;margin:0}
+}
+</style></head><body>
+<div class="toolbar">
+  <button onclick="window.print()">🖨 Print / Save as PDF</button>
+  <p>${tickets.length} ticket${tickets.length !== 1 ? 's' : ''} &nbsp;·&nbsp; Use "Save as PDF" in the print dialog to send to a print shop</p>
+</div>
+<div class="sheet">
+${tickets.map(t => `<div class="tkt">
+  <div class="gold-bar"></div>
+  <div class="tkt-body">
+    <div>
+      <div class="brand">Crooked 8</div>
+      <div class="brand-loc">Kuna, Idaho</div>
+    </div>
+    <div class="evt-title">${t.eventTitle}</div>
+    <div class="evt-meta">📅 ${t.date}${t.time ? '<br>🕐 ' + t.time : ''}<br>📍 1882 E King Rd, Kuna, ID 83634</div>
+    <div><span class="tkt-type">${t.type}</span></div>
+  </div>
+  <div class="tkt-stub">
+    <div class="admit">Admit One</div>
+    <div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=${t.id}" width="88" height="88" alt="QR"></div>
+    <div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div>
+  </div>
+</div>`).join('\n')}
+</div></body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  win.document.write(html);
+  win.document.close();
+};
+
+const generatePhysicalTickets = async (ev) => {
+  const tiers = ev.tickets.filter(t => (t.physicalQty ?? 0) > 0);
+  if (tiers.length === 0) {
+    alert('No physical tickets allocated for this event. Edit the event and set a "Physical" quantity on at least one ticket tier.');
+    return;
+  }
+  setGeneratingPhysical(ev.id);
+  const { data: existing } = await supabase
+    .from('orders')
+    .select('id, order_items(ticket_type_name)')
+    .eq('event_id', ev.id)
+    .eq('source', 'physical');
+
+  let tickets = [];
+  if (existing && existing.length > 0) {
+    tickets = existing.map(o => ({
+      id: o.id,
+      type: o.order_items?.[0]?.ticket_type_name || 'Ticket',
+      eventTitle: ev.title,
+      date: fmtDate(ev.date),
+      time: fmtTime(ev.time),
+    }));
+  } else {
+    for (const tier of tiers) {
+      for (let n = 0; n < tier.physicalQty; n++) {
+        const { data: order, error } = await supabase
+          .from('orders')
+          .insert({
+            tenant_id: CROOKED_8_TENANT_ID,
+            event_id: ev.id,
+            buyer_name: 'Walk-In',
+            buyer_email: 'physical@c8tickets.com',
+            buyer_phone: '',
+            status: 'confirmed',
+            total_amount: tier.price,
+            source: 'physical',
+          })
+          .select().single();
+        if (error) { console.error(error); continue; }
+        await supabase.from('order_items').insert({
+          order_id: order.id,
+          ticket_type_id: tier.id,
+          ticket_type_name: tier.type,
+          quantity: 1,
+          unit_price: tier.price,
+        });
+        tickets.push({ id: order.id, type: tier.type, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) });
+      }
+    }
+  }
+  setGeneratingPhysical(false);
+  if (tickets.length > 0) openPrintPage(ev, tickets);
+};
   const vEvents = events.filter(e => e.venueId === venue.id);
   const publicEvents = vEvents.filter(e => e.published !== false);
   const CATS = ["All", "Live Music", "Rodeo", "Family", "Other Events"];
@@ -551,7 +664,7 @@ const lookupTickets = async () => {
     setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
     setTimeout(() => setScanMsg(null), 4000);
   };
-  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100 }] });
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0 }] });
   const saveEvt = async (e) => {
   setIsSaving(true);
   try {
@@ -586,6 +699,9 @@ const lookupTickets = async () => {
       focal_y: e.focalY ?? 50,
       is_published: e.published ?? true,
     }).eq('id', e.id);
+    for (const t of e.tickets) {
+      if (t.id) await supabase.from('ticket_types').update({ physical_qty: t.physicalQty ?? 0 }).eq('id', t.id);
+    }
     updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
   } else {
     const { data: newEvt, error } = await supabase.from('events').insert({
@@ -609,6 +725,7 @@ const lookupTickets = async () => {
         price: t.price,
         quantity_total: t.available,
         quantity_sold: 0,
+        physical_qty: t.physicalQty ?? 0,
       }))
     );
     const mapped = { ...e, id: newEvt.id, venueId: "crooked8", image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
@@ -661,7 +778,7 @@ const lookupTickets = async () => {
               <div className="filters">{CATS.map(c => <button key={c} className={`chip ${filter === c ? "on" : ""}`} onClick={() => setFilter(c)}>{c}</button>)}</div>
             </div>
             {filtered.length === 0 ? <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div> :
-              <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); const soldOut = ev.tickets.every(t => t.available <= 0); return (
+              <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); const onlineAvail = (t) => Math.max(0, t.available - (t.physicalQty ?? 0)); const soldOut = ev.tickets.every(t => onlineAvail(t) <= 0); return (
                 <div key={ev.id} className="card" onClick={() => open(ev.id)}>
                   <div className="card-img" style={{backgroundImage: ev.image && ev.image.startsWith('http') ? `url(${ev.image})` : 'none', backgroundSize:'cover', backgroundPosition:`${ev.focalX ?? 50}% ${ev.focalY ?? 50}%`}}>
   {(!ev.image || !ev.image.startsWith('http')) && <span style={{fontSize:48}}>🎵</span>}
@@ -702,7 +819,7 @@ const lookupTickets = async () => {
 </div>
           <p className="d-desc">{sel.description}</p>
           <div className="tkt-sec"><h3 className="dsp">Select Tickets</h3>
-            {sel.tickets.map((t, i) => <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4><p>{t.available} left</p></div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv">{cart[i]||0}</div><button className="qb" disabled={(cart[i]||0) >= t.available} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>)}
+            {sel.tickets.map((t, i) => { const oa = Math.max(0, t.available - (t.physicalQty ?? 0)); return <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4><p>{oa > 0 ? `${oa} left` : 'Sold Out'}</p></div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv">{cart[i]||0}</div><button className="qb" disabled={(cart[i]||0) >= oa || oa === 0} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>; })}
             {cartN > 0 && <div className="cart-sum">{sel.tickets.map((t,i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i]*t.price)}</span></div>)}<div className="cart-tot"><span>Total</span><span>{fmtCurrency(cartTotal)}</span></div></div>}
             <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
               <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
@@ -1012,7 +1129,7 @@ fetch('/api/send-confirmation', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={generatingPhysical===ev.id} onClick={()=>generatePhysicalTickets(ev)}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button>}<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
@@ -1079,7 +1196,7 @@ fetch('/api/send-confirmation', {
 </div>
           <div className="fg"><label className="fl">Description</label><textarea className="fi" rows={3} value={editEvt.description} onChange={e=>setEditEvt({...editEvt,description:e.target.value})} placeholder="What should people expect?"/></div>
           <h3 className="dsp" style={{fontSize:16,margin:"16px 0 10px"}}>Ticket Tiers</h3>
-          {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Price</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100}]})}}>×</button></div>)}
+          {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Price</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Reserve this many tickets for physical/in-person sale. They won't be available online.">Physical</label>}<input className="fi" type="number" min="0" value={t.physicalQty??0} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],physicalQty:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100,physicalQty:0}]})}}>×</button></div>)}
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
           <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date||isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
