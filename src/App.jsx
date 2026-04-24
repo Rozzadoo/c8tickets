@@ -210,6 +210,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .share-tw{background:#000;color:#fff;border:1px solid #333}
 .share-ig{background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff}
 .share-sms{background:#5d8a3c;color:#fff}
+.share-native{background:#c8922a;color:#fff}
 
 .tkt-sec{background:var(--bg2);border-radius:var(--r);padding:24px;border:1px solid var(--border)}
 .tkt-sec h3{font-size:20px;margin-bottom:16px}
@@ -775,6 +776,9 @@ const [resetError, setResetError] = useState('');
   const [lookupEmail, setLookupEmail] = useState('');
   const [lookupOrders, setLookupOrders] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupStep, setLookupStep] = useState('email');
+  const [lookupCode, setLookupCode] = useState('');
+  const [lookupError, setLookupError] = useState('');
   const [generatingPhysical, setGeneratingPhysical] = useState(false);
 
   const venue = venues[0] || DEFAULT_VENUE;
@@ -787,6 +791,21 @@ const [resetError, setResetError] = useState('');
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    const LIMIT = 2 * 60 * 60 * 1000;
+    const stamp = () => localStorage.setItem('_c8last', String(Date.now()));
+    stamp();
+    const evts = ['mousedown', 'keydown', 'touchstart', 'pointermove'];
+    evts.forEach(e => window.addEventListener(e, stamp, { passive: true }));
+    const timer = setInterval(() => {
+      if (Date.now() - parseInt(localStorage.getItem('_c8last') || '0', 10) > LIMIT) {
+        supabase.auth.signOut().then(() => setView('home'));
+      }
+    }, 60_000);
+    return () => { evts.forEach(e => window.removeEventListener(e, stamp)); clearInterval(timer); };
+  }, [session]);
 
   useEffect(() => {
     if (!session) { setOrders([]); return; }
@@ -857,19 +876,26 @@ const logout = async () => {
   setView('home');
 };
 
-const lookupTickets = async () => {
+const sendLookupCode = async () => {
   const email = lookupEmail.toLowerCase().trim();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
   setLookupLoading(true);
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*, order_items(*)')
-    .eq('buyer_email', email)
-    .eq('tenant_id', TENANT_ID)
-    .order('created_at', { ascending: false });
+  setLookupError('');
+  await fetch('/api/send-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
   setLookupLoading(false);
-  if (error) { console.error(error); return; }
-  setLookupOrders(data || []);
+  setLookupStep('code');
+};
+
+const verifyLookupCode = async () => {
+  const email = lookupEmail.toLowerCase().trim();
+  if (!email || !lookupCode.trim()) return;
+  setLookupLoading(true);
+  setLookupError('');
+  const res = await fetch('/api/verify-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code: lookupCode.trim() }) });
+  const data = await res.json();
+  setLookupLoading(false);
+  if (!res.ok) { setLookupError('That code is incorrect or has expired. Please try again.'); return; }
+  setLookupOrders(data.orders || []);
 };
 
 const openPrintPage = (ev, tickets, venue) => {
@@ -1177,18 +1203,25 @@ const generatePhotoTickets = async (ev) => {
           <div style={{ marginBottom: 6 }}><span className="tag">{sel.category}</span></div>
           <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", lineHeight: 1.1, marginBottom: 14 }}>{sel.title}</h1>
           <div className="share-row">
-            <a className="share-btn share-fb" title="Share on Facebook" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
-            </a>
-            <a className="share-btn share-tw" title="Share on X / Twitter" href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(sel.title+' — grab your tickets!')}&url=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-            </a>
-            <button className="share-btn share-ig" title={copiedLink ? "Copied!" : "Copy link for Instagram"} onClick={() => { navigator.clipboard.writeText(window.location.origin+'/e/'+sel.id); setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); }}>
-              {copiedLink ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>}
-            </button>
-            <a className="share-btn share-sms" title="Share via Text Message" href={`sms:?body=${encodeURIComponent(sel.title+' — get tickets: '+window.location.origin+'/e/'+sel.id)}`}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </a>
+            {'share' in navigator
+              ? <button className="share-btn share-native" title="Share" onClick={async () => { try { await navigator.share({ title: sel.title, text: sel.title+' — grab your tickets!', url: window.location.origin+'/e/'+sel.id }); } catch(e) {} }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                </button>
+              : <>
+                  <a className="share-btn share-fb" title="Share on Facebook" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+                  </a>
+                  <a className="share-btn share-tw" title="Share on X / Twitter" href={`https://x.com/intent/tweet?text=${encodeURIComponent(sel.title+' — grab your tickets!')}&url=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                  </a>
+                  <button className="share-btn share-ig" title={copiedLink ? "Copied!" : "Copy link for Instagram"} onClick={() => { navigator.clipboard.writeText(window.location.origin+'/e/'+sel.id); setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); }}>
+                    {copiedLink ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>}
+                  </button>
+                  <a className="share-btn share-sms" title="Share via Text Message" href={`sms:?body=${encodeURIComponent(sel.title+' — get tickets: '+window.location.origin+'/e/'+sel.id)}`}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </a>
+                </>
+            }
           </div>
           <div className="d-meta">
   <span>📅 <strong>{fmtDate(sel.date)}</strong></span>
@@ -1362,11 +1395,22 @@ fetch('/api/send-confirmation', {
         {view === "lookup" && <div className="sec fade" style={{maxWidth:520}}>
           <div className="back" onClick={goHome}>← Back to Events</div>
           <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>Find My Tickets</h1>
-          <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>Enter the email address you used when purchasing to retrieve your tickets.</p>
-          <div className="tkt-sec" style={{marginBottom:20}}>
-            <div className="fg"><label className="fl">Email Address</label><input className="fi" type="email" value={lookupEmail} onChange={e=>setLookupEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&lookupTickets()} placeholder="jane@email.com" /></div>
-            <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||!lookupEmail} onClick={lookupTickets}>{lookupLoading?"Searching…":"Find My Tickets"}</button>
-          </div>
+          {lookupStep === 'email' && <>
+            <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>Enter the email address you used when purchasing. We'll send a verification code to confirm it's you.</p>
+            <div className="tkt-sec" style={{marginBottom:20}}>
+              <div className="fg"><label className="fl">Email Address</label><input className="fi" type="email" value={lookupEmail} onChange={e=>setLookupEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendLookupCode()} placeholder="jane@email.com" /></div>
+              <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||!lookupEmail} onClick={sendLookupCode}>{lookupLoading?"Sending…":"Send Verification Code"}</button>
+            </div>
+          </>}
+          {lookupStep === 'code' && lookupOrders === null && <>
+            <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>A 6-digit code was sent to <strong style={{color:"var(--text1)"}}>{lookupEmail}</strong>. Enter it below. It's valid for one hour.</p>
+            <div className="tkt-sec" style={{marginBottom:20}}>
+              <div className="fg"><label className="fl">Verification Code</label><input className="fi" type="text" inputMode="numeric" maxLength={6} value={lookupCode} onChange={e=>setLookupCode(e.target.value.replace(/\D/g,''))} onKeyDown={e=>e.key==='Enter'&&verifyLookupCode()} placeholder="000000" style={{letterSpacing:6,fontSize:22,textAlign:"center"}} /></div>
+              {lookupError && <p style={{fontSize:12,color:"var(--red)",marginTop:6}}>{lookupError}</p>}
+              <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||lookupCode.length!==6} onClick={verifyLookupCode}>{lookupLoading?"Verifying…":"Access My Tickets"}</button>
+              <button style={{width:"100%",marginTop:8,background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer",padding:4}} onClick={()=>{setLookupStep('email');setLookupCode('');setLookupError('');}}>Use a different email</button>
+            </div>
+          </>}
           {lookupOrders !== null && (lookupOrders.length === 0
             ? <div className="empty"><div className="ic">🎫</div><p>No tickets found for that email address.</p></div>
             : lookupOrders.map(o => {
@@ -1376,7 +1420,7 @@ fetch('/api/send-confirmation', {
                   <div style={{color:"var(--gold)",fontWeight:700,fontSize:12,marginBottom:12,textTransform:"uppercase",letterSpacing:1}}>{ev?fmtDate(ev.date):""}</div>
                   <div style={{marginBottom:12}}>{(o.order_items||[]).map((i,idx)=><div key={idx} style={{fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</div>)}</div>
                   <span className={`badge ${o.status==="checked_in"?"badge-done":"badge-ok"}`} style={{marginBottom:12,display:"inline-block"}}>{o.status==="checked_in"?"Checked In":"Valid"}</span>
-                  <div className="qr"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${o.id}`} alt="QR Code" width={150} height={150} style={{display:"block"}} /></div>
+                  <div className="qr"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(o.id)}`} alt="QR Code" width={150} height={150} style={{display:"block"}} /></div>
                   <div className="cid">ID: {o.id.toUpperCase()}</div>
                 </div>;
               })
@@ -1651,7 +1695,7 @@ fetch('/api/send-confirmation', {
           <div className="footer-links">
             <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("about"); }}>About C8Tickets</a>
-            <a href="#" onClick={e => { e.preventDefault(); setLookupEmail(''); setLookupOrders(null); setView("lookup"); }}>Find My Tickets</a>
+            <a href="#" onClick={e => { e.preventDefault(); setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>Find My Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
             <a href="mailto:support@c8tickets.com">Contact Support</a>
