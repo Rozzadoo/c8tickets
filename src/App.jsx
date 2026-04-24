@@ -247,6 +247,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .badge-ok{background:rgba(93,138,60,.2);color:var(--green);border:1px solid rgba(93,138,60,.3)}
 .badge-done{background:rgba(255,255,255,.05);color:var(--text3);border:1px solid rgba(255,255,255,.08)}
 .badge-sold{background:rgba(179,58,42,.15);color:var(--red);border:1px solid rgba(179,58,42,.3)}
+.badge-cancelled{background:rgba(255,255,255,.04);color:var(--text3);border:1px solid rgba(255,255,255,.08);text-decoration:line-through}
 .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;background:rgba(200,146,42,.15);color:var(--gold)}
 
 .admin{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 61px)}
@@ -821,9 +822,10 @@ const [resetError, setResetError] = useState('');
           eventId: o.event_id,
           venueId: TENANT_ID,
           buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
-          items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price) })),
+          items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price), ticketTypeId: i.ticket_type_id })),
           total: Number(o.total_amount),
           date: o.created_at,
+          status: o.status,
           checkedIn: o.status === 'checked_in',
         })));
       });
@@ -875,6 +877,40 @@ const updatePassword = async (newPassword) => {
 const logout = async () => {
   await supabase.auth.signOut();
   setView('home');
+};
+
+const cancelOrder = async (o) => {
+  if (!window.confirm(`Cancel order for ${o.buyer.name}? This will restore their tickets to available inventory.`)) return;
+  await supabase.from('orders').update({ status: 'cancelled' }).eq('id', o.id);
+  for (const item of o.items) {
+    if (item.ticketTypeId) await supabase.rpc('decrement_sold', { tid: item.ticketTypeId, qty: item.qty });
+  }
+  updateOrders(orders.map(ord => ord.id === o.id ? { ...ord, status: 'cancelled', checkedIn: false } : ord));
+  updateEvents(events.map(ev => ev.id !== o.eventId ? ev : ({
+    ...ev, tickets: ev.tickets.map(t => {
+      const item = o.items.find(i => i.ticketTypeId === t.id);
+      return item ? { ...t, available: t.available + item.qty } : t;
+    })
+  })));
+};
+
+const resendEmail = async (o) => {
+  const ev = events.find(e => e.id === o.eventId);
+  if (!o.buyer.email) { alert('No email address on file for this order.'); return; }
+  const ticketTotal = o.items.reduce((s, i) => s + i.qty * i.price, 0);
+  const totalQty = o.items.reduce((s, i) => s + i.qty, 0);
+  const salesTax = Math.round(ticketTotal * 0.06 * 100) / 100;
+  const serviceFees = totalQty * 2;
+  const processingFee = Math.max(0, Math.round((o.total - ticketTotal - salesTax - serviceFees) * 100) / 100);
+  const res = await fetch(API_BASE+'/api/send-confirmation', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      order: { id: o.id, buyer: o.buyer, items: o.items, salesTax, serviceFees, processingFee, total: o.total },
+      event: { title: ev?.title || 'Event', category: ev?.category || '', date: fmtDate(ev?.date || ''), time: fmtTime(ev?.time || ''), doors: fmtTime(ev?.doors || '') },
+      venue: { name: venue.name, location: venue.location },
+    }),
+  });
+  alert(res.ok ? `Confirmation resent to ${o.buyer.email}` : 'Failed to send — check the email address and try again.');
 };
 
 const sendLookupCode = async () => {
@@ -1626,7 +1662,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                   <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
                   <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}</td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td></tr>})}</tbody></table></div>}
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}</td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4}}>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>cancelOrder(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
               </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <>
