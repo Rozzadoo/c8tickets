@@ -1462,13 +1462,12 @@ fetch('/api/send-confirmation', {
             <div className="about-divider" style={{marginBottom:28}}></div>
             <div className="about-grid">
               {[
-                ['📍','Local Support','We\'re based in Kuna, Idaho. When you email us, a real person reads it and responds — not a ticketing system, not an overseas support center. We know what it\'s like to manage an event night, and we\'re here when you need us.'],
-                ['💰','Transparent Fees','Competitive, straightforward pricing with no hidden charges or surprise deductions. The big platforms take a significant cut and make it hard to understand what you\'re actually paying. We keep it simple so more of your revenue stays where it belongs — with you.'],
-                ['🎫','Built for Small Venues','Every feature in C8Tickets was designed with the small event organizer in mind. Ticket tiers, door sales, check-in tools, physical ticket printing, live dashboards. The tools you actually need, without the complexity you don\'t.'],
-                ['⚡','Easy by Design','Create an event in minutes. Your customers get a clean, mobile-friendly buying experience. You get real-time sales data, a built-in check-in scanner, and an at-door sales terminal — all from one place, on any device.'],
-              ].map(([icon,title,desc])=>(
+                ['Local Support','We\'re based in Kuna, Idaho. When you email us, a real person reads it and responds — not a ticketing system, not an overseas support center. We know what it\'s like to manage an event night, and we\'re here when you need us.'],
+                ['Transparent Fees','Competitive, straightforward pricing with no hidden charges or surprise deductions. The big platforms take a significant cut and make it hard to understand what you\'re actually paying. We keep it simple so more of your revenue stays where it belongs — with you.'],
+                ['Built for Small Venues','Every feature in C8Tickets was designed with the small event organizer in mind. Ticket tiers, door sales, check-in tools, physical ticket printing, live dashboards. The tools you actually need, without the complexity you don\'t.'],
+                ['Easy by Design','Create an event in minutes. Your customers get a clean, mobile-friendly buying experience. You get real-time sales data, a built-in check-in scanner, and an at-door sales terminal — all from one place, on any device.'],
+              ].map(([title,desc])=>(
                 <div className="about-card" key={title}>
-                  <div className="about-card-icon">{icon}</div>
                   <h3>{title}</h3>
                   <p>{desc}</p>
                 </div>
