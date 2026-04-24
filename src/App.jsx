@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from './lib/supabase';
-import { TENANT_ID } from './constants';
+import { TENANT_ID, API_BASE, APP_URL } from './constants';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
@@ -461,7 +461,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     if (!ev || cartN === 0) return;
     setLoadingIntent(true);
     const items = cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id }));
-    const res = await fetch('/api/create-payment-intent', {
+    const res = await fetch(API_BASE+'/api/create-payment-intent', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items, eventId: selEventId, tenantId: TENANT_ID, isDoorSale: true }),
     });
@@ -881,7 +881,7 @@ const sendLookupCode = async () => {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
   setLookupLoading(true);
   setLookupError('');
-  await fetch('/api/send-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+  await fetch(API_BASE+'/api/send-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
   setLookupLoading(false);
   setLookupStep('code');
 };
@@ -891,7 +891,7 @@ const verifyLookupCode = async () => {
   if (!email || !lookupCode.trim()) return;
   setLookupLoading(true);
   setLookupError('');
-  const res = await fetch('/api/verify-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code: lookupCode.trim() }) });
+  const res = await fetch(API_BASE+'/api/verify-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code: lookupCode.trim() }) });
   const data = await res.json();
   setLookupLoading(false);
   if (!res.ok) { setLookupError('That code is incorrect or has expired. Please try again.'); return; }
@@ -1204,20 +1204,20 @@ const generatePhotoTickets = async (ev) => {
           <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", lineHeight: 1.1, marginBottom: 14 }}>{sel.title}</h1>
           <div className="share-row">
             {'share' in navigator
-              ? <button className="share-btn share-native" title="Share" onClick={async () => { try { await navigator.share({ title: sel.title, text: sel.title+' — grab your tickets!', url: window.location.origin+'/e/'+sel.id }); } catch(e) {} }}>
+              ? <button className="share-btn share-native" title="Share" onClick={async () => { try { await navigator.share({ title: sel.title, text: sel.title+' — grab your tickets!', url: APP_URL+'/e/'+sel.id }); } catch(e) {} }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                 </button>
               : <>
-                  <a className="share-btn share-fb" title="Share on Facebook" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+                  <a className="share-btn share-fb" title="Share on Facebook" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
                   </a>
-                  <a className="share-btn share-tw" title="Share on X / Twitter" href={`https://x.com/intent/tweet?text=${encodeURIComponent(sel.title+' — grab your tickets!')}&url=${encodeURIComponent(window.location.origin+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+                  <a className="share-btn share-tw" title="Share on X / Twitter" href={`https://x.com/intent/tweet?text=${encodeURIComponent(sel.title+' — grab your tickets!')}&url=${encodeURIComponent(APP_URL+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                   </a>
-                  <button className="share-btn share-ig" title={copiedLink ? "Copied!" : "Copy link for Instagram"} onClick={() => { navigator.clipboard.writeText(window.location.origin+'/e/'+sel.id); setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); }}>
+                  <button className="share-btn share-ig" title={copiedLink ? "Copied!" : "Copy link for Instagram"} onClick={() => { navigator.clipboard.writeText(APP_URL+'/e/'+sel.id); setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); }}>
                     {copiedLink ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>}
                   </button>
-                  <a className="share-btn share-sms" title="Share via Text Message" href={`sms:?body=${encodeURIComponent(sel.title+' — get tickets: '+window.location.origin+'/e/'+sel.id)}`}>
+                  <a className="share-btn share-sms" title="Share via Text Message" href={`sms:?body=${encodeURIComponent(sel.title+' — get tickets: '+APP_URL+'/e/'+sel.id)}`}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   </a>
                 </>
@@ -1243,7 +1243,7 @@ const generatePhotoTickets = async (ev) => {
             <button className="buy" disabled={cartN===0} onClick={async () => {
   if (cartN === 0) return;
   const items = sel.tickets.map((t, i) => ({ qty: cart[i] || 0, ticketTypeId: t.id })).filter(i => i.qty > 0);
-  const res = await fetch('/api/create-payment-intent', {
+  const res = await fetch(API_BASE+'/api/create-payment-intent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items, eventId: sel.id, tenantId: TENANT_ID }),
@@ -1344,7 +1344,7 @@ const generatePhotoTickets = async (ev) => {
             setClientSecret(null);
 
 // Send confirmation email
-fetch('/api/send-confirmation', {
+fetch(API_BASE+'/api/send-confirmation', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -1607,9 +1607,9 @@ fetch('/api/send-confirmation', {
         {view === "admin" && <div className="admin fade">
           <div className="aside">{["dashboard","events","orders","check-in","door","live"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":"📡 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
-            {aTab === "dashboard" && (() => { const vo=orders.filter(o=>o.venueId===venue.id),rev=vo.reduce((s,o)=>s+o.total,0),tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0),ci=vo.filter(o=>o.checkedIn).length; return <>
+            {aTab === "dashboard" && (() => { const vo=orders.filter(o=>o.venueId===venue.id),tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0),ci=vo.filter(o=>o.checkedIn).length,venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),salesTax=Math.round(venueRev*0.06*100)/100,myRev=Math.max(0,vo.reduce((s,o)=>s+o.total,0)-venueRev-salesTax); return <>
               <h2 className="dsp" style={{fontSize:26,marginBottom:20}}>Dashboard</h2>
-              <div className="sg"><div className="sc"><div className="l">Revenue</div><div className="v gd">{rev===0?"$0":"$"+rev.toFixed(2)}</div></div><div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
+              <div className="sg"><div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div><div className="sc"><div className="l">Your Revenue</div><div className="v gd">{myRev===0?"$0":"$"+myRev.toFixed(2)}</div><div className="s">C8Tickets fees</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div><div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
               <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>Recent Orders</h3>
               {vo.length===0?<div className="empty"><div className="ic">📭</div><p>No orders yet.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Buyer</th><th>Event</th><th>Total</th><th>Status</th></tr></thead><tbody>{vo.slice(-10).reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td></tr>})}</tbody></table></div>}
             </>; })()}
