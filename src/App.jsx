@@ -155,11 +155,11 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@300;400;500;600;700&display=swap');
 :root{--bg:#0c0a07;--bg2:#161310;--bg3:#211c14;--bg4:#2f271c;--text:#f0e9da;--text2:#b5a78a;--text3:#7a6c54;--gold:#c8922a;--gold-l:#e5a83a;--gold-d:#8b6914;--red:#b33a2a;--green:#5d8a3c;--r:10px;--rs:6px;--border:rgba(200,146,42,.12)}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-webkit-font-smoothing:antialiased}
+body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;max-width:100vw}
 .app{min-height:100vh;display:flex;flex-direction:column}
 .dsp{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
 
-.nav{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
 .nav-logo{cursor:pointer;display:flex;align-items:center;gap:10px}
 .nav-logo img{height:40px;filter:invert(1);opacity:.92}
 .nav-links{display:flex;gap:4px}
@@ -255,7 +255,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 @media(max-width:768px){.aside{flex-direction:row;overflow-x:auto;padding:10px;border-right:none;border-bottom:1px solid var(--border)}}
 .aside-btn{padding:9px 14px;border-radius:var(--rs);border:none;background:transparent;color:var(--text2);cursor:pointer;font-family:'Barlow',sans-serif;font-size:13px;text-align:left;transition:all .15s;white-space:nowrap;font-weight:500}
 .aside-btn:hover,.aside-btn.on{background:var(--bg3);color:var(--gold)}
-.amain{padding:28px;overflow-y:auto}
+.amain{padding:28px;overflow-y:auto;overflow-x:hidden;max-width:100%}
 @media(max-width:768px){.amain{padding:14px}}
 
 .sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px}
@@ -1319,8 +1319,7 @@ const generatePhotoTickets = async (ev) => {
             for (const item of items) {
               const { error: soldError } = await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
               if (soldError) {
-                alert(`Sorry, some tickets became unavailable during checkout. Your payment was captured — please email support@c8tickets.com with reference: ${paymentIntentId}`);
-                return;
+                console.error('increment_sold failed for order', order.id, soldError);
               }
             }
 
