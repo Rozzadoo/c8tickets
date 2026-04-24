@@ -853,7 +853,7 @@ const login = async () => {
   if (error) { setAuthError(error.message); return; }
   const role = data.user?.user_metadata?.role;
   if (role === 'gate') setView('gate');
-  else if (role === 'admin') setView('admin');
+  else if (role === 'admin' || role === 'venue') setView('admin');
   else { await supabase.auth.signOut(); setAuthError('Access denied. Contact your administrator.'); }
 };
 
