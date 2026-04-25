@@ -1670,6 +1670,22 @@ fetch(API_BASE+'/api/send-confirmation', {
                 </div>
               </div>
               <div className="sg"><div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div>{!isVenueUser&&<><div className="sc"><div className="l">My Revenue</div><div className="v gd">{serviceFees===0?"$0":"$"+serviceFees.toFixed(2)}</div><div className="s">Service fees</div></div><div className="sc"><div className="l">Processing Fees</div><div className="v">{processingFees===0?"$0":"$"+processingFees.toFixed(2)}</div><div className="s">Remit to Stripe</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
+              <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>By Event</h3>
+              {(()=>{
+                const evRows=vEvents.map(ev=>{
+                  const eo=vo.filter(o=>o.eventId===ev.id);
+                  if(!eo.length) return null;
+                  const etix=eo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
+                  const erev=eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
+                  const etax=Math.round(erev*0.06*100)/100;
+                  const esvc=etix*2;
+                  const eproc=Math.max(0,Math.round((eo.reduce((s,o)=>s+o.total,0)-erev-etax-esvc)*100)/100);
+                  const eci=eo.filter(o=>o.checkedIn).length;
+                  return {ev,eo,etix,erev,etax,esvc,eproc,eci};
+                }).filter(Boolean);
+                if(!evRows.length) return <div className="empty" style={{marginBottom:28}}><p>No event data for this period.</p></div>;
+                return <div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Orders</th><th>Tickets</th><th>Venue Rev</th>{!isVenueUser&&<><th>My Rev</th><th>Processing</th><th>Tax</th></>}<th>Check-in</th></tr></thead><tbody>{evRows.map(({ev,eo,etix,erev,etax,esvc,eproc,eci})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td style={{fontSize:11}}>{fmtDate(ev.date)}</td><td>{eo.length}</td><td>{etix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(erev)}</td>{!isVenueUser&&<><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(esvc)}</td><td style={{fontSize:12}}>{fmtCurrency(eproc)}</td><td style={{fontSize:12}}>{fmtCurrency(etax)}</td></>}<td style={{fontSize:12}}>{eo.length>0?Math.round(eci/eo.length*100):0}%</td></tr>)}</tbody></table></div>;
+              })()}
               <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>Recent Orders</h3>
               {vo.length===0?<div className="empty"><div className="ic">📭</div><p>No orders yet.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Buyer</th><th>Event</th><th>Total</th><th>Status</th></tr></thead><tbody>{vo.slice(-10).reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td></tr>})}</tbody></table></div>}
             </>; })()}
