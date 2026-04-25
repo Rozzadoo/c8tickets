@@ -101,6 +101,7 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
+  const [agreed, setAgreed] = useState(false);
   const serviceFees = totalTickets * 2;
   const salesTax = paymentAmounts?.salesTax ?? 0;
   const processingFee = paymentAmounts?.processingFee ?? 0;
@@ -142,7 +143,11 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
         <PaymentElement />
         {error && <p style={{ color: "var(--red)", fontSize: 12, marginTop: 10 }}>{error}</p>}
       </div>
-      <button className="buy" onClick={handleSubmit} disabled={!stripe || processing}>
+      <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",marginBottom:14,padding:"12px 14px",background:"var(--bg3)",borderRadius:"var(--rs)",border:`1px solid ${agreed?"rgba(200,146,42,.25)":"var(--bg4)"}`}}>
+        <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{marginTop:2,accentColor:"var(--gold)",flexShrink:0,width:15,height:15,cursor:"pointer"}} />
+        <span style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>I understand that <strong style={{color:"var(--text)"}}>all sales are final and non-refundable</strong> unless the event is cancelled by the organizer. By completing this purchase I agree to the C8Tickets Terms of Service.</span>
+      </label>
+      <button className="buy" onClick={handleSubmit} disabled={!stripe || processing || !agreed}>
         {processing ? "Processing..." : `Pay ${fmtCurrency(grandTotal)}`}
       </button>
       <button className="btn" style={{ width: "100%", marginTop: 8 }} onClick={onBack}>← Back</button>

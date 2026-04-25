@@ -101,6 +101,11 @@ export default async function handler(req, res) {
             </div>
             </div>
 
+            <!-- Refund Policy -->
+            <div style="background:#161310;border:1px solid rgba(200,146,42,.08);border-radius:10px;padding:14px 18px;margin-bottom:20px;text-align:center">
+              <div style="font-size:11px;color:#7a6c54;line-height:1.8"><strong style="color:#b5a78a">Refund Policy:</strong> All ticket sales are final and non-refundable unless the event is cancelled by the organizer. If you have questions, contact us at <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a>.</div>
+            </div>
+
             <!-- Footer -->
             <div style="text-align:center;font-size:11px;color:#7a6c54;line-height:1.8">
             Questions? Contact us at <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a><br>
