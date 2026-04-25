@@ -353,6 +353,7 @@ const GateView = ({ events, onLogout }) => {
       .from('orders').select('*, order_items(*)')
       .eq('id', id).single();
     if (error || !order) { setResult({ found: false }); return; }
+    if (order.status === 'cancelled') { setResult({ found: true, cancelled: true, order }); return; }
     const ev = events.find(e => e.id === order.event_id);
     setResult({ found: true, order, event: ev, alreadyIn: order.status === 'checked_in', done: false });
   };
@@ -402,7 +403,15 @@ const GateView = ({ events, onLogout }) => {
                   <p style={{color:'var(--text2)',fontSize:13}}>This QR code doesn't match any order.</p>
                 </div>
               )}
-              {result.found && result.alreadyIn && (
+              {result.found && result.cancelled && (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:48,marginBottom:10}}>🚫</div>
+                  <h3 className="dsp" style={{color:'var(--red)',fontSize:22,marginBottom:8}}>Order Cancelled</h3>
+                  <p style={{fontWeight:700,fontSize:16}}>{result.order.buyer_name}</p>
+                  <p style={{color:'var(--text2)',fontSize:13,marginTop:4}}>This order has been cancelled and refunded. Entry denied.</p>
+                </div>
+              )}
+              {result.found && !result.cancelled && result.alreadyIn && (
                 <div style={{textAlign:'center',padding:'20px 0'}}>
                   <div style={{fontSize:48,marginBottom:10}}>⚠️</div>
                   <h3 className="dsp" style={{color:'var(--gold)',fontSize:22,marginBottom:8}}>Already Checked In</h3>
@@ -410,7 +419,7 @@ const GateView = ({ events, onLogout }) => {
                   <p style={{color:'var(--gold)',fontSize:13,marginTop:4}}>{result.event?.title}</p>
                 </div>
               )}
-              {result.found && result.done && (
+              {result.found && !result.cancelled && result.done && (
                 <div style={{textAlign:'center',padding:'20px 0'}}>
                   <div style={{fontSize:48,marginBottom:10}}>✅</div>
                   <h3 className="dsp" style={{color:'var(--green)',fontSize:22,marginBottom:8}}>Checked In!</h3>
@@ -418,7 +427,7 @@ const GateView = ({ events, onLogout }) => {
                   <p style={{color:'var(--gold)',fontSize:13,marginTop:4}}>{result.event?.title}</p>
                 </div>
               )}
-              {result.found && !result.alreadyIn && !result.done && (
+              {result.found && !result.cancelled && !result.alreadyIn && !result.done && (
                 <div>
                   <div style={{textAlign:'center',marginBottom:16}}>
                     <div style={{fontSize:48,marginBottom:10}}>✅</div>
@@ -437,7 +446,7 @@ const GateView = ({ events, onLogout }) => {
               )}
             </div>
             <button className="btn" style={{width:'100%'}} onClick={next}>
-              {result.found && !result.alreadyIn && !result.done ? 'Cancel' : 'Scan Next Ticket'}
+              {result.found && !result.cancelled && !result.alreadyIn && !result.done ? 'Cancel' : 'Scan Next Ticket'}
             </button>
           </div>
         )}
@@ -1199,6 +1208,7 @@ const generatePhotoTickets = async (ev) => {
     setAdminScan(false);
     const order = orders.find(o => o.id === id);
     if (!order) { setScanMsg({ ok: false, text: 'No order found for that QR code.' }); return; }
+    if (order.status === 'cancelled') { setScanMsg({ ok: false, text: `This order has been cancelled and refunded.` }); return; }
     if (order.checkedIn) { setScanMsg({ ok: false, text: `${order.buyer.name} is already checked in.` }); return; }
     await checkin(id);
     setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
@@ -1831,7 +1841,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                 {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
               </>; })()}
 
-            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <>
+            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'); return <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:10}}>
                 <h2 className="dsp" style={{fontSize:26}}>Check-In</h2>
                 {!adminScan && <button className="btn gold" onClick={()=>{setAdminScan(true);setScanMsg(null);}}>📷 Scan Ticket</button>}
