@@ -806,6 +806,8 @@ const [resetError, setResetError] = useState('');
   const [editEmailOrder, setEditEmailOrder] = useState(null);
   const [editEmailValue, setEditEmailValue] = useState('');
   const [editEmailSaving, setEditEmailSaving] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const venue = venues[0] || DEFAULT_VENUE;
   const isGate = session?.user?.user_metadata?.role === 'gate';
@@ -852,6 +854,7 @@ const [resetError, setResetError] = useState('');
           date: o.created_at,
           status: o.status,
           checkedIn: o.status === 'checked_in',
+          stripePaymentIntentId: o.stripe_payment_intent_id || null,
         })));
       });
   }, [session]);
@@ -904,19 +907,38 @@ const logout = async () => {
   setView('home');
 };
 
-const cancelOrder = async (o) => {
-  if (!window.confirm(`Cancel order for ${o.buyer.name}? This will restore their tickets to available inventory.`)) return;
-  await supabase.from('orders').update({ status: 'cancelled' }).eq('id', o.id);
-  for (const item of o.items) {
-    if (item.ticketTypeId) await supabase.rpc('decrement_sold', { tid: item.ticketTypeId, qty: item.qty });
+const confirmCancelOrder = async () => {
+  const o = cancelTarget;
+  if (!o) return;
+  setCancelling(true);
+  try {
+    if (o.stripePaymentIntentId) {
+      const refundRes = await fetch(API_BASE + '/api/refund-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentIntentId: o.stripePaymentIntentId, orderId: o.id }),
+      });
+      const refundData = await refundRes.json();
+      if (!refundRes.ok) {
+        alert(`Refund failed: ${refundData.error || 'Unknown error'}. The order was not cancelled.`);
+        return;
+      }
+    }
+    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', o.id);
+    for (const item of o.items) {
+      if (item.ticketTypeId) await supabase.rpc('decrement_sold', { tid: item.ticketTypeId, qty: item.qty });
+    }
+    updateOrders(orders.map(ord => ord.id === o.id ? { ...ord, status: 'cancelled', checkedIn: false } : ord));
+    updateEvents(events.map(ev => ev.id !== o.eventId ? ev : ({
+      ...ev, tickets: ev.tickets.map(t => {
+        const item = o.items.find(i => i.ticketTypeId === t.id);
+        return item ? { ...t, available: t.available + item.qty } : t;
+      })
+    })));
+    setCancelTarget(null);
+  } finally {
+    setCancelling(false);
   }
-  updateOrders(orders.map(ord => ord.id === o.id ? { ...ord, status: 'cancelled', checkedIn: false } : ord));
-  updateEvents(events.map(ev => ev.id !== o.eventId ? ev : ({
-    ...ev, tickets: ev.tickets.map(t => {
-      const item = o.items.find(i => i.ticketTypeId === t.id);
-      return item ? { ...t, available: t.available + item.qty } : t;
-    })
-  })));
 };
 
 const resendEmail = async (o) => {
@@ -1453,6 +1475,7 @@ const generatePhotoTickets = async (ev) => {
               serviceFees: paymentAmounts.serviceFees,
               processingFee: paymentAmounts.processingFee,
               total: paymentAmounts.grandTotal, date: new Date().toISOString(), checkedIn: false,
+              stripePaymentIntentId: paymentIntentId,
             };
             updateOrders([...orders, localOrder]);
             updateEvents(events.map(ev => ev.id !== sel.id ? ev : {
@@ -1787,7 +1810,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                   <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
                   <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>cancelOrder(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
               </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <>
@@ -1946,6 +1969,30 @@ fetch(API_BASE+'/api/send-confirmation', {
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={!editEmailValue.trim()||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmailValue.trim())||editEmailSaving} onClick={updateOrderEmail}>{editEmailSaving?"Saving…":"Save Email"}</button>
               <button className="btn" style={{padding:"10px 20px"}} onClick={()=>{setEditEmailOrder(null);setEditEmailValue('');}}>Cancel</button>
+            </div>
+          </div>
+        </div>}
+
+        {cancelTarget && <div className="modal-bg" onClick={()=>{ if (!cancelling) setCancelTarget(null); }}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
+              <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠️</span>
+              <div>
+                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Warning — Refund &amp; Cancellation</div>
+                <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Cancelling this order will <strong style={{color:"var(--text)"}}>immediately issue a full refund</strong> to the buyer's original payment method via Stripe. Tickets will be returned to available inventory. This action cannot be undone.</div>
+              </div>
+            </div>
+            <h2 className="dsp" style={{fontSize:20,marginBottom:16}}>Cancel Order</h2>
+            <div style={{marginBottom:20,padding:"10px 14px",background:"var(--bg3)",borderRadius:"var(--rs)",fontSize:12,lineHeight:1.8}}>
+              <span style={{color:"var(--text3)"}}>Order: </span><span style={{fontFamily:"monospace",color:"var(--text)"}}>{cancelTarget.id.slice(0,12).toUpperCase()}</span><br/>
+              <span style={{color:"var(--text3)"}}>Buyer: </span><span style={{color:"var(--text)"}}>{cancelTarget.buyer.name}</span><br/>
+              <span style={{color:"var(--text3)"}}>Email: </span><span style={{color:"var(--text)"}}>{cancelTarget.buyer.email||"—"}</span><br/>
+              <span style={{color:"var(--text3)"}}>Amount to refund: </span><span style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(cancelTarget.total)}</span>
+              {!cancelTarget.stripePaymentIntentId && <><br/><span style={{color:"var(--red)"}}>No Stripe payment on file — order will be cancelled without a refund.</span></>}
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={cancelling} onClick={confirmCancelOrder}>{cancelling ? "Processing..." : "Confirm — Cancel &amp; Refund"}</button>
+              <button className="btn" style={{padding:"10px 20px"}} disabled={cancelling} onClick={()=>setCancelTarget(null)}>Go Back</button>
             </div>
           </div>
         </div>}
