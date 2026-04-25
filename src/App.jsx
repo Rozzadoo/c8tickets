@@ -936,6 +936,24 @@ const confirmCancelOrder = async () => {
       })
     })));
     setCancelTarget(null);
+
+    const ev = events.find(e => e.id === o.eventId);
+    if (o.buyer?.email) {
+      fetch(API_BASE + '/api/send-cancellation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order: o,
+          event: {
+            title: ev?.title || '',
+            date: ev ? fmtDate(ev.date) : '',
+            time: ev ? fmtTime(ev.time) : '',
+            category: ev?.category || '',
+          },
+          venue: { name: venue.name, location: venue.location },
+        }),
+      }).catch(err => console.error('Cancellation email error:', err));
+    }
   } finally {
     setCancelling(false);
   }
