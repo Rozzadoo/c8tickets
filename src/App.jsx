@@ -757,6 +757,11 @@ export default function App() {
   const [lastOrder, setLastOrder] = useState(null);
   const [aTab, setATab] = useState("dashboard");
   const [dashFilter, setDashFilter] = useState('month');
+  const [dashCustomStart, setDashCustomStart] = useState('');
+  const [dashCustomEnd, setDashCustomEnd] = useState('');
+  const [reportFilter, setReportFilter] = useState('month');
+  const [reportCustomStart, setReportCustomStart] = useState('');
+  const [reportCustomEnd, setReportCustomEnd] = useState('');
   const [filter, setFilter] = useState("All");
   const [editEvt, setEditEvt] = useState(null);
   const [modal, setModal] = useState(false);
@@ -1642,7 +1647,7 @@ fetch(API_BASE+'/api/send-confirmation', {
         {view === "gate" && <GateView events={events} onLogout={logout} />}
 
         {view === "admin" && <div className="admin fade">
-          <div className="aside">{["dashboard","events","orders","check-in","door","live"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":"📡 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
+          <div className="aside">{["dashboard","events","orders","check-in","door","live","reports"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":t==="live"?"📡 ":"📈 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t==="reports"?"Reports":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => {
               const now = new Date();
@@ -1652,6 +1657,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                 if (dashFilter==='prev_month') { const p=new Date(now.getFullYear(),now.getMonth()-1,1); return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear(); }
                 if (dashFilter==='ytd') return d.getFullYear()===now.getFullYear();
                 if (dashFilter==='last_year') return d.getFullYear()===now.getFullYear()-1;
+                if (dashFilter==='custom') { const s=dashCustomStart?new Date(dashCustomStart+'T00:00:00'):null; const e=dashCustomEnd?new Date(dashCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
                 return true;
               };
               const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&inRange(o));
@@ -1661,7 +1667,7 @@ fetch(API_BASE+'/api/send-confirmation', {
               const salesTax=Math.round(venueRev*0.06*100)/100;
               const serviceFees=tix*2;
               const processingFees=Math.max(0,Math.round((vo.reduce((s,o)=>s+o.total,0)-venueRev-salesTax-serviceFees)*100)/100);
-              const filterLabels={month:'This Month',prev_month:'Prev Month',ytd:'Year to Date',last_year:'Last Year',all:'All Time'};
+              const filterLabels={month:'This Month',prev_month:'Prev Month',ytd:'Year to Date',last_year:'Last Year',all:'All Time',custom:'Custom Range'};
               return <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                 <h2 className="dsp" style={{fontSize:26}}>Dashboard</h2>
@@ -1669,6 +1675,10 @@ fetch(API_BASE+'/api/send-confirmation', {
                   {Object.entries(filterLabels).map(([v,l])=><button key={v} className={`btn${dashFilter===v?' gold':''}`} style={{fontSize:11,padding:"5px 10px"}} onClick={()=>setDashFilter(v)}>{l}</button>)}
                 </div>
               </div>
+              {dashFilter==='custom'&&<div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>From</label><input className="fi" type="date" value={dashCustomStart} onChange={e=>setDashCustomStart(e.target.value)} style={{width:160,margin:0}} /></div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>To</label><input className="fi" type="date" value={dashCustomEnd} onChange={e=>setDashCustomEnd(e.target.value)} style={{width:160,margin:0}} /></div>
+              </div>}
               <div className="sg"><div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div>{!isVenueUser&&<><div className="sc"><div className="l">My Revenue</div><div className="v gd">{serviceFees===0?"$0":"$"+serviceFees.toFixed(2)}</div><div className="s">Service fees</div></div><div className="sc"><div className="l">Processing Fees</div><div className="v">{processingFees===0?"$0":"$"+processingFees.toFixed(2)}</div><div className="s">Remit to Stripe</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
               <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>By Event</h3>
               {(()=>{
@@ -1722,6 +1732,78 @@ fetch(API_BASE+'/api/send-confirmation', {
             {aTab === "door" && <DoorSales events={vEvents} updateOrders={updateOrders} updateEvents={updateEvents} venue={venue} />}
 
             {aTab === "live" && <LiveDash events={vEvents} orders={orders} />}
+
+            {aTab === "reports" && (() => {
+              const now = new Date();
+              const inRange = (o) => {
+                const d = new Date(o.date);
+                if (reportFilter==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+                if (reportFilter==='prev_month') { const p=new Date(now.getFullYear(),now.getMonth()-1,1); return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear(); }
+                if (reportFilter==='ytd') return d.getFullYear()===now.getFullYear();
+                if (reportFilter==='last_year') return d.getFullYear()===now.getFullYear()-1;
+                if (reportFilter==='custom') { const s=reportCustomStart?new Date(reportCustomStart+'T00:00:00'):null; const e=reportCustomEnd?new Date(reportCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
+                return true;
+              };
+              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&inRange(o));
+              const filterLabels={month:'This Month',prev_month:'Prev Month',ytd:'Year to Date',last_year:'Last Year',all:'All Time',custom:'Custom Range'};
+
+              const typeMap={};
+              for(const o of vo){for(const item of o.items){if(!typeMap[item.type])typeMap[item.type]={qty:0,rev:0};typeMap[item.type].qty+=item.qty;typeMap[item.type].rev+=item.qty*item.price;}}
+              const totalTix=Object.values(typeMap).reduce((s,t)=>s+t.qty,0);
+              const typeRows=Object.entries(typeMap).sort((a,b)=>b[1].qty-a[1].qty);
+
+              const avgOrderTotal=vo.length>0?vo.reduce((s,o)=>s+o.total,0)/vo.length:0;
+              const avgVenueRev=vo.length>0?vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/vo.length:0;
+              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;return{ev,count:eo.length,avg:eo.reduce((s,o)=>s+o.total,0)/eo.length,avgRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/eo.length,avgTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)/eo.length};}).filter(Boolean);
+
+              const buyerMap={};
+              for(const o of vo){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);}
+              const repeatBuyers=Object.values(buyerMap).filter(b=>b.orders>=2).sort((a,b)=>b.orders-a.orders);
+
+              const ciTypeMap={};
+              for(const o of vo){for(const item of o.items){if(!ciTypeMap[item.type])ciTypeMap[item.type]={sold:0,checkedIn:0};ciTypeMap[item.type].sold+=item.qty;if(o.checkedIn)ciTypeMap[item.type].checkedIn+=item.qty;}}
+              const ciTypeRows=Object.entries(ciTypeMap).sort((a,b)=>b[1].sold-a[1].sold);
+
+              return <>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+                  <h2 className="dsp" style={{fontSize:26}}>Reports</h2>
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {Object.entries(filterLabels).map(([v,l])=><button key={v} className={`btn${reportFilter===v?' gold':''}`} style={{fontSize:11,padding:"5px 10px"}} onClick={()=>setReportFilter(v)}>{l}</button>)}
+                  </div>
+                </div>
+                {reportFilter==='custom'&&<div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>From</label><input className="fi" type="date" value={reportCustomStart} onChange={e=>setReportCustomStart(e.target.value)} style={{width:160,margin:0}} /></div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>To</label><input className="fi" type="date" value={reportCustomEnd} onChange={e=>setReportCustomEnd(e.target.value)} style={{width:160,margin:0}} /></div>
+                </div>}
+
+                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Ticket Type Breakdown</h3>
+                {typeRows.length===0
+                  ?<div className="empty" style={{marginBottom:28}}><p>No ticket sales in this period.</p></div>
+                  :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Ticket Type</th><th>Qty Sold</th><th>% of Sales</th><th>Revenue</th></tr></thead><tbody>{typeRows.map(([type,d])=>{const pct=totalTix>0?Math.round(d.qty/totalTix*100):0;return<tr key={type}><td style={{fontWeight:600}}>{type}</td><td>{d.qty}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:pct+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{pct}%</span></div></td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(d.rev)}</td></tr>;})}</tbody></table></div>
+                }
+
+                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Average Order Value</h3>
+                <div className="sg" style={{marginBottom:evAvgRows.length?16:32}}>
+                  <div className="sc"><div className="l">Avg Total per Order</div><div className="v gd">{vo.length>0?"$"+avgOrderTotal.toFixed(2):"—"}</div></div>
+                  <div className="sc"><div className="l">Avg Venue Rev per Order</div><div className="v gd">{vo.length>0?"$"+avgVenueRev.toFixed(2):"—"}</div></div>
+                  <div className="sc"><div className="l">Total Orders</div><div className="v">{vo.length}</div></div>
+                </div>
+                {evAvgRows.length>0&&<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Avg Tix/Order</th><th>Avg Venue Rev</th><th>Avg Total</th></tr></thead><tbody>{evAvgRows.map(({ev,count,avg,avgRev,avgTix})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{avgTix.toFixed(1)}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(avgRev)}</td><td style={{fontWeight:700}}>{fmtCurrency(avg)}</td></tr>)}</tbody></table></div>}
+
+                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Check-In Rate by Ticket Type</h3>
+                {ciTypeRows.length===0
+                  ?<div className="empty" style={{marginBottom:28}}><p>No data for this period.</p></div>
+                  :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Ticket Type</th><th>Sold</th><th>Checked In</th><th>Rate</th></tr></thead><tbody>{ciTypeRows.map(([type,d])=>{const pct=d.sold>0?Math.round(d.checkedIn/d.sold*100):0;return<tr key={type}><td style={{fontWeight:600}}>{type}</td><td>{d.sold}</td><td>{d.checkedIn}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:pct+"%",background:"var(--green)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{pct}%</span></div></td></tr>;})}</tbody></table></div>
+                }
+
+                <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Repeat Buyers</h3>
+                <p style={{color:"var(--text3)",fontSize:12,marginBottom:12}}>Buyers with 2 or more orders in this period.</p>
+                {repeatBuyers.length===0
+                  ?<div className="empty" style={{marginBottom:28}}><p>No repeat buyers in this period.</p></div>
+                  :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td></tr>)}</tbody></table></div>
+                }
+              </>;
+            })()}
           </div>
         </div>}
 
