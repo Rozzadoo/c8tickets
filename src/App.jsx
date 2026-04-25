@@ -493,6 +493,16 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       ticket_type_name: i.type, quantity: i.qty, unit_price: i.price,
     })));
     for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
+    fetch(API_BASE+'/api/tag-order', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        paymentIntentId,
+        orderId: order.id,
+        buyerName: buyerName.trim() || 'Walk-In',
+        eventTitle: ev?.title || '',
+        ticketSummary: soldItems.map(i => `${i.qty}x ${i.type}`).join(', '),
+      }),
+    }).catch(() => {});
     const localOrder = {
       id: order.id, eventId: selEventId, venueId: venue.id,
       buyer: { name: buyerName.trim() || 'Walk-In', email: '', phone: '' },
@@ -1404,6 +1414,18 @@ const generatePhotoTickets = async (ev) => {
             setBuyer({ name: "", email: "", phone: "" });
             setCart({});
             setClientSecret(null);
+
+// Tag Stripe PaymentIntent with C8Tickets order ID
+fetch(API_BASE+'/api/tag-order', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    paymentIntentId,
+    orderId: order.id,
+    buyerName: buyer.name,
+    eventTitle: sel.title,
+    ticketSummary: items.map(i => `${i.qty}x ${i.type}`).join(', '),
+  }),
+}).catch(err => console.error('Stripe tag error:', err));
 
 // Send confirmation email
 fetch(API_BASE+'/api/send-confirmation', {

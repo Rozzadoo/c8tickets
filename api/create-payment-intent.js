@@ -58,7 +58,12 @@ export default async function handler(req, res) {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(grandTotal * 100),
       currency: 'usd',
-      metadata: { eventId, tenantId },
+      metadata: {
+        event_id: eventId,
+        tenant_id: tenantId,
+        ticket_count: String(totalTickets),
+        is_door_sale: isDoorSale ? 'true' : 'false',
+      },
     });
 
     res.status(200).json({
