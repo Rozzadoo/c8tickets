@@ -1369,7 +1369,11 @@ const generatePhotoTickets = async (ev) => {
               .select()
               .single();
 
-            if (orderError) { console.error(orderError); return; }
+            if (orderError) {
+              console.error(orderError);
+              alert(`Your payment was successful but there was a problem saving your order record. Please email support@c8tickets.com immediately and include this payment reference so we can issue your tickets manually:\n\n${paymentIntentId}`);
+              return;
+            }
 
             const { error: itemsError } = await supabase.from('order_items').insert(
               items.map(i => ({
