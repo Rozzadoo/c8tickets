@@ -786,6 +786,7 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [clientSecret, setClientSecret] = useState(null);
   const [paymentAmounts, setPaymentAmounts] = useState(null);
+  const [creatingPayment, setCreatingPayment] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
 const [resetSent, setResetSent] = useState(false);
 const [resetError, setResetError] = useState('');
@@ -1118,6 +1119,33 @@ const generatePhotoTickets = async (ev) => {
   const nameValid = buyer.name.trim().length >= 2;
   const buyerReady = nameValid && emailValid;
 
+  const createPaymentIntent = async () => {
+    setCreatingPayment(true);
+    try {
+      const items = sel.tickets.map((t, i) => ({ qty: cart[i] || 0, ticketTypeId: t.id })).filter(i => i.qty > 0);
+      const res = await fetch(API_BASE + '/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items,
+          eventId: sel.id,
+          tenantId: TENANT_ID,
+          buyer: { name: buyer.name.trim(), email: buyer.email.trim(), phone: buyer.phone.trim() },
+          eventMeta: { title: sel.title, date: fmtDate(sel.date), time: fmtTime(sel.time), doors: fmtTime(sel.doors), category: sel.category || '' },
+          venueMeta: { name: venue.name, address: venue.location },
+        }),
+      });
+      const data = await res.json();
+      if (!data.clientSecret) { alert('Payment setup failed. Please try again.'); return; }
+      setClientSecret(data.clientSecret);
+      setPaymentAmounts({ ticketTotal: data.ticketTotal, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
+    } catch {
+      alert('Payment setup failed. Please try again.');
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
   const open = (id) => { setSelId(id); setCart({}); setView("detail"); window.history.pushState({}, '', `/e/${id}`); };
   const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
 
@@ -1313,42 +1341,59 @@ const generatePhotoTickets = async (ev) => {
             <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
               <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
               </div>
-            <button className="buy" disabled={cartN===0} onClick={async () => {
-  if (cartN === 0) return;
-  const items = sel.tickets.map((t, i) => ({ qty: cart[i] || 0, ticketTypeId: t.id })).filter(i => i.qty > 0);
-  const res = await fetch(API_BASE+'/api/create-payment-intent', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items, eventId: sel.id, tenantId: TENANT_ID }),
-  });
-  const data = await res.json();
-  setClientSecret(data.clientSecret);
-  setPaymentAmounts({ ticketTotal: data.ticketTotal, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
-  setView("checkout");
-}}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
+            <button className="buy" disabled={cartN===0} onClick={() => { if (cartN === 0) return; setView("checkout"); }}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
           </div>
         </div>}
 
-        {view === "checkout" && sel && clientSecret && (
+        {view === "checkout" && sel && (
   <div className="sec fade" style={{ maxWidth: 500 }}>
-    <div className="back" onClick={() => setView("detail")}>← Tickets</div>
+    <div className="back" onClick={() => { if (clientSecret) { setClientSecret(null); setPaymentAmounts(null); } else { setView("detail"); } }}>{clientSecret ? "← Your Info" : "← Tickets"}</div>
     <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Checkout</h1>
     <p style={{ color: "var(--text2)", marginBottom: 24, fontSize: 13 }}>{sel.title} - {fmtDate(sel.date)}</p>
-    <div className="tkt-sec" style={{ marginBottom: 20 }}>
-      <h3 className="dsp">Your Info</h3>
-      <div className="fg"><label className="fl">Full Name *</label><input className="fi" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
-      <div className="fr">
-        <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
-        <div className="fg"><label className="fl">Phone</label><input className="fi" type="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
-      </div>
-    </div>
-    {buyerReady && (
+    {!clientSecret && (
+      <>
+        <div className="tkt-sec" style={{ marginBottom: 20 }}>
+          <h3 className="dsp">Your Info</h3>
+          <div className="fg"><label className="fl">Full Name *</label><input className="fi" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
+          <div className="fr">
+            <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
+            <div className="fg"><label className="fl">Phone</label><input className="fi" type="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
+          </div>
+        </div>
+        {!buyerReady && (
+          <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", marginTop: 10 }}>Enter a valid name and email above to continue.</p>
+        )}
+        {buyerReady && (() => {
+          const tax = Math.round(cartTotal * 0.06 * 100) / 100;
+          const svcFees = cartN * 2.00;
+          const subtotal = cartTotal + tax + svcFees;
+          const procFee = Math.round((subtotal * 0.035 + 0.30) * 100) / 100;
+          const grand = subtotal + procFee;
+          return (
+            <div className="tkt-sec" style={{ marginBottom: 20 }}>
+              <h3 className="dsp">Order Summary</h3>
+              <div className="cart-sum">
+                {sel.tickets.map((t, i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i] * t.price)}</span></div>)}
+                <div className="cart-ln"><span>Sales Tax (6%)</span><span>{fmtCurrency(tax)}</span></div>
+                <div className="cart-ln"><span>Service Fees</span><span>{fmtCurrency(svcFees)}</span></div>
+                <div className="cart-ln"><span>Processing Fee</span><span>{fmtCurrency(procFee)}</span></div>
+                <div className="cart-tot"><span>Total</span><span>{fmtCurrency(grand)}</span></div>
+              </div>
+              <button className="buy" style={{ marginTop: 16 }} onClick={createPaymentIntent} disabled={creatingPayment}>
+                {creatingPayment ? "Setting up payment..." : `Continue to Payment — ${fmtCurrency(grand)}`}
+              </button>
+            </div>
+          );
+        })()}
+      </>
+    )}
+    {clientSecret && (
       <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#c8922a', borderRadius: '6px' }}}}>
         <CheckoutForm
         cartTotal={paymentAmounts.ticketTotal}
         totalTickets={Object.values(cart).reduce((a,b) => a+b, 0)}
         paymentAmounts={paymentAmounts}
-        onBack={() => setView("detail")}
+        onBack={() => { setClientSecret(null); setPaymentAmounts(null); }}
         onSuccess={async (paymentIntentId) => {
             const items = sel.tickets
               .map((t, i) => ({ type: t.type, qty: cart[i] || 0, price: t.price, ticketTypeId: t.id }))
@@ -1419,19 +1464,6 @@ const generatePhotoTickets = async (ev) => {
             setCart({});
             setClientSecret(null);
 
-// Tag Stripe PaymentIntent with C8Tickets order ID
-fetch(API_BASE+'/api/tag-order', {
-  method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    paymentIntentId,
-    orderId: order.id,
-    buyerName: buyer.name,
-    eventTitle: sel.title,
-    ticketSummary: items.map(i => `${i.qty}x ${i.type}`).join(', '),
-  }),
-}).catch(err => console.error('Stripe tag error:', err));
-
-// Send confirmation email
 fetch(API_BASE+'/api/send-confirmation', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -1453,9 +1485,6 @@ fetch(API_BASE+'/api/send-confirmation', {
           }}
         />
       </Elements>
-    )}
-    {!buyerReady && (
-      <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", marginTop: 10 }}>Enter a valid name and email above to continue to payment.</p>
     )}
   </div>
 )}

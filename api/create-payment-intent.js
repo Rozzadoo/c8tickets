@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { items, eventId, tenantId, isDoorSale } = req.body;
+    const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Invalid items' });
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     }
 
     const inClause = ids.map(id => `"${id}"`).join(',');
-    const supaUrl = `${process.env.VITE_SUPABASE_URL}/rest/v1/ticket_types?id=in.(${inClause})&select=id,price,door_price`;
+    const supaUrl = `${process.env.VITE_SUPABASE_URL}/rest/v1/ticket_types?id=in.(${inClause})&select=id,name,price,door_price`;
     const supaRes = await fetch(supaUrl, {
       headers: {
         apikey: process.env.VITE_SUPABASE_ANON_KEY,
@@ -41,12 +41,14 @@ export default async function handler(req, res) {
 
     let ticketTotal = 0;
     let totalTickets = 0;
+    const resolvedItems = [];
     for (const item of items) {
       const row = priceMap[item.ticketTypeId];
       if (!row) return res.status(400).json({ error: 'Unknown ticket type' });
       const unitPrice = isDoorSale && row.door_price != null ? Number(row.door_price) : Number(row.price);
       ticketTotal += item.qty * unitPrice;
       totalTickets += item.qty;
+      resolvedItems.push({ ticketTypeId: item.ticketTypeId, type: row.name, qty: item.qty, price: unitPrice });
     }
 
     const salesTax = Math.round(ticketTotal * SALES_TAX_RATE * 100) / 100;
@@ -59,15 +61,35 @@ export default async function handler(req, res) {
       amount: Math.round(grandTotal * 100),
       currency: 'usd',
       metadata: {
-        event_id: eventId,
-        tenant_id: tenantId,
+        event_id: eventId || '',
+        tenant_id: tenantId || '',
         ticket_count: String(totalTickets),
         is_door_sale: isDoorSale ? 'true' : 'false',
+        // Buyer info — needed by webhook to create order and send email
+        buyer_name: buyer?.name || '',
+        buyer_email: buyer?.email || '',
+        buyer_phone: buyer?.phone || '',
+        // Event info — for confirmation email
+        event_title: eventMeta?.title || '',
+        event_date: eventMeta?.date || '',
+        event_time: eventMeta?.time || '',
+        event_doors: eventMeta?.doors || '',
+        event_category: eventMeta?.category || '',
+        // Venue info — for confirmation email
+        venue_name: venueMeta?.name || '',
+        venue_address: venueMeta?.address || '',
+        // Fee breakdown — for confirmation email
+        sales_tax: String(salesTax),
+        service_fees: String(serviceFees),
+        processing_fee: String(processingFee),
+        // Items — for order_items creation and email line items
+        items_json: JSON.stringify(resolvedItems),
       },
     });
 
     res.status(200).json({
       clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
       ticketTotal,
       salesTax,
       serviceFees,
