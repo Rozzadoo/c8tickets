@@ -787,6 +787,9 @@ const [resetError, setResetError] = useState('');
   const [lookupCode, setLookupCode] = useState('');
   const [lookupError, setLookupError] = useState('');
   const [generatingPhysical, setGeneratingPhysical] = useState(false);
+  const [editEmailOrder, setEditEmailOrder] = useState(null);
+  const [editEmailValue, setEditEmailValue] = useState('');
+  const [editEmailSaving, setEditEmailSaving] = useState(false);
 
   const venue = venues[0] || DEFAULT_VENUE;
   const isGate = session?.user?.user_metadata?.role === 'gate';
@@ -917,6 +920,18 @@ const resendEmail = async (o) => {
     }),
   });
   alert(res.ok ? `Confirmation resent to ${o.buyer.email}` : 'Failed to send — check the email address and try again.');
+};
+
+const updateOrderEmail = async () => {
+  if (!editEmailOrder) return;
+  const newEmail = editEmailValue.trim();
+  if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) return;
+  setEditEmailSaving(true);
+  await supabase.from('orders').update({ buyer_email: newEmail }).eq('id', editEmailOrder.id);
+  updateOrders(orders.map(o => o.id === editEmailOrder.id ? { ...o, buyer: { ...o.buyer, email: newEmail } } : o));
+  setEditEmailSaving(false);
+  setEditEmailOrder(null);
+  setEditEmailValue('');
 };
 
 const sendLookupCode = async () => {
@@ -1712,7 +1727,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                   <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
                   <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4}}>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>cancelOrder(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>cancelOrder(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
               </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id); return <>
@@ -1848,6 +1863,33 @@ fetch(API_BASE+'/api/send-confirmation', {
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
           <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date||isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
+
+        {editEmailOrder && <div className="modal-bg" onClick={()=>{setEditEmailOrder(null);setEditEmailValue('');}}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
+              <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠️</span>
+              <div>
+                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Warning — Email Change</div>
+                <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>You are changing the buyer's email address on this order. The buyer will only receive future emails (resends) at the new address. This action does not automatically resend the confirmation.</div>
+              </div>
+            </div>
+            <h2 className="dsp" style={{fontSize:20,marginBottom:16}}>Edit Order Email</h2>
+            <div style={{marginBottom:16,padding:"10px 14px",background:"var(--bg3)",borderRadius:"var(--rs)",fontSize:12,lineHeight:1.8}}>
+              <span style={{color:"var(--text3)"}}>Order: </span><span style={{fontFamily:"monospace",color:"var(--text)"}}>{editEmailOrder.id.slice(0,12).toUpperCase()}</span><br/>
+              <span style={{color:"var(--text3)"}}>Buyer: </span><span style={{color:"var(--text)"}}>{editEmailOrder.buyer.name}</span><br/>
+              <span style={{color:"var(--text3)"}}>Current email: </span><span style={{color:"var(--gold)",fontWeight:600}}>{editEmailOrder.buyer.email||"(none)"}</span>
+            </div>
+            <div className="fg">
+              <label className="fl">New Email Address</label>
+              <input className="fi" type="email" value={editEmailValue} onChange={e=>setEditEmailValue(e.target.value)} onKeyDown={e=>e.key==='Enter'&&updateOrderEmail()} placeholder="corrected@email.com" autoFocus />
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:20}}>
+              <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={!editEmailValue.trim()||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmailValue.trim())||editEmailSaving} onClick={updateOrderEmail}>{editEmailSaving?"Saving…":"Save Email"}</button>
+              <button className="btn" style={{padding:"10px 20px"}} onClick={()=>{setEditEmailOrder(null);setEditEmailValue('');}}>Cancel</button>
+            </div>
+          </div>
+        </div>}
+
       <footer className="footer">
           <div className="footer-links">
             <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
