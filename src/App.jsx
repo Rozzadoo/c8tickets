@@ -1978,7 +1978,7 @@ fetch(API_BASE+'/api/send-confirmation', {
             <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠️</span>
               <div>
-                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Warning — Refund &amp; Cancellation</div>
+                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Warning — Refund & Cancellation</div>
                 <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Cancelling this order will <strong style={{color:"var(--text)"}}>immediately issue a full refund</strong> to the buyer's original payment method via Stripe. Tickets will be returned to available inventory. This action cannot be undone.</div>
               </div>
             </div>
@@ -1991,7 +1991,7 @@ fetch(API_BASE+'/api/send-confirmation', {
               {!cancelTarget.stripePaymentIntentId && <><br/><span style={{color:"var(--red)"}}>No Stripe payment on file — order will be cancelled without a refund.</span></>}
             </div>
             <div style={{display:"flex",gap:10,marginTop:4}}>
-              <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={cancelling} onClick={confirmCancelOrder}>{cancelling ? "Processing..." : "Confirm — Cancel &amp; Refund"}</button>
+              <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={cancelling} onClick={confirmCancelOrder}>{cancelling ? "Processing..." : "Confirm — Cancel & Refund"}</button>
               <button className="btn" style={{padding:"10px 20px"}} disabled={cancelling} onClick={()=>setCancelTarget(null)}>Go Back</button>
             </div>
           </div>
