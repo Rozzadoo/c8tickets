@@ -756,6 +756,7 @@ export default function App() {
   const [buyer, setBuyer] = useState({ name: "", email: "", phone: "" });
   const [lastOrder, setLastOrder] = useState(null);
   const [aTab, setATab] = useState("dashboard");
+  const [dashFilter, setDashFilter] = useState('month');
   const [filter, setFilter] = useState("All");
   const [editEvt, setEditEvt] = useState(null);
   const [modal, setModal] = useState(false);
@@ -1643,9 +1644,32 @@ fetch(API_BASE+'/api/send-confirmation', {
         {view === "admin" && <div className="admin fade">
           <div className="aside">{["dashboard","events","orders","check-in","door","live"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":"📡 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
-            {aTab === "dashboard" && (() => { const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'),tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0),ci=vo.filter(o=>o.checkedIn).length,venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),salesTax=Math.round(venueRev*0.06*100)/100,myRev=Math.max(0,vo.reduce((s,o)=>s+o.total,0)-venueRev-salesTax); return <>
-              <h2 className="dsp" style={{fontSize:26,marginBottom:20}}>Dashboard</h2>
-              <div className="sg"><div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div>{!isVenueUser&&<><div className="sc"><div className="l">Your Revenue</div><div className="v gd">{myRev===0?"$0":"$"+myRev.toFixed(2)}</div><div className="s">C8Tickets fees</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
+            {aTab === "dashboard" && (() => {
+              const now = new Date();
+              const inRange = (o) => {
+                const d = new Date(o.date);
+                if (dashFilter==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+                if (dashFilter==='prev_month') { const p=new Date(now.getFullYear(),now.getMonth()-1,1); return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear(); }
+                if (dashFilter==='ytd') return d.getFullYear()===now.getFullYear();
+                if (dashFilter==='last_year') return d.getFullYear()===now.getFullYear()-1;
+                return true;
+              };
+              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&inRange(o));
+              const tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
+              const ci=vo.filter(o=>o.checkedIn).length;
+              const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
+              const salesTax=Math.round(venueRev*0.06*100)/100;
+              const serviceFees=tix*2;
+              const processingFees=Math.max(0,Math.round((vo.reduce((s,o)=>s+o.total,0)-venueRev-salesTax-serviceFees)*100)/100);
+              const filterLabels={month:'This Month',prev_month:'Prev Month',ytd:'Year to Date',last_year:'Last Year',all:'All Time'};
+              return <>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+                <h2 className="dsp" style={{fontSize:26}}>Dashboard</h2>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {Object.entries(filterLabels).map(([v,l])=><button key={v} className={`btn${dashFilter===v?' gold':''}`} style={{fontSize:11,padding:"5px 10px"}} onClick={()=>setDashFilter(v)}>{l}</button>)}
+                </div>
+              </div>
+              <div className="sg"><div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div>{!isVenueUser&&<><div className="sc"><div className="l">My Revenue</div><div className="v gd">{serviceFees===0?"$0":"$"+serviceFees.toFixed(2)}</div><div className="s">Service fees</div></div><div className="sc"><div className="l">Processing Fees</div><div className="v">{processingFees===0?"$0":"$"+processingFees.toFixed(2)}</div><div className="s">Remit to Stripe</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
               <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>Recent Orders</h3>
               {vo.length===0?<div className="empty"><div className="ic">📭</div><p>No orders yet.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Buyer</th><th>Event</th><th>Total</th><th>Status</th></tr></thead><tbody>{vo.slice(-10).reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td></tr>})}</tbody></table></div>}
             </>; })()}
