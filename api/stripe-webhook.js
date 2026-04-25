@@ -4,19 +4,43 @@ import { Resend } from 'resend';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Must be disabled so we can read the raw body for signature verification
+export const config = { api: { bodyParser: false } };
+
 function escHtml(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function getRawBody(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { id: eventId } = req.body || {};
-    if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+    const rawBody = await getRawBody(req);
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-    // Retrieve event directly from Stripe to verify it is authentic
-    const event = await stripe.events.retrieve(eventId);
+    let event;
+    if (webhookSecret && sig) {
+      try {
+        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+      } catch (err) {
+        console.error('Webhook signature verification failed:', err.message);
+        return res.status(400).json({ error: `Signature verification failed: ${err.message}` });
+      }
+    } else {
+      // No secret configured — fall back to retrieving the event from Stripe directly
+      const { id: eventId } = JSON.parse(rawBody.toString('utf8')) || {};
+      if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+      event = await stripe.events.retrieve(eventId);
+    }
 
     if (event.type !== 'payment_intent.succeeded') {
       return res.status(200).json({ received: true });
