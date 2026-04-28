@@ -1394,6 +1394,7 @@ const generatePhotoTickets = async (ev) => {
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={goHome}>Events</button>
             <button className={`btn ${view === "about" ? "on" : ""}`} onClick={() => setView("about")}>About</button>
+            <button className={`btn ${view === "lookup" || view === "mytickets" ? "on" : ""}`} onClick={() => { setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>My Tickets</button>
             {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
             <button className="btn" onClick={() => session ? logout() : setView("login")}>{session ? "Logout" : "Login"}</button>
           </div>
@@ -1734,6 +1735,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                   <div style={{color:"var(--gold)",fontWeight:700,fontSize:12,marginBottom:12,textTransform:"uppercase",letterSpacing:1}}>{ev?fmtDate(ev.date):""}</div>
                   <div style={{marginBottom:12}}>{(o.order_items||[]).map((i,idx)=><div key={idx} style={{fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</div>)}</div>
                   <span className={`badge ${o.status==="checked_in"?"badge-done":"badge-ok"}`} style={{marginBottom:12,display:"inline-block"}}>{o.status==="checked_in"?"Checked In":"Valid"}</span>
+                  <button className="buy" style={{width:"100%",marginBottom:12}} onClick={() => { setTicketOrderId(o.id); setView("mytickets"); window.history.pushState({}, '', `/t/${o.id}`); }}>View Individual Tickets</button>
                   <div className="qr"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(o.id)}`} alt="QR Code" width={150} height={150} style={{display:"block"}} /></div>
                   <div className="cid">ID: {o.id.toUpperCase()}</div>
                 </div>;
