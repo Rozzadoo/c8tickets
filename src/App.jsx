@@ -150,6 +150,12 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
       <button className="buy" onClick={handleSubmit} disabled={!stripe || processing || !agreed}>
         {processing ? "Processing..." : `Pay ${fmtCurrency(grandTotal)}`}
       </button>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,marginBottom:4}}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7a6c54" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span style={{fontSize:11,color:"var(--text3)"}}>Secured by</span>
+        <svg width="34" height="14" viewBox="0 0 60 25" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.4 9.8c0-1.4 1.2-2 3-2 2.7 0 6.2.8 8.9 2.3V4.3C12.6 3 9.9 2.4 7.2 2.4 3.2 2.4.4 4.5.4 10c0 8.5 11.7 7.1 11.7 10.7 0 1.7-1.4 2.2-3.4 2.2-2.9 0-6.6-1.2-9.5-2.8v5.9c3.2 1.4 6.5 2 9.5 2 7.3 0 9.8-3.6 9.8-7.4-.1-9.2-11.1-7.5-11.1-10.8zM28 6.9l-3.8.8V2.9l-5.7 1.2v18.8H24V10c1.3-.4 3.4-.3 4.6.2V5.4c-1.3-.4-3.6-.3-4.6.2l4-.7zM33.5 4l5.7-1.2v18.7h-5.7V4zm0-3.8c0-1.7 1.3-2.7 3-2.1 1.6.4 2.7 2 2.7 3.7s-1.3 2.7-2.8 2.3c-1.7-.4-2.9-2.1-2.9-3.9zM48.3 7.6l-.4-1.7h-5v16h5.7V12c1.3-1.7 3.6-1.4 4.3-1.2V5.8c-.8-.2-3.3-.6-4.6 1.8zm10.4-3.4c-2 0-3.3.9-4 1.6l-.3-1.3H49v21.2l5.7-1.2V23c.7.5 1.8 1.1 3.6 1.1 3.6 0 6.9-2.9 6.9-9.3-.1-5.8-3.4-10.6-6.5-10.6zm-1.1 15c-1.2 0-1.9-.4-2.4-1V11.5c.5-.6 1.2-1 2.4-1 1.8 0 3.1 2 3.1 4.5s-1.3 4.2-3.1 4.2z" fill="#7a6c54"/></svg>
+        <span style={{fontSize:11,color:"var(--text3)"}}>· Encrypted & secure</span>
+      </div>
       <button className="btn" style={{ width: "100%", marginTop: 8 }} onClick={onBack}>← Back</button>
     </div>
   );
@@ -2245,6 +2251,24 @@ fetch(API_BASE+'/api/send-confirmation', {
             <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
             <a href="mailto:support@c8tickets.com">Contact Support</a>
+          </div>
+          <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:20,flexWrap:"wrap",marginBottom:14,paddingBottom:14,borderBottom:"1px solid var(--border)"}}>
+            <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text3)"}}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Payments secured by Stripe
+            </span>
+            <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text3)"}}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Tickets delivered by email instantly
+            </span>
+            <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text3)"}}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Crooked 8 · Kuna, Idaho
+            </span>
+            <a href="mailto:support@c8tickets.com" style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text3)",textDecoration:"none"}}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13.6 19.79 19.79 0 0 1 1.63 5 2 2 0 0 1 3.62 3h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 10.8a16 16 0 0 0 6.29 6.29l1.16-1.86a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              support@c8tickets.com
+            </a>
           </div>
           <div className="footer-copy">Copyright 2026 C8Tickets - Kuna, Idaho - All rights reserved</div>
           <div style={{marginTop:12}}><a href="#" style={{fontSize:11,color:"var(--text3)"}} onClick={e => { e.preventDefault(); setView("login"); }}>Staff Login</a></div>
