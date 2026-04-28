@@ -206,6 +206,18 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .card-price{font-weight:700;font-size:17px}
 .card-price small{font-weight:400;font-size:11px;color:var(--text3)}
 
+.feat{border-radius:var(--r);overflow:hidden;cursor:pointer;margin-bottom:28px;border:1px solid rgba(200,146,42,.2);transition:border-color .3s,box-shadow .3s}
+.feat:hover{box-shadow:0 16px 48px rgba(200,146,42,.18);border-color:rgba(200,146,42,.4)}
+.feat-bg{height:320px;background:linear-gradient(135deg,var(--bg3),var(--bg4));background-size:cover;background-position:center;position:relative;display:flex;align-items:flex-end}
+.feat-grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,10,7,1) 0%,rgba(12,10,7,.75) 45%,rgba(12,10,7,.1) 100%)}
+.feat-body{position:relative;z-index:1;padding:24px 28px;width:100%}
+.feat-eyebrow{font-size:9px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:3px;margin-bottom:8px}
+.feat-title{font-family:'Barlow Condensed',sans-serif;font-size:clamp(26px,5vw,42px);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text);line-height:1.1;margin-bottom:6px}
+.feat-date{font-size:12px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px}
+.feat-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.feat-price{font-size:18px;font-weight:700;color:var(--text)}
+@media(max-width:600px){.feat-bg{height:240px}.feat-body{padding:18px 20px}}
+
 .back{display:inline-flex;align-items:center;gap:5px;color:var(--text2);cursor:pointer;font-size:13px;margin-bottom:20px;padding:6px 0;transition:color .2s;text-transform:uppercase;letter-spacing:1px;font-weight:600}
 .back:hover{color:var(--gold)}
 .d-hero{display:flex;align-items:center;justify-content:center;font-size:72px;height:180px;background:linear-gradient(135deg,var(--bg3),var(--bg4));border-radius:var(--r);margin-bottom:24px;border:1px solid var(--border)}
@@ -1417,25 +1429,58 @@ const generatePhotoTickets = async (ev) => {
             <div className="hero-sub"><span>Questions? <a href="mailto:support@c8tickets.com" style={{color:"var(--text2)"}}>support@c8tickets.com</a></span></div>
           </div>
           <div className="sec">
-            <div className="sec-hdr"><div className="sec-title dsp">Upcoming Events</div>
-              <div className="filters">{CATS.map(c => <button key={c} className={`chip ${filter === c ? "on" : ""}`} onClick={() => setFilter(c)}>{c}</button>)}</div>
-            </div>
-            {filtered.length === 0 ? <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div> :
-              <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); const onlineAvail = (t) => Math.max(0, t.available - (t.physicalQty ?? 0)); const soldOut = ev.tickets.every(t => onlineAvail(t) <= 0); const totalOnlineAvail = ev.tickets.reduce((s,t)=>s+onlineAvail(t),0); const totalCap = ev.tickets.reduce((s,t)=>s+(t.total??t.available),0); const lowTickets = !soldOut && totalCap > 0 && totalOnlineAvail/totalCap <= 0.25; return (
-                <div key={ev.id} className="card" onClick={() => open(ev.id)} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
-                  <div className="card-img" style={{backgroundImage: ev.image && ev.image.startsWith('http') ? `url(${ev.image})` : 'none', backgroundSize:'cover', backgroundPosition:`${ev.focalX ?? 50}% ${ev.focalY ?? 50}%`}}>
-                    {(!ev.image || !ev.image.startsWith('http')) && <span style={{fontSize:48}}>🎵</span>}
-                    <div className="card-cat">{ev.category}</div>
-                    {soldOut && <div style={{position:'absolute',inset:0,background:'rgba(12,10,7,.6)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(1px)'}}><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:22,letterSpacing:5,textTransform:'uppercase',color:'#f0e9da',border:'2px solid rgba(240,233,218,.6)',padding:'6px 20px',borderRadius:4}}>Sold Out</span></div>}
-                    {lowTickets && <div style={{position:'absolute',bottom:10,left:10,background:'rgba(179,58,42,.92)',backdropFilter:'blur(4px)',padding:'3px 10px',borderRadius:99,fontSize:9,fontWeight:700,color:'#f0e9da',textTransform:'uppercase',letterSpacing:1.5,border:'1px solid rgba(240,120,100,.3)'}}>Selling Fast</div>}
-                  </div>
-                  <div className="card-body">
-                    <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
-                    <div className="card-title dsp">{ev.title}</div>
-                    <div className="card-desc">{ev.description}</div>
-                    <div className="card-foot"><div className="card-price">{soldOut ? <span style={{color:'var(--text3)',fontWeight:600,fontSize:14,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span> : <>{fmtCurrency(mp)}{mp > 0 && <small> & up</small>}</>}</div>{soldOut ? null : <button className="btn gold" onClick={e => { e.stopPropagation(); open(ev.id); }}>Tickets</button>}</div>
-                  </div>
-                </div>); })}</div>}
+            {(() => {
+              const oa = (t) => Math.max(0, t.available - (t.physicalQty ?? 0));
+              const sorted = [...publicEvents].sort((a,b) => new Date(a.date)-new Date(b.date));
+              const featuredEv = filter === 'All' ? (sorted.find(ev=>ev.tickets.some(t=>oa(t)>0)) ?? sorted[0] ?? null) : null;
+              const gridEvents = featuredEv ? filtered.filter(ev=>ev.id!==featuredEv.id) : filtered;
+              return <>
+                {featuredEv && (()=>{
+                  const fSoldOut=featuredEv.tickets.every(t=>oa(t)<=0);
+                  const fMp=Math.min(...featuredEv.tickets.map(t=>t.price));
+                  const fAvail=featuredEv.tickets.reduce((s,t)=>s+oa(t),0);
+                  const fCap=featuredEv.tickets.reduce((s,t)=>s+(t.total??t.available),0);
+                  const fLow=!fSoldOut&&fCap>0&&fAvail/fCap<=0.25;
+                  return (
+                    <div className="feat" onClick={()=>open(featuredEv.id)}>
+                      <div className="feat-bg" style={{backgroundImage:featuredEv.image&&featuredEv.image.startsWith('http')?`url(${featuredEv.image})`:'none',backgroundPosition:`${featuredEv.focalX??50}% ${featuredEv.focalY??50}%`}}>
+                        {(!featuredEv.image||!featuredEv.image.startsWith('http'))&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:80,opacity:.1}}>🎵</div>}
+                        <div className="feat-grad"/>
+                        <div className="feat-body">
+                          <div className="feat-eyebrow">Up Next</div>
+                          <div className="feat-title">{featuredEv.title}</div>
+                          <div className="feat-date">{fmtDate(featuredEv.date)} · {fmtTime(featuredEv.time)}{featuredEv.doors?` · Doors ${featuredEv.doors}`:''}</div>
+                          <div className="feat-foot">
+                            <div className="feat-price">{fSoldOut?<span style={{color:'var(--text3)',fontSize:14,fontWeight:600,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span>:<>{fmtCurrency(fMp)}{fMp>0&&<small style={{fontSize:12,fontWeight:400,color:'var(--text2)'}}> & up</small>}</>}</div>
+                            {fSoldOut?<span className="badge badge-sold">Sold Out</span>:<button className="btn gold" style={{padding:'10px 28px',fontSize:14}} onClick={e=>{e.stopPropagation();open(featuredEv.id);}}>{fLow?'Get Tickets — Selling Fast':'Get Tickets'}</button>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <div style={{marginBottom:20}}>
+                  <div className="sec-title dsp" style={{marginBottom:12}}>Upcoming Events</div>
+                  <div className="filters">{CATS.map(c=><button key={c} className={`chip ${filter===c?"on":""}`} onClick={()=>setFilter(c)}>{c}</button>)}</div>
+                </div>
+                {gridEvents.length===0?<div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>:
+                  <div className="grid">{gridEvents.map(ev=>{const mp=Math.min(...ev.tickets.map(t=>t.price));const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
+                    <div key={ev.id} className="card" onClick={()=>open(ev.id)} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
+                      <div className="card-img" style={{backgroundImage:ev.image&&ev.image.startsWith('http')?`url(${ev.image})`:'none',backgroundSize:'cover',backgroundPosition:`${ev.focalX??50}% ${ev.focalY??50}%`}}>
+                        {(!ev.image||!ev.image.startsWith('http'))&&<span style={{fontSize:48}}>🎵</span>}
+                        <div className="card-cat">{ev.category}</div>
+                        {soldOut&&<div style={{position:'absolute',inset:0,background:'rgba(12,10,7,.6)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(1px)'}}><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:22,letterSpacing:5,textTransform:'uppercase',color:'#f0e9da',border:'2px solid rgba(240,233,218,.6)',padding:'6px 20px',borderRadius:4}}>Sold Out</span></div>}
+                        {lowTickets&&<div style={{position:'absolute',bottom:10,left:10,background:'rgba(179,58,42,.92)',backdropFilter:'blur(4px)',padding:'3px 10px',borderRadius:99,fontSize:9,fontWeight:700,color:'#f0e9da',textTransform:'uppercase',letterSpacing:1.5,border:'1px solid rgba(240,120,100,.3)'}}>Selling Fast</div>}
+                      </div>
+                      <div className="card-body">
+                        <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
+                        <div className="card-title dsp">{ev.title}</div>
+                        <div className="card-desc">{ev.description}</div>
+                        <div className="card-foot"><div className="card-price">{soldOut?<span style={{color:'var(--text3)',fontWeight:600,fontSize:14,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span>:<>{fmtCurrency(mp)}{mp>0&&<small> & up</small>}</>}</div>{soldOut?null:<button className="btn gold" onClick={e=>{e.stopPropagation();open(ev.id);}}>Tickets</button>}</div>
+                      </div>
+                    </div>);})}</div>}
+              </>;
+            })()}
           </div>
         </div>}
 
