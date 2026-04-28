@@ -2066,9 +2066,9 @@ fetch(API_BASE+'/api/send-confirmation', {
               const totalTix=Object.values(typeMap).reduce((s,t)=>s+t.qty,0);
               const typeRows=Object.entries(typeMap).sort((a,b)=>b[1].qty-a[1].qty);
 
+              const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
               const avgOrderTotal=vo.length>0?vo.reduce((s,o)=>s+o.total,0)/vo.length:0;
-              const avgVenueRev=vo.length>0?vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/vo.length:0;
-              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;return{ev,count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)};}).filter(Boolean);
+              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;const capacity=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const evTotalSold=ev.tickets.reduce((s,t)=>s+(t.sold??0),0);const sellThru=capacity>0?Math.round(evTotalSold/capacity*100):0;return{ev,count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru};}).filter(Boolean);
 
               const buyerMap={};
               for(const o of vo){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);}
@@ -2090,19 +2090,26 @@ fetch(API_BASE+'/api/send-confirmation', {
                   <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>To</label><input className="fi" type="date" value={reportCustomEnd} onChange={e=>setReportCustomEnd(e.target.value)} style={{width:160,margin:0}} /></div>
                 </div>}
 
+                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Performance Snapshot</h3>
+                <div className="sg" style={{marginBottom:32}}>
+                  <div className="sc"><div className="l">Total Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Period total</div></div>
+                  <div className="sc"><div className="l">Total Tickets Sold</div><div className="v">{totalTix}</div><div className="s">Period total</div></div>
+                  <div className="sc"><div className="l">Total Orders</div><div className="v">{vo.length}</div></div>
+                  <div className="sc"><div className="l">Avg Order Value</div><div className="v gd">{vo.length>0?"$"+avgOrderTotal.toFixed(2):"—"}</div></div>
+                </div>
+
                 <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Ticket Type Breakdown</h3>
                 {typeRows.length===0
                   ?<div className="empty" style={{marginBottom:28}}><p>No ticket sales in this period.</p></div>
                   :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Ticket Type</th><th>Qty Sold</th><th>% of Sales</th><th>Revenue</th></tr></thead><tbody>{typeRows.map(([type,d])=>{const pct=totalTix>0?Math.round(d.qty/totalTix*100):0;return<tr key={type}><td style={{fontWeight:600}}>{type}</td><td>{d.qty}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:pct+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{pct}%</span></div></td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(d.rev)}</td></tr>;})}</tbody></table></div>
                 }
 
-                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Average Order Value</h3>
-                <div className="sg" style={{marginBottom:evAvgRows.length?16:32}}>
-                  <div className="sc"><div className="l">Avg Total per Order</div><div className="v gd">{vo.length>0?"$"+avgOrderTotal.toFixed(2):"—"}</div></div>
-                  <div className="sc"><div className="l">Avg Venue Rev per Order</div><div className="v gd">{vo.length>0?"$"+avgVenueRev.toFixed(2):"—"}</div></div>
-                  <div className="sc"><div className="l">Total Orders</div><div className="v">{vo.length}</div></div>
-                </div>
-                {evAvgRows.length>0&&<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Total Tickets Sold</th><th>Total Venue Revenue</th></tr></thead><tbody>{evAvgRows.map(({ev,count,totalTix,totalRev})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{totalTix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(totalRev)}</td></tr>)}</tbody></table></div>}
+                <h3 className="dsp" style={{fontSize:18,marginBottom:4}}>Event Performance</h3>
+                <p style={{color:"var(--text3)",fontSize:12,marginBottom:12}}>Orders, tickets, and revenue are for the selected period. Capacity and sell-through reflect all-time totals for each event.</p>
+                {evAvgRows.length===0
+                  ?<div className="empty" style={{marginBottom:28}}><p>No event data for this period.</p></div>
+                  :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Total Tickets Sold</th><th>Total Venue Revenue</th><th>Capacity</th><th>Sell-Through</th></tr></thead><tbody>{evAvgRows.map(({ev,count,totalTix,totalRev,capacity,evTotalSold,sellThru})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{totalTix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(totalRev)}</td><td style={{color:"var(--text2)"}}>{capacity||"—"}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:60}}><div style={{height:"100%",width:sellThru+"%",background:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right",color:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",fontWeight:700}}>{capacity?sellThru+"%":"—"}</span></div></td></tr>)}</tbody></table></div>
+                }
 
                 <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Check-In Rate by Ticket Type</h3>
                 {ciTypeRows.length===0
