@@ -95,6 +95,21 @@ export default async function handler(req, res) {
       }
     }
 
+    // Generate individual tickets
+    if (items.length > 0) {
+      const ticketRows = [];
+      let num = 1;
+      for (const item of items) {
+        for (let i = 0; i < item.qty; i++) {
+          ticketRows.push({ order_id: order.id, ticket_type_name: item.type, ticket_number: num++, event_id: m.event_id, tenant_id: m.tenant_id, status: 'valid' });
+        }
+      }
+      await fetch(`${supaUrl}/rest/v1/tickets`, {
+        method: 'POST', headers,
+        body: JSON.stringify(ticketRows),
+      });
+    }
+
     // Tag the PI with the order ID
     await stripe.paymentIntents.update(pi.id, {
       description: `C8Tickets — ${m.event_title || 'Event'} — Order ${order.id.slice(0, 8).toUpperCase()}`,
@@ -151,7 +166,7 @@ export default async function handler(req, res) {
       <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(order.id)}" alt="QR Code" width="180" height="180" style="display:block" />
     </div>
     <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
-    <div style="font-size:12px;color:#b5a78a;line-height:1.7">📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>You can also access your ticket at <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a></div>
+    <div style="font-size:12px;color:#b5a78a;line-height:1.7">📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>Buying for a group? View and share individual tickets at:<br><a href="https://www.c8tickets.com/t/${encodeURIComponent(order.id)}" style="color:#c8922a;font-weight:700">c8tickets.com/t/${order.id.slice(0,8).toLowerCase()}…</a></div>
   </div>
   <div style="background:#161310;border:1px solid rgba(200,146,42,.08);border-radius:10px;padding:14px 18px;margin-bottom:20px;text-align:center">
     <div style="font-size:11px;color:#7a6c54;line-height:1.8"><strong style="color:#b5a78a">Refund Policy:</strong> All ticket sales are final and non-refundable unless the event is cancelled by the organizer. Questions? <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a></div>

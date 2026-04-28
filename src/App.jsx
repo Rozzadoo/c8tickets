@@ -321,6 +321,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 #gate-scanner,#admin-scanner{width:100%!important;border-radius:var(--r);overflow:hidden}
 #gate-scanner video,#admin-scanner video{width:100%!important;border-radius:var(--r)}
 #gate-scanner img,#admin-scanner img{display:none}
+@media print{nav.nav,footer.footer,.back,button{display:none!important}body{background:#fff!important}.tkt-disp{border:1px solid #ddd;break-inside:avoid;margin-bottom:16px}.sec{padding:0!important}#ticket-print-area .tkt-disp{background:#fff;color:#000}}
 `;
 
 // ── QR Scanner ──
@@ -349,9 +350,24 @@ const GateView = ({ events, onLogout }) => {
   const handleScan = async (id) => {
     setScanning(false);
     setResult('loading');
-    const { data: order, error } = await supabase
-      .from('orders').select('*, order_items(*)')
-      .eq('id', id).single();
+
+    // Try individual ticket lookup first
+    const { data: ticket } = await supabase
+      .from('tickets').select('*').eq('id', id).single();
+
+    if (ticket) {
+      const { data: order } = await supabase.from('orders').select('*, order_items(*)').eq('id', ticket.order_id).single();
+      const ev = events.find(e => e.id === ticket.event_id);
+      if (ticket.status === 'cancelled' || order?.status === 'cancelled') {
+        setResult({ found: true, cancelled: true, ticket, order }); return;
+      }
+      const { count } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('order_id', ticket.order_id);
+      setResult({ found: true, ticket, order, event: ev, alreadyIn: ticket.status === 'checked_in', done: false, ticketTotal: count });
+      return;
+    }
+
+    // Backward compat: fall back to order-level lookup
+    const { data: order, error } = await supabase.from('orders').select('*, order_items(*)').eq('id', id).single();
     if (error || !order) { setResult({ found: false }); return; }
     if (order.status === 'cancelled') { setResult({ found: true, cancelled: true, order }); return; }
     const ev = events.find(e => e.id === order.event_id);
@@ -359,7 +375,11 @@ const GateView = ({ events, onLogout }) => {
   };
 
   const doCheckin = async () => {
-    await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
+    if (result.ticket) {
+      await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: new Date().toISOString() }).eq('id', result.ticket.id);
+    } else {
+      await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
+    }
     setResult({ ...result, alreadyIn: false, done: true });
   };
 
@@ -432,14 +452,18 @@ const GateView = ({ events, onLogout }) => {
                   <div style={{textAlign:'center',marginBottom:16}}>
                     <div style={{fontSize:48,marginBottom:10}}>✅</div>
                     <h3 className="dsp" style={{color:'var(--green)',fontSize:22,marginBottom:4}}>Valid Ticket</h3>
+                    {result.ticket && <p style={{color:'var(--gold)',fontWeight:700,fontSize:13}}>Ticket {result.ticket.ticket_number}{result.ticketTotal ? ` of ${result.ticketTotal}` : ''}</p>}
                   </div>
-                  <p style={{fontWeight:700,fontSize:17,marginBottom:2}}>{result.order.buyer_name}</p>
-                  <p style={{color:'var(--text2)',fontSize:13,marginBottom:4}}>{result.order.buyer_email}</p>
+                  <p style={{fontWeight:700,fontSize:17,marginBottom:2}}>{result.order?.buyer_name}</p>
+                  <p style={{color:'var(--text2)',fontSize:13,marginBottom:4}}>{result.order?.buyer_email}</p>
                   <p style={{color:'var(--gold)',fontWeight:700,fontSize:14,marginBottom:14}}>{result.event?.title || 'Event'}</p>
                   <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'10px 14px',marginBottom:16}}>
-                    {(result.order.order_items || []).map((item, i) => (
-                      <div key={i} style={{fontSize:13,color:'var(--text2)',padding:'2px 0'}}>{item.quantity}× {item.ticket_type_name}</div>
-                    ))}
+                    {result.ticket
+                      ? <div style={{fontSize:13,color:'var(--text2)'}}>{result.ticket.ticket_type_name}</div>
+                      : (result.order?.order_items || []).map((item, i) => (
+                          <div key={i} style={{fontSize:13,color:'var(--text2)',padding:'2px 0'}}>{item.quantity}× {item.ticket_type_name}</div>
+                        ))
+                    }
                   </div>
                   <button className="buy" onClick={doCheckin}>✓ Check In</button>
                 </div>
@@ -817,6 +841,11 @@ const [resetError, setResetError] = useState('');
   const [editEmailSaving, setEditEmailSaving] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [ticketOrderId, setTicketOrderId] = useState(null);
+  const [ticketPageData, setTicketPageData] = useState(null);
+  const [ticketPageLoading, setTicketPageLoading] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState(new Set());
+  const [expandedTickets, setExpandedTickets] = useState({});
 
   const venue = venues[0] || DEFAULT_VENUE;
   const isGate = session?.user?.user_metadata?.role === 'gate';
@@ -873,7 +902,36 @@ const [resetError, setResetError] = useState('');
     const pathMatch = window.location.pathname.match(/^\/e\/([0-9a-f-]{36})$/i);
     const eventId = pathMatch ? pathMatch[1] : new URLSearchParams(window.location.search).get('event');
     if (eventId) { setSelId(eventId); setCart({}); setView('detail'); }
+    const ticketMatch = window.location.pathname.match(/^\/t\/([0-9a-f-]{36})$/i);
+    if (ticketMatch) { setTicketOrderId(ticketMatch[1]); setView('mytickets'); }
   }, [loaded]);
+
+  useEffect(() => {
+    if (view !== 'mytickets' || !ticketOrderId) return;
+    setTicketPageLoading(true);
+    setTicketPageData(null);
+    (async () => {
+      const { data: order } = await supabase.from('orders').select('*, order_items(*)').eq('id', ticketOrderId).single();
+      if (!order) { setTicketPageLoading(false); return; }
+      let { data: tickets } = await supabase.from('tickets').select('*').eq('order_id', ticketOrderId).order('ticket_number');
+      // Lazy generation for existing orders that have no tickets yet
+      if ((!tickets || tickets.length === 0) && order.status !== 'cancelled') {
+        const rows = [];
+        let num = 1;
+        for (const item of order.order_items || []) {
+          for (let i = 0; i < item.quantity; i++) {
+            rows.push({ order_id: order.id, ticket_type_name: item.ticket_type_name, ticket_number: num++, event_id: order.event_id, tenant_id: order.tenant_id, status: 'valid' });
+          }
+        }
+        if (rows.length > 0) {
+          const { data: newTickets } = await supabase.from('tickets').insert(rows).select();
+          tickets = newTickets || [];
+        }
+      }
+      setTicketPageData({ order, tickets: tickets || [] });
+      setTicketPageLoading(false);
+    })();
+  }, [view, ticketOrderId]);
 
   useEffect(() => {
     const base = 'C8Tickets';
@@ -1168,6 +1226,18 @@ const generatePhotoTickets = async (ev) => {
   const nameValid = buyer.name.trim().length >= 2;
   const buyerReady = nameValid && emailValid;
 
+  const generateTickets = async (orderId, items, eventId, tenantId) => {
+    const rows = [];
+    let num = 1;
+    for (const item of items) {
+      for (let i = 0; i < item.qty; i++) {
+        rows.push({ order_id: orderId, ticket_type_name: item.type, ticket_number: num++, event_id: eventId, tenant_id: tenantId, status: 'valid' });
+      }
+    }
+    const { error } = await supabase.from('tickets').insert(rows);
+    if (error) console.error('Ticket generation error:', error);
+  };
+
   const createPaymentIntent = async () => {
     setCreatingPayment(true);
     try {
@@ -1206,9 +1276,22 @@ const generatePhotoTickets = async (ev) => {
 
   const handleAdminScan = async (id) => {
     setAdminScan(false);
+    // Try individual ticket lookup first
+    const { data: ticket } = await supabase.from('tickets').select('*').eq('id', id).single();
+    if (ticket) {
+      const order = orders.find(o => o.id === ticket.order_id);
+      if (ticket.status === 'cancelled' || order?.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
+      if (ticket.status === 'checked_in') { setScanMsg({ ok: false, text: `Ticket ${ticket.ticket_number} (${ticket.ticket_type_name}) already checked in.` }); return; }
+      await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: new Date().toISOString() }).eq('id', ticket.id);
+      setExpandedTickets(prev => ({ ...prev, [ticket.order_id]: (prev[ticket.order_id] || []).map(t => t.id === ticket.id ? { ...t, status: 'checked_in' } : t) }));
+      setScanMsg({ ok: true, text: `✓ Ticket ${ticket.ticket_number} — ${ticket.ticket_type_name} — checked in!` });
+      setTimeout(() => setScanMsg(null), 4000);
+      return;
+    }
+    // Fall back to order-level
     const order = orders.find(o => o.id === id);
     if (!order) { setScanMsg({ ok: false, text: 'No order found for that QR code.' }); return; }
-    if (order.status === 'cancelled') { setScanMsg({ ok: false, text: `This order has been cancelled and refunded.` }); return; }
+    if (order.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
     if (order.checkedIn) { setScanMsg({ ok: false, text: `${order.buyer.name} is already checked in.` }); return; }
     await checkin(id);
     setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
@@ -1494,6 +1577,8 @@ const generatePhotoTickets = async (ev) => {
               }
             }
 
+            await generateTickets(order.id, items, sel.id, TENANT_ID);
+
             const localOrder = {
               id: order.id, eventId: sel.id, venueId: venue.id,
               buyer: { ...buyer },
@@ -1560,6 +1645,67 @@ fetch(API_BASE+'/api/send-confirmation', {
             </div>
             <button className="buy" style={{marginTop:20}} onClick={goHome}>Browse More Events</button>
           </div>); })()}
+        {view === "mytickets" && (
+          <div className="sec fade" style={{maxWidth:520}}>
+            <div className="back" onClick={goHome}>← Back to Events</div>
+            <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>Your Tickets</h1>
+            {ticketPageLoading && <p style={{color:"var(--text2)",fontSize:13,marginTop:20,textAlign:"center"}}>Loading your tickets…</p>}
+            {!ticketPageLoading && !ticketPageData && <p style={{color:"var(--red)",fontSize:13,marginTop:20,textAlign:"center"}}>Order not found.</p>}
+            {!ticketPageLoading && ticketPageData && (() => {
+              const { order, tickets } = ticketPageData;
+              const ev = events.find(e => e.id === order.event_id);
+              const evTitle = ev?.title || '';
+              const evDate = ev ? fmtDate(ev.date) : '';
+              const evTime = ev ? fmtTime(ev.time) : '';
+              const evDoors = ev ? fmtTime(ev.doors) : '';
+              return <>
+                <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>{evTitle}{evDate ? ` — ${evDate}` : ''}</p>
+                {order.status === 'cancelled' && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,color:"var(--red)",fontSize:13,fontWeight:600}}>This order has been cancelled and refunded.</div>}
+                <div style={{marginBottom:16,display:"flex",gap:10}}>
+                  <button className="btn" style={{flex:1}} onClick={() => window.print()}>Print All</button>
+                </div>
+                <div id="ticket-print-area">
+                  {tickets.map((t, idx) => {
+                    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${t.id}`;
+                    const shareTicket = async () => {
+                      if (navigator.share) {
+                        try { await navigator.share({ title: `${evTitle} — Ticket ${t.ticket_number}`, url: window.location.href }); } catch {}
+                      } else { window.open(qrUrl, '_blank'); }
+                    };
+                    return (
+                      <div key={t.id} className="tkt-disp" style={{marginBottom:20,pageBreakInside:'avoid'}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                          <div>
+                            <div style={{fontSize:11,color:"var(--gold)",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:4}}>{evDate}{evTime ? ` · ${evTime}` : ''}</div>
+                            <div className="dsp" style={{fontSize:18,marginBottom:2}}>{evTitle}</div>
+                            <div style={{fontSize:13,color:"var(--gold)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>{t.ticket_type_name}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontSize:11,color:"var(--text3)"}}>Ticket</div>
+                            <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{t.ticket_number}<span style={{fontSize:13,color:"var(--text3)",fontWeight:400}}> / {tickets.length}</span></div>
+                          </div>
+                        </div>
+                        {evDoors && <div style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Doors {evDoors} · {venue.name} · {venue.location}</div>}
+                        <div style={{textAlign:"center",margin:"12px 0"}}>
+                          <div style={{background:"white",borderRadius:8,padding:10,display:"inline-block"}}>
+                            <img src={qrUrl} alt="Ticket QR" width={160} height={160} style={{display:"block"}} />
+                          </div>
+                          <div style={{fontFamily:"monospace",fontSize:10,color:"var(--text3)",marginTop:6,letterSpacing:1}}>{t.id.toUpperCase()}</div>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,color:"var(--text2)"}}>
+                          <span>{order.buyer_name}</span>
+                          <span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Cancelled':'Valid'}</span>
+                        </div>
+                        <button className="btn" style={{width:"100%",marginTop:10,fontSize:12}} onClick={shareTicket}>Save / Share Ticket {t.ticket_number}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>;
+            })()}
+          </div>
+        )}
+
         {view === "lookup" && <div className="sec fade" style={{maxWidth:520}}>
           <div className="back" onClick={goHome}>← Back to Events</div>
           <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>Find My Tickets</h1>
@@ -1851,8 +1997,48 @@ fetch(API_BASE+'/api/send-confirmation', {
                 <button className="btn" style={{width:"100%",marginTop:8}} onClick={()=>setAdminScan(false)}>Cancel</button>
               </div>}
               {scanMsg && <div style={{marginBottom:16,padding:"10px 14px",borderRadius:"var(--rs)",background:scanMsg.ok?"rgba(93,138,60,.15)":"rgba(179,58,42,.15)",color:scanMsg.ok?"var(--green)":"var(--red)",fontSize:13,fontWeight:600}}>{scanMsg.text}</div>}
-              <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Or manually mark attendees below.</p>
-              {vo.length===0?<div className="empty"><div className="ic">✅</div><p>No tickets.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Name</th><th>Event</th><th>Tickets</th><th>Status</th><th></th></tr></thead><tbody>{vo.map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,10)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td><td><button className={`ci-btn ${o.checkedIn?"dn":""}`} disabled={o.checkedIn} onClick={()=>checkin(o.id)}>{o.checkedIn?"Done":"Check In"}</button></td></tr>})}</tbody></table></div>}
+              <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Or manually mark attendees below. Tap an order to see individual tickets.</p>
+              {vo.length===0?<div className="empty"><div className="ic">✅</div><p>No tickets.</p></div>:<div>{vo.map(o=>{
+                const ev=events.find(e=>e.id===o.eventId);
+                const isExpanded=expandedOrders.has(o.id);
+                const toggleExpand=async()=>{
+                  const next=new Set(expandedOrders);
+                  if(isExpanded){next.delete(o.id);setExpandedOrders(next);}
+                  else{
+                    next.add(o.id);setExpandedOrders(next);
+                    if(!expandedTickets[o.id]){
+                      const{data:tix}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');
+                      setExpandedTickets(prev=>({...prev,[o.id]:tix||[]}));
+                    }
+                  }
+                };
+                const tix=expandedTickets[o.id]||[];
+                const totalTix=o.items.reduce((s,i)=>s+i.qty,0);
+                const checkedInCount=tix.filter(t=>t.status==='checked_in').length;
+                return <div key={o.id} style={{border:"1px solid var(--bg4)",borderRadius:"var(--rs)",marginBottom:8,overflow:"hidden"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",cursor:"pointer",background:"var(--bg2)"}} onClick={toggleExpand}>
+                    <span style={{fontSize:13,flex:1}}>
+                      <strong>{o.buyer.name}</strong>
+                      <span style={{color:"var(--text3)",fontSize:11,marginLeft:8}}>{ev?.title||"—"}</span>
+                    </span>
+                    <span style={{fontSize:11,color:"var(--text2)"}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</span>
+                    {tix.length>0&&<span style={{fontSize:11,color:checkedInCount===totalTix?"var(--green)":"var(--text3)"}}>{checkedInCount}/{totalTix} in</span>}
+                    {tix.length===0&&<span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`} style={{fontSize:10}}>{o.checkedIn?"Checked In":"Valid"}</span>}
+                    <span style={{color:"var(--text3)",fontSize:12}}>{isExpanded?"▲":"▼"}</span>
+                  </div>
+                  {isExpanded&&<div style={{padding:"8px 14px 12px",borderTop:"1px solid var(--bg4)"}}>
+                    {tix.length===0?<p style={{fontSize:12,color:"var(--text3)",margin:"8px 0"}}>Loading tickets…</p>
+                    :tix.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--bg4)"}}>
+                      <span style={{fontSize:12,flex:1,color:"var(--text2)"}}>#{t.ticket_number} — {t.ticket_type_name}</span>
+                      <span className={`badge ${t.status==='checked_in'?'badge-done':'badge-ok'}`} style={{fontSize:10}}>{t.status==='checked_in'?'In':'Valid'}</span>
+                      <button className={`ci-btn ${t.status==='checked_in'?"dn":""}`} style={{fontSize:11,padding:"4px 10px"}} disabled={t.status==='checked_in'} onClick={async()=>{
+                        await supabase.from('tickets').update({status:'checked_in',checked_in_at:new Date().toISOString()}).eq('id',t.id);
+                        setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'checked_in'}:x)}));
+                      }}>{t.status==='checked_in'?'Done':'Check In'}</button>
+                    </div>)}
+                  </div>}
+                </div>;
+              })}</div>}
             </>; })()}
 
             {aTab === "door" && <DoorSales events={vEvents} updateOrders={updateOrders} updateEvents={updateEvents} venue={venue} />}

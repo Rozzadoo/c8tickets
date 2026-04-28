@@ -97,7 +97,8 @@ export default async function handler(req, res) {
             <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
             <div style="font-size:12px;color:#b5a78a;line-height:1.7">
             📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>
-            You can also access your ticket at <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a>
+            Buying for a group? View and share individual tickets at:<br>
+            <a href="https://www.c8tickets.com/t/${encodeURIComponent(order.id)}" style="color:#c8922a;font-weight:700">c8tickets.com/t/${order.id.slice(0,8).toLowerCase()}…</a>
             </div>
             </div>
 
