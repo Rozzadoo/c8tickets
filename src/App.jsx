@@ -893,6 +893,7 @@ const [resetError, setResetError] = useState('');
           status: o.status,
           checkedIn: o.status === 'checked_in',
           stripePaymentIntentId: o.stripe_payment_intent_id || null,
+          source: o.source || 'online',
         })));
       });
   }, [session]);
@@ -2070,8 +2071,17 @@ fetch(API_BASE+'/api/send-confirmation', {
               const avgOrderTotal=vo.length>0?vo.reduce((s,o)=>s+o.total,0)/vo.length:0;
               const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;const capacity=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const evTotalSold=ev.tickets.reduce((s,t)=>s+(t.sold??0),0);const sellThru=capacity>0?Math.round(evTotalSold/capacity*100):0;return{ev,count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru};}).filter(Boolean);
 
+              const isDoor = o => o.source==='door'||o.source==='door_cash';
+              const doorOrders=vo.filter(isDoor);
+              const onlineOrders=vo.filter(o=>!isDoor(o));
+              const doorTix=doorOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);
+              const onlineTix=onlineOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);
+              const doorRev=doorOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
+              const onlineRev=onlineOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
+
+              const allVenueOrders=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled');
               const buyerMap={};
-              for(const o of vo){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);}
+              for(const o of allVenueOrders){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);}
               const repeatBuyers=Object.values(buyerMap).filter(b=>b.orders>=2).sort((a,b)=>b.orders-a.orders);
 
               const ciTypeMap={};
@@ -2111,6 +2121,13 @@ fetch(API_BASE+'/api/send-confirmation', {
                   :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Total Tickets Sold</th><th>Total Venue Revenue</th><th>Capacity</th><th>Sell-Through</th></tr></thead><tbody>{evAvgRows.map(({ev,count,totalTix,totalRev,capacity,evTotalSold,sellThru})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{totalTix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(totalRev)}</td><td style={{color:"var(--text2)"}}>{capacity||"—"}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:60}}><div style={{height:"100%",width:sellThru+"%",background:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right",color:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",fontWeight:700}}>{capacity?sellThru+"%":"—"}</span></div></td></tr>)}</tbody></table></div>
                 }
 
+                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Sales Channel</h3>
+                <div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Channel</th><th>Orders</th><th>Tickets</th><th>Revenue</th><th>% of Revenue</th></tr></thead><tbody>
+                  <tr><td style={{fontWeight:600}}>Online</td><td>{onlineOrders.length}</td><td>{onlineTix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(onlineRev)}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:(venueRev>0?Math.round(onlineRev/venueRev*100):0)+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{venueRev>0?Math.round(onlineRev/venueRev*100):0}%</span></div></td></tr>
+                  <tr><td style={{fontWeight:600}}>Door — Card</td><td>{doorOrders.filter(o=>o.source==='door').length}</td><td>{doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0))}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:(venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0)+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0}%</span></div></td></tr>
+                  <tr><td style={{fontWeight:600}}>Door — Cash</td><td>{doorOrders.filter(o=>o.source==='door_cash').length}</td><td>{doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0))}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:(venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0)+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0}%</span></div></td></tr>
+                </tbody></table></div>
+
                 <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Check-In Rate by Ticket Type</h3>
                 {ciTypeRows.length===0
                   ?<div className="empty" style={{marginBottom:28}}><p>No data for this period.</p></div>
@@ -2118,9 +2135,9 @@ fetch(API_BASE+'/api/send-confirmation', {
                 }
 
                 <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Repeat Buyers</h3>
-                <p style={{color:"var(--text3)",fontSize:12,marginBottom:12}}>Buyers with 2 or more orders in this period.</p>
+                <p style={{color:"var(--text3)",fontSize:12,marginBottom:12}}>Buyers with 2 or more orders all-time.</p>
                 {repeatBuyers.length===0
-                  ?<div className="empty" style={{marginBottom:28}}><p>No repeat buyers in this period.</p></div>
+                  ?<div className="empty" style={{marginBottom:28}}><p>No repeat buyers yet.</p></div>
                   :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td></tr>)}</tbody></table></div>
                 }
               </>;
