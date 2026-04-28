@@ -179,11 +179,11 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .btn.gold{background:linear-gradient(135deg,var(--gold),var(--gold-d));color:var(--bg);border-color:var(--gold)}
 .btn.gold:hover{filter:brightness(1.15)}
 
-.hero{padding:60px 20px 48px;text-align:center;position:relative;overflow:hidden}
+.hero{padding:36px 20px 28px;text-align:center;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.09) 0%,transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
-.hero-logo{height:120px;filter:invert(1);opacity:.9;margin-bottom:12px}
-.hero p{color:var(--text);font-size:18px;font-weight:400;letter-spacing:1.5px;text-transform:uppercase;opacity:.75}
+.hero-logo{height:80px;filter:invert(1);opacity:.9;margin-bottom:12px}
+.hero p{color:var(--text);font-size:15px;font-weight:400;letter-spacing:1.5px;text-transform:uppercase;opacity:.75}
 .hero-sub{display:flex;justify-content:center;gap:16px;margin-top:12px;font-size:12px;color:var(--text3);flex-wrap:wrap}
 
 .sec{padding:20px;max-width:1200px;margin:0 auto;width:100%;position:relative;z-index:1}
@@ -211,7 +211,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .feat-bg{height:320px;background:linear-gradient(135deg,var(--bg3),var(--bg4));background-size:cover;background-position:center;position:relative;display:flex;align-items:flex-end}
 .feat-grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,10,7,1) 0%,rgba(12,10,7,.75) 45%,rgba(12,10,7,.1) 100%)}
 .feat-body{position:relative;z-index:1;padding:24px 28px;width:100%}
-.feat-eyebrow{font-size:9px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:3px;margin-bottom:8px}
+.feat-eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(200,146,42,.15);border:1px solid rgba(200,146,42,.35);color:var(--gold);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2.5px;padding:4px 12px;border-radius:99px;margin-bottom:12px}
 .feat-title{font-family:'Barlow Condensed',sans-serif;font-size:clamp(26px,5vw,42px);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text);line-height:1.1;margin-bottom:6px}
 .feat-date{font-size:12px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px}
 .feat-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
@@ -1423,7 +1423,7 @@ const generatePhotoTickets = async (ev) => {
           <div className="hero">
             <div style={{position:"relative",display:"inline-block",marginBottom:16}}>
               <img src={LOGO_SRC} alt="Crooked 8" className="hero-logo" style={{marginBottom:0}} />
-              <div style={{position:"absolute",bottom:-12,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,letterSpacing:4,textTransform:"uppercase",padding:"3px 16px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
+              <div style={{position:"absolute",bottom:-10,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:11,letterSpacing:4,textTransform:"uppercase",padding:"2px 12px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
               </div>
             <p>{venue.tagline}</p>
             <div className="hero-sub"><span>Questions? <a href="mailto:support@c8tickets.com" style={{color:"var(--text2)"}}>support@c8tickets.com</a></span></div>
@@ -1447,7 +1447,7 @@ const generatePhotoTickets = async (ev) => {
                         {(!featuredEv.image||!featuredEv.image.startsWith('http'))&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:80,opacity:.1}}>🎵</div>}
                         <div className="feat-grad"/>
                         <div className="feat-body">
-                          <div className="feat-eyebrow">Up Next</div>
+                          <div className="feat-eyebrow"><span style={{width:6,height:6,borderRadius:'50%',background:'var(--gold)',display:'inline-block',flexShrink:0}}/>Up Next</div>
                           <div className="feat-title">{featuredEv.title}</div>
                           <div className="feat-date">{fmtDate(featuredEv.date)} · {fmtTime(featuredEv.time)}{featuredEv.doors?` · Doors ${featuredEv.doors}`:''}</div>
                           <div className="feat-foot">
