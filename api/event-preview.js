@@ -69,7 +69,7 @@ export default async function handler(req, res) {
 <meta property="og:image" content="${escHtml(image)}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:site_name" content="C8Tickets — Crooked 8, Kuna ID">
+<meta property="og:site_name" content="C8Tickets">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escHtml(title)}">
 <meta name="twitter:description" content="${escHtml(date ? date + ' · ' + description : description)}">

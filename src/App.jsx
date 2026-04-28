@@ -942,7 +942,7 @@ const [resetError, setResetError] = useState('');
     else if (view === 'ticket') document.title = `Your Tickets — ${base}`;
     else if (view === 'admin') document.title = `Admin — ${base}`;
     else if (view === 'lookup') document.title = `Find My Tickets — ${base}`;
-    else document.title = `${venue.name} Events — ${base}`;
+    else document.title = base;
   }, [view, selId, events, venue]);
 
 const login = async () => {
