@@ -196,7 +196,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .3s}
 .card:hover{transform:translateY(-3px);box-shadow:0 10px 36px rgba(200,146,42,.1);border-color:rgba(200,146,42,.25)}
-.card-img{height:130px;display:flex;align-items:center;justify-content:center;font-size:48px;background:linear-gradient(135deg,var(--bg3),var(--bg4));position:relative}
+.card-img{height:190px;display:flex;align-items:center;justify-content:center;font-size:48px;background:linear-gradient(135deg,var(--bg3),var(--bg4));position:relative}
 .card-cat{position:absolute;top:10px;right:10px;background:rgba(12,10,7,.8);backdrop-filter:blur(6px);padding:3px 10px;border-radius:99px;font-size:9px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;border:1px solid rgba(200,146,42,.2)}
 .card-body{padding:16px}
 .card-date{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
@@ -1421,17 +1421,19 @@ const generatePhotoTickets = async (ev) => {
               <div className="filters">{CATS.map(c => <button key={c} className={`chip ${filter === c ? "on" : ""}`} onClick={() => setFilter(c)}>{c}</button>)}</div>
             </div>
             {filtered.length === 0 ? <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div> :
-              <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); const onlineAvail = (t) => Math.max(0, t.available - (t.physicalQty ?? 0)); const soldOut = ev.tickets.every(t => onlineAvail(t) <= 0); return (
-                <div key={ev.id} className="card" onClick={() => open(ev.id)}>
+              <div className="grid">{filtered.map(ev => { const mp = Math.min(...ev.tickets.map(t => t.price)); const onlineAvail = (t) => Math.max(0, t.available - (t.physicalQty ?? 0)); const soldOut = ev.tickets.every(t => onlineAvail(t) <= 0); const totalOnlineAvail = ev.tickets.reduce((s,t)=>s+onlineAvail(t),0); const totalCap = ev.tickets.reduce((s,t)=>s+(t.total??t.available),0); const lowTickets = !soldOut && totalCap > 0 && totalOnlineAvail/totalCap <= 0.25; return (
+                <div key={ev.id} className="card" onClick={() => open(ev.id)} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
                   <div className="card-img" style={{backgroundImage: ev.image && ev.image.startsWith('http') ? `url(${ev.image})` : 'none', backgroundSize:'cover', backgroundPosition:`${ev.focalX ?? 50}% ${ev.focalY ?? 50}%`}}>
-  {(!ev.image || !ev.image.startsWith('http')) && <span style={{fontSize:48}}>🎵</span>}
-  <div className="card-cat">{ev.category}</div>
-</div>
+                    {(!ev.image || !ev.image.startsWith('http')) && <span style={{fontSize:48}}>🎵</span>}
+                    <div className="card-cat">{ev.category}</div>
+                    {soldOut && <div style={{position:'absolute',inset:0,background:'rgba(12,10,7,.6)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(1px)'}}><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:22,letterSpacing:5,textTransform:'uppercase',color:'#f0e9da',border:'2px solid rgba(240,233,218,.6)',padding:'6px 20px',borderRadius:4}}>Sold Out</span></div>}
+                    {lowTickets && <div style={{position:'absolute',bottom:10,left:10,background:'rgba(179,58,42,.92)',backdropFilter:'blur(4px)',padding:'3px 10px',borderRadius:99,fontSize:9,fontWeight:700,color:'#f0e9da',textTransform:'uppercase',letterSpacing:1.5,border:'1px solid rgba(240,120,100,.3)'}}>Selling Fast</div>}
+                  </div>
                   <div className="card-body">
                     <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
                     <div className="card-title dsp">{ev.title}</div>
                     <div className="card-desc">{ev.description}</div>
-                    <div className="card-foot"><div className="card-price">{soldOut ? "Sold Out" : <>{fmtCurrency(mp)}{mp > 0 && <small> & up</small>}</>}</div>{soldOut ? <span className="badge badge-sold">Sold Out</span> : <button className="btn gold" onClick={e => { e.stopPropagation(); open(ev.id); }}>Tickets</button>}</div>
+                    <div className="card-foot"><div className="card-price">{soldOut ? <span style={{color:'var(--text3)',fontWeight:600,fontSize:14,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span> : <>{fmtCurrency(mp)}{mp > 0 && <small> & up</small>}</>}</div>{soldOut ? null : <button className="btn gold" onClick={e => { e.stopPropagation(); open(ev.id); }}>Tickets</button>}</div>
                   </div>
                 </div>); })}</div>}
           </div>
