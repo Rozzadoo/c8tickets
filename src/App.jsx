@@ -2068,7 +2068,7 @@ fetch(API_BASE+'/api/send-confirmation', {
 
               const avgOrderTotal=vo.length>0?vo.reduce((s,o)=>s+o.total,0)/vo.length:0;
               const avgVenueRev=vo.length>0?vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/vo.length:0;
-              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;return{ev,count:eo.length,avg:eo.reduce((s,o)=>s+o.total,0)/eo.length,avgRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/eo.length,avgTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)/eo.length};}).filter(Boolean);
+              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;return{ev,count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)};}).filter(Boolean);
 
               const buyerMap={};
               for(const o of vo){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);}
@@ -2102,7 +2102,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                   <div className="sc"><div className="l">Avg Venue Rev per Order</div><div className="v gd">{vo.length>0?"$"+avgVenueRev.toFixed(2):"—"}</div></div>
                   <div className="sc"><div className="l">Total Orders</div><div className="v">{vo.length}</div></div>
                 </div>
-                {evAvgRows.length>0&&<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Avg Tix/Order</th><th>Avg Venue Rev</th><th>Avg Total</th></tr></thead><tbody>{evAvgRows.map(({ev,count,avg,avgRev,avgTix})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{avgTix.toFixed(1)}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(avgRev)}</td><td style={{fontWeight:700}}>{fmtCurrency(avg)}</td></tr>)}</tbody></table></div>}
+                {evAvgRows.length>0&&<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Total Tickets Sold</th><th>Total Venue Revenue</th></tr></thead><tbody>{evAvgRows.map(({ev,count,totalTix,totalRev})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{totalTix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(totalRev)}</td></tr>)}</tbody></table></div>}
 
                 <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Check-In Rate by Ticket Type</h3>
                 {ciTypeRows.length===0
