@@ -1396,7 +1396,7 @@ const generatePhotoTickets = async (ev) => {
             <button className={`btn ${view === "about" ? "on" : ""}`} onClick={() => setView("about")}>About</button>
             <button className={`btn ${view === "lookup" || view === "mytickets" ? "on" : ""}`} onClick={() => { setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>My Tickets</button>
             {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
-            <button className="btn" onClick={() => session ? logout() : setView("login")}>{session ? "Logout" : "Login"}</button>
+            {session && <button className="btn" onClick={logout}>Logout</button>}
           </div>
         </nav>
 
@@ -2223,6 +2223,7 @@ fetch(API_BASE+'/api/send-confirmation', {
             <a href="mailto:support@c8tickets.com">Contact Support</a>
           </div>
           <div className="footer-copy">Copyright 2026 C8Tickets - Kuna, Idaho - All rights reserved</div>
+          <div style={{marginTop:12}}><a href="#" style={{fontSize:11,color:"var(--text3)"}} onClick={e => { e.preventDefault(); setView("login"); }}>Staff Login</a></div>
         </footer>
       </div>
     </>
