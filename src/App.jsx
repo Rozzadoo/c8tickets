@@ -89,6 +89,29 @@ const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { w
 const fmtCurrency = (n) => n === 0 ? "FREE" : "$" + Number(n).toFixed(2);
 const fmtTime = (t) => t ? new Date('1970-01-01T' + t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "";
 
+const buildGCalUrl = (ev, loc) => {
+  const [y, m, d] = ev.date.split('-');
+  const [h = '20', min = '00'] = (ev.time || '').split(':');
+  const start = `${y}${m}${d}T${h}${min}00`;
+  const end = `${y}${m}${d}T${String(Number(h) + 3).padStart(2,'0')}${min}00`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.title)}&dates=${start}/${end}&location=${encodeURIComponent(loc)}`;
+};
+
+const downloadIcs = (ev, loc) => {
+  const [y, m, d] = ev.date.split('-');
+  const [h = '20', min = '00'] = (ev.time || '').split(':');
+  const start = `${y}${m}${d}T${h}${min}00`;
+  const end = `${y}${m}${d}T${String(Number(h) + 3).padStart(2,'0')}${min}00`;
+  const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//C8Tickets//EN','BEGIN:VEVENT',
+    `DTSTART:${start}`,`DTEND:${end}`,`SUMMARY:${ev.title}`,`LOCATION:${loc}`,
+    `DESCRIPTION:C8Tickets — ${ev.title}`,'END:VEVENT','END:VCALENDAR'].join('\r\n');
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' })),
+    download: `${ev.title.replace(/[^\w\s-]/g,'')}.ics`,
+  });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+};
+
 // ── QR Code ──
 const QRCode = ({ value, size = 160 }) => {
   const cells = useMemo(() => { let h = 0; for (let i = 0; i < value.length; i++) h = ((h << 5) - h + value.charCodeAt(i)) | 0; const g = [], n = 21; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const tl = r < 7 && c < 7, tr = r < 7 && c >= n - 7, bl = r >= n - 7 && c < 7; if (tl || tr || bl) { const lr = tl ? r : tr ? r : r - (n - 7), lc = tl ? c : tr ? c - (n - 7) : c; g.push({ r, c, on: lr === 0 || lr === 6 || lc === 0 || lc === 6 || (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4) }); } else { h = ((h * 1103515245 + 12345) & 0x7fffffff); g.push({ r, c, on: (h % 3) !== 0 }); } } return g; }, [value]);
@@ -1450,7 +1473,11 @@ const generatePhotoTickets = async (ev) => {
                   <div className="sec-title dsp" style={{marginBottom:12}}>Upcoming Events</div>
                   <div className="filters">{CATS.map(c=><button key={c} className={`chip ${filter===c?"on":""}`} onClick={()=>setFilter(c)}>{c}</button>)}</div>
                 </div>
-                {gridEvents.length===0?<div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>:
+                {gridEvents.length===0?(
+                  publicEvents.length===0
+                    ? <div className="empty"><p style={{fontSize:16,color:"var(--text2)",marginBottom:8}}>No upcoming events right now.</p><p style={{fontSize:13,color:"var(--text3)"}}>Check back soon, or email us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a></p></div>
+                    : <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>
+                ):
                   <div className="grid">{gridEvents.map(ev=>{const mp=Math.min(...ev.tickets.map(t=>t.price));const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
                     <div key={ev.id} className="card" onClick={()=>open(ev.id)} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
                       <div className="card-img" style={{backgroundImage:ev.image&&ev.image.startsWith('http')?`url(${ev.image})`:'none',backgroundSize:'cover',backgroundPosition:`${ev.focalX??50}% ${ev.focalY??50}%`}}>
@@ -1685,7 +1712,11 @@ fetch(API_BASE+'/api/send-confirmation', {
                 </ul>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} - {lastOrder.buyer.email}<br/>{venue.name} - {venue.location}</p>
             </div>
-            <button className="buy" style={{marginTop:20}} onClick={goHome}>Browse More Events</button>
+            {ev && <div style={{display:"flex",gap:8,marginTop:12}}>
+              <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>
+              <button className="btn" style={{flex:1}} onClick={()=>downloadIcs(ev, venue.location)}>Download .ics</button>
+            </div>}
+            <button className="buy" style={{marginTop:12}} onClick={goHome}>Browse More Events</button>
           </div>); })()}
         {view === "mytickets" && (
           <div className="sec fade" style={{maxWidth:520}}>
