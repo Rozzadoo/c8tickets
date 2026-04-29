@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   if (!valid) return res.status(401).json({ error: 'Invalid or expired code' });
 
   const tenantId = process.env.VITE_TENANT_ID || '2c3f53cf-929d-4484-a637-1bc31cccdbe1';
-  const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&select=*,order_items(*)&order=created_at.desc`;
+  const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&status=neq.cancelled&select=*,order_items(*)&order=created_at.desc`;
   const supaRes = await fetch(url, {
     headers: {
       apikey: process.env.VITE_SUPABASE_ANON_KEY,
