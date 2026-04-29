@@ -10,6 +10,19 @@ function makeCode(email, slot) {
   return String(parseInt(buf.slice(0, 8), 16) % 1000000).padStart(6, '0');
 }
 
+// In-memory rate limiting — resets on cold start, but combined with the
+// email-in-orders check below this is sufficient for a low-traffic venue app.
+const sendLog = new Map(); // key -> [timestamp, ...]
+
+function isRateLimited(key, maxPerHour) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const recent = (sendLog.get(key) || []).filter(t => now - t < windowMs);
+  if (recent.length >= maxPerHour) return true;
+  sendLog.set(key, [...recent, now]);
+  return false;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
@@ -19,6 +32,30 @@ export default async function handler(req, res) {
   }
 
   const normalized = email.toLowerCase().trim();
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 'unknown';
+
+  // Per-IP: max 10 sends per hour; per-email: max 5 sends per hour
+  if (isRateLimited(`ip:${ip}`, 10) || isRateLimited(`email:${normalized}`, 5)) {
+    return res.status(200).json({ ok: true }); // Silent — don't reveal rate limiting
+  }
+
+  // Only send codes to emails that have an actual order — prevents inbox flooding
+  // of arbitrary addresses. We always return 200 to avoid revealing who's a buyer.
+  const tenantId = process.env.VITE_TENANT_ID || '2c3f53cf-929d-4484-a637-1bc31cccdbe1';
+  const checkRes = await fetch(
+    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&status=neq.cancelled&select=id&limit=1`,
+    {
+      headers: {
+        apikey: process.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+    }
+  );
+  const orders = await checkRes.json();
+  if (!Array.isArray(orders) || orders.length === 0) {
+    return res.status(200).json({ ok: true }); // Silent — email not in system
+  }
+
   const slot = Math.floor(Date.now() / (1000 * 60 * 60));
   const code = makeCode(normalized, slot);
 
@@ -44,6 +81,5 @@ export default async function handler(req, res) {
     `,
   });
 
-  // Always return 200 — don't reveal whether the email exists in our system
   return res.status(200).json({ ok: true });
 }

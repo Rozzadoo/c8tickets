@@ -25,8 +25,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing ticketTypeId' });
     }
 
+    // Validate quantities before hitting Supabase
+    for (const item of items) {
+      if (!Number.isInteger(item.qty) || item.qty < 1 || item.qty > 20) {
+        return res.status(400).json({ error: 'Invalid quantity' });
+      }
+    }
+
     const inClause = ids.map(id => `"${id}"`).join(',');
-    const supaUrl = `${process.env.VITE_SUPABASE_URL}/rest/v1/ticket_types?id=in.(${inClause})&select=id,name,price,door_price`;
+    const supaUrl = `${process.env.VITE_SUPABASE_URL}/rest/v1/ticket_types?id=in.(${inClause})&select=id,name,price,door_price,quantity_total,quantity_sold`;
     const supaRes = await fetch(supaUrl, {
       headers: {
         apikey: process.env.VITE_SUPABASE_ANON_KEY,
@@ -45,6 +52,10 @@ export default async function handler(req, res) {
     for (const item of items) {
       const row = priceMap[item.ticketTypeId];
       if (!row) return res.status(400).json({ error: 'Unknown ticket type' });
+      const available = row.quantity_total - row.quantity_sold;
+      if (item.qty > available) {
+        return res.status(400).json({ error: `Only ${available} ticket(s) remaining for "${row.name}"` });
+      }
       const unitPrice = isDoorSale && row.door_price != null ? Number(row.door_price) : Number(row.price);
       ticketTotal += item.qty * unitPrice;
       totalTickets += item.qty;
