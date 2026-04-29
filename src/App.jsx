@@ -930,24 +930,10 @@ const [resetError, setResetError] = useState('');
     setTicketPageLoading(true);
     setTicketPageData(null);
     (async () => {
-      const { data: order } = await supabase.from('orders').select('*, order_items(*)').eq('id', ticketOrderId).single();
-      if (!order) { setTicketPageLoading(false); return; }
-      let { data: tickets } = await supabase.from('tickets').select('*').eq('order_id', ticketOrderId).order('ticket_number');
-      // Lazy generation for existing orders that have no tickets yet
-      if ((!tickets || tickets.length === 0) && order.status !== 'cancelled') {
-        const rows = [];
-        let num = 1;
-        for (const item of order.order_items || []) {
-          for (let i = 0; i < item.quantity; i++) {
-            rows.push({ order_id: order.id, ticket_type_name: item.ticket_type_name, ticket_number: num++, event_id: order.event_id, tenant_id: order.tenant_id, status: 'valid' });
-          }
-        }
-        if (rows.length > 0) {
-          const { data: newTickets } = await supabase.from('tickets').insert(rows).select();
-          tickets = newTickets || [];
-        }
-      }
-      setTicketPageData({ order, tickets: tickets || [] });
+      const res = await fetch(`${API_BASE}/api/get-order?id=${ticketOrderId}`);
+      if (!res.ok) { setTicketPageLoading(false); return; }
+      const { order, tickets } = await res.json();
+      setTicketPageData({ order, tickets });
       setTicketPageLoading(false);
     })();
   }, [view, ticketOrderId]);
@@ -957,7 +943,7 @@ const [resetError, setResetError] = useState('');
     const selTitle = events.find(e => e.id === selId)?.title;
     if (view === 'detail' && selTitle) document.title = `${selTitle} — ${base}`;
     else if (view === 'checkout') document.title = `Checkout — ${base}`;
-    else if (view === 'ticket') document.title = `Your Tickets — ${base}`;
+    else if (view === 'ticket' || view === 'mytickets') document.title = `Your Tickets — ${base}`;
     else if (view === 'admin') document.title = `Admin — ${base}`;
     else if (view === 'lookup') document.title = `Find My Tickets — ${base}`;
     else document.title = base;
