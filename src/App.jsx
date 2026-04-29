@@ -999,9 +999,10 @@ const confirmCancelOrder = async () => {
   setCancelling(true);
   try {
     if (o.stripePaymentIntentId) {
+      const { data: { session } } = await supabase.auth.getSession();
       const refundRes = await fetch(API_BASE + '/api/refund-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
         body: JSON.stringify({ paymentIntentId: o.stripePaymentIntentId, orderId: o.id }),
       });
       const refundData = await refundRes.json();
@@ -1542,10 +1543,10 @@ const generatePhotoTickets = async (ev) => {
       <>
         <div className="tkt-sec" style={{ marginBottom: 20 }}>
           <h3 className="dsp">Your Info</h3>
-          <div className="fg"><label className="fl">Full Name *</label><input className="fi" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
+          <div className="fg"><label className="fl">Full Name *</label><input className="fi" autoComplete="name" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
           <div className="fr">
-            <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
-            <div className="fg"><label className="fl">Phone</label><input className="fi" type="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
+            <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" autoComplete="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
+            <div className="fg"><label className="fl">Phone</label><input className="fi" type="tel" autoComplete="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
           </div>
         </div>
         {!buyerReady && (
