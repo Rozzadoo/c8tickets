@@ -39,9 +39,23 @@ export default function handler() {
         e('div', {
           style: {
             fontSize: 20, color: '#7a6c54', letterSpacing: '4px',
-            textTransform: 'uppercase', fontFamily: 'sans-serif',
+            textTransform: 'uppercase', fontFamily: 'sans-serif', marginBottom: 32,
           },
         }, 'Kuna, Idaho'),
+        e('div', {
+          style: {
+            marginTop: 8,
+            background: '#c8922a',
+            color: '#0c0a07',
+            fontFamily: 'sans-serif',
+            fontSize: 22,
+            fontWeight: 700,
+            letterSpacing: '2px',
+            textTransform: 'uppercase',
+            padding: '14px 36px',
+            borderRadius: 6,
+          },
+        }, 'Browse Events & Get Tickets →'),
       ),
       e('div', {
         style: {
