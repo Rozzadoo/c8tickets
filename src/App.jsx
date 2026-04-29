@@ -987,7 +987,7 @@ const login = async () => {
 const sendReset = async () => {
   setResetError('');
   const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-    redirectTo: 'https://www.c8tickets.com/?reset=true',
+    redirectTo: 'https://c8tickets.com/?reset=true',
   });
   if (error) setResetError(error.message);
   else setResetSent(true);
@@ -1463,7 +1463,7 @@ const generatePhotoTickets = async (ev) => {
               return <>
                 {featuredEv && (()=>{
                   const fSoldOut=featuredEv.tickets.every(t=>oa(t)<=0);
-                  const fMp=Math.min(...featuredEv.tickets.map(t=>t.price));
+                  const fMp=featuredEv.tickets.length>0?Math.min(...featuredEv.tickets.map(t=>t.price)):0;
                   const fAvail=featuredEv.tickets.reduce((s,t)=>s+oa(t),0);
                   const fCap=featuredEv.tickets.reduce((s,t)=>s+(t.total??t.available),0);
                   const fLow=!fSoldOut&&fCap>0&&fAvail/fCap<=0.25;
@@ -1494,7 +1494,7 @@ const generatePhotoTickets = async (ev) => {
                     ? <div className="empty"><p style={{fontSize:16,color:"var(--text2)",marginBottom:8}}>No upcoming events right now.</p><p style={{fontSize:13,color:"var(--text3)"}}>Check back soon, or email us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a></p></div>
                     : <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>
                 ):
-                  <div className="grid">{gridEvents.map(ev=>{const mp=Math.min(...ev.tickets.map(t=>t.price));const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
+                  <div className="grid">{gridEvents.map(ev=>{const mp=ev.tickets.length>0?Math.min(...ev.tickets.map(t=>t.price)):0;const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
                     <div key={ev.id} className="card" onClick={()=>open(ev.id)} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
                       <div className="card-img" style={{backgroundImage:ev.image&&ev.image.startsWith('http')?`url(${ev.image})`:'none',backgroundSize:'cover',backgroundPosition:`${ev.focalX??50}% ${ev.focalY??50}%`}}>
                         {(!ev.image||!ev.image.startsWith('http'))&&<span style={{fontSize:48}}>🎵</span>}
@@ -1559,7 +1559,7 @@ const generatePhotoTickets = async (ev) => {
             <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
               <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
               </div>
-            <button className="buy" disabled={cartN===0} onClick={() => { if (cartN === 0) return; setView("checkout"); }}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
+            <button className="buy" disabled={cartN===0} onClick={() => { if (cartN === 0) return; setSoldOutError(''); setView("checkout"); }}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
           </div>
         </div>}
 
@@ -1629,6 +1629,7 @@ const generatePhotoTickets = async (ev) => {
                 status: 'confirmed',
                 total_amount: paymentAmounts.grandTotal,
                 stripe_payment_intent_id: paymentIntentId,
+                source: 'online',
               })
               .select()
               .single();
@@ -1668,13 +1669,13 @@ const generatePhotoTickets = async (ev) => {
             const localOrder = {
               id: order.id, eventId: sel.id, venueId: venue.id,
               buyer: { ...buyer },
-              items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
+              items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId })),
               ticketTotal: paymentAmounts.ticketTotal,
               salesTax: paymentAmounts.salesTax,
               serviceFees: paymentAmounts.serviceFees,
               processingFee: paymentAmounts.processingFee,
               total: paymentAmounts.grandTotal, date: new Date().toISOString(), checkedIn: false,
-              stripePaymentIntentId: paymentIntentId,
+              stripePaymentIntentId: paymentIntentId, source: 'online',
             };
             updateOrders([...orders, localOrder]);
             updateEvents(events.map(ev => ev.id !== sel.id ? ev : {

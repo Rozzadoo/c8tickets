@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     await new Promise(r => setTimeout(r, 4000));
 
     const supaUrl = process.env.VITE_SUPABASE_URL;
-    const supaKey = process.env.VITE_SUPABASE_ANON_KEY;
+    const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     const headers = { apikey: supaKey, Authorization: `Bearer ${supaKey}`, 'Content-Type': 'application/json' };
 
     // Idempotency: if the browser already created the order, do nothing
@@ -64,6 +64,7 @@ export default async function handler(req, res) {
         status: 'confirmed',
         total_amount: pi.amount / 100,
         stripe_payment_intent_id: pi.id,
+        source: 'online',
       }),
     });
     const orderData = await orderRes.json();
