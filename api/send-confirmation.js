@@ -17,6 +17,25 @@ export default async function handler(req, res) {
 
   try {
     const { order, event, venue } = req.body;
+
+    // Verify the order exists and get the canonical buyer email from the DB.
+    // This prevents sending confirmation emails to arbitrary addresses.
+    const orderId = order?.id;
+    if (!orderId || !/^[0-9a-f-]{36}$/i.test(orderId)) {
+      return res.status(400).json({ error: 'Invalid order ID' });
+    }
+    const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    const checkRes = await fetch(
+      `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=id,buyer_email&limit=1`,
+      { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` } }
+    );
+    const rows = await checkRes.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(200).json({ success: true }); // Silent — order not found
+    }
+    const toEmail = rows[0].buyer_email;
+    if (!toEmail) return res.status(200).json({ success: true });
+
     const venueName = venue?.name || 'Crooked 8';
     const venueAddress = venue?.location || '1882 E King Rd, Kuna, ID 83634';
 
@@ -29,7 +48,7 @@ export default async function handler(req, res) {
 
     const { data, error } = await resend.emails.send({
       from: 'C8Tickets <noreply@c8tickets.com>',
-      to: order.buyer.email,
+      to: toEmail,
       subject: `Your tickets for ${escHtml(event.title)}`,
       html: `
         <!DOCTYPE html>

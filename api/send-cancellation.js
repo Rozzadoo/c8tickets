@@ -9,6 +9,14 @@ function escHtml(str) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const userRes = await fetch(`${process.env.VITE_SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+  });
+  if (!userRes.ok) return res.status(401).json({ error: 'Unauthorized' });
+
   try {
     const { order, event, venue } = req.body;
     if (!order?.buyer?.email) return res.status(400).json({ error: 'Missing buyer email' });

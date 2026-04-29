@@ -1008,12 +1008,12 @@ const confirmCancelOrder = async () => {
   const o = cancelTarget;
   if (!o) return;
   setCancelling(true);
+  const { data: { session: adminSession } } = await supabase.auth.getSession();
   try {
     if (o.stripePaymentIntentId) {
-      const { data: { session } } = await supabase.auth.getSession();
       const refundRes = await fetch(API_BASE + '/api/refund-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
         body: JSON.stringify({ paymentIntentId: o.stripePaymentIntentId, orderId: o.id }),
       });
       const refundData = await refundRes.json();
@@ -1039,7 +1039,7 @@ const confirmCancelOrder = async () => {
     if (o.buyer?.email) {
       fetch(API_BASE + '/api/send-cancellation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
         body: JSON.stringify({
           order: o,
           event: {
