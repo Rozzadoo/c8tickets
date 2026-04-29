@@ -24,6 +24,20 @@ export default async function handler(req, res) {
 
     const refund = await stripe.refunds.create({ payment_intent: paymentIntentId });
 
+    // Update order status in DB here so a client crash after refund can't leave
+    // the order stuck as 'confirmed' while the money is already returned.
+    const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: supaKey,
+        Authorization: `Bearer ${supaKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+
     res.status(200).json({ success: true, refundId: refund.id, status: refund.status });
   } catch (error) {
     res.status(500).json({ error: error.message });

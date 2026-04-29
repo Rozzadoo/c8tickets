@@ -554,6 +554,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   };
 
   const handleSuccess = async (paymentIntentId) => {
+    const { data: { session: doorSession } } = await supabase.auth.getSession();
     const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       tenant_id: TENANT_ID, event_id: selEventId,
@@ -568,7 +569,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     })));
     for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
     fetch(API_BASE+'/api/tag-order', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
       body: JSON.stringify({
         paymentIntentId,
         orderId: order.id,
@@ -1022,7 +1023,6 @@ const confirmCancelOrder = async () => {
         return;
       }
     }
-    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', o.id);
     for (const item of o.items) {
       if (item.ticketTypeId) await supabase.rpc('decrement_sold', { tid: item.ticketTypeId, qty: item.qty });
     }
@@ -1752,8 +1752,10 @@ fetch(API_BASE+'/api/send-confirmation', {
               return <>
                 <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>{evTitle}{evDate ? ` — ${evDate}` : ''}</p>
                 {order.status === 'cancelled' && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,color:"var(--red)",fontSize:13,fontWeight:600}}>This order has been cancelled and refunded.</div>}
-                <div style={{marginBottom:16,display:"flex",gap:10}}>
+                <div style={{marginBottom:16,display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button className="btn" style={{flex:1}} onClick={() => window.print()}>Print All</button>
+                  {ev && <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>}
+                  {ev && <button className="btn" style={{flex:1}} onClick={() => downloadIcs(ev, venue.location)}>Download .ics</button>}
                 </div>
                 <div id="ticket-print-area">
                   {tickets.map((t, idx) => {
