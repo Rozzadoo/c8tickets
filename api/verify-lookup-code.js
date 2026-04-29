@@ -21,11 +21,13 @@ export default async function handler(req, res) {
   if (!valid) return res.status(401).json({ error: 'Invalid or expired code' });
 
   const tenantId = process.env.VITE_TENANT_ID || '2c3f53cf-929d-4484-a637-1bc31cccdbe1';
+  // Use service role key if set — bypasses RLS. Falls back to anon key.
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&status=neq.cancelled&select=*,order_items(*)&order=created_at.desc`;
   const supaRes = await fetch(url, {
     headers: {
-      apikey: process.env.VITE_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
+      apikey: supaKey,
+      Authorization: `Bearer ${supaKey}`,
     },
   });
   const orders = await supaRes.json();

@@ -870,6 +870,8 @@ const [resetError, setResetError] = useState('');
   const [adminScan, setAdminScan] = useState(false);
   const [scanMsg, setScanMsg] = useState(null);
   const [orderSearch, setOrderSearch] = useState('');
+  const [orderSourceFilter, setOrderSourceFilter] = useState('all');
+  const [soldOutError, setSoldOutError] = useState('');
   const [lookupEmail, setLookupEmail] = useState('');
   const [lookupOrders, setLookupOrders] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -1284,7 +1286,21 @@ const generatePhotoTickets = async (ev) => {
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        const msg = data.error || 'Payment setup failed. Please try again.';
+        if (res.status === 400 && data.error?.includes('remaining')) {
+          setSoldOutError(data.error);
+          // Refresh ticket availability so the cart reflects reality
+          const { data: fresh } = await supabase.from('events').select('*, ticket_types(*)').eq('id', sel.id).single();
+          if (fresh) updateEvents(events.map(e => e.id === sel.id ? mapEvent(fresh) : e));
+          setCart({});
+        } else {
+          alert(msg);
+        }
+        return;
+      }
       if (!data.clientSecret) { alert('Payment setup failed. Please try again.'); return; }
+      setSoldOutError('');
       setClientSecret(data.clientSecret);
       setPaymentAmounts({ ticketTotal: data.ticketTotal, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
     } catch {
@@ -1581,7 +1597,8 @@ const generatePhotoTickets = async (ev) => {
                 <div className="cart-ln"><span>Processing Fee</span><span>{fmtCurrency(procFee)}</span></div>
                 <div className="cart-tot"><span>Total</span><span>{fmtCurrency(grand)}</span></div>
               </div>
-              <button className="buy" style={{ marginTop: 16 }} onClick={createPaymentIntent} disabled={creatingPayment}>
+              {soldOutError && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"12px 14px",marginTop:12,marginBottom:4,color:"var(--red)",fontSize:13}}>Availability changed: {soldOutError}. Your cart has been cleared — please select new quantities.</div>}
+              <button className="buy" style={{ marginTop: 12 }} onClick={createPaymentIntent} disabled={creatingPayment || !!soldOutError}>
                 {creatingPayment ? "Setting up payment..." : `Continue to Payment — ${fmtCurrency(grand)}`}
               </button>
             </div>
@@ -2053,12 +2070,19 @@ fetch(API_BASE+'/api/send-confirmation', {
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
+              const vs=orderSourceFilter==='all'?vo:vo.filter(o=>orderSourceFilter==='online'?(o.source==='online'||!o.source):o.source==='door'||o.source==='door_cash');
               const q=orderSearch.toLowerCase().trim();
-              const fo=q?vo.filter(o=>{const ev=events.find(e=>e.id===o.eventId);return o.buyer.name.toLowerCase().includes(q)||o.buyer.email.toLowerCase().includes(q)||(ev?.title||'').toLowerCase().includes(q);}):vo;
+              const fo=q?vs.filter(o=>{const ev=events.find(e=>e.id===o.eventId);return o.buyer.name.toLowerCase().includes(q)||o.buyer.email.toLowerCase().includes(q)||(ev?.title||'').toLowerCase().includes(q);}):vs;
               return <>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
                   <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
                   <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
+                </div>
+                <div style={{display:"flex",gap:6,marginBottom:16}}>
+                  {[['all','All'],['online','Online'],['door','Door']].map(([val,label])=>(
+                    <button key={val} className={`chip ${orderSourceFilter===val?'on':''}`} onClick={()=>setOrderSourceFilter(val)}>{label}</button>
+                  ))}
+                  <span style={{fontSize:12,color:"var(--text3)",alignSelf:"center",marginLeft:4}}>{fo.length} order{fo.length!==1?'s':''}</span>
                 </div>
                 {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
               </>; })()}

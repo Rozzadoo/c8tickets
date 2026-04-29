@@ -42,12 +42,13 @@ export default async function handler(req, res) {
   // Only send codes to emails that have an actual order — prevents inbox flooding
   // of arbitrary addresses. We always return 200 to avoid revealing who's a buyer.
   const tenantId = process.env.VITE_TENANT_ID || '2c3f53cf-929d-4484-a637-1bc31cccdbe1';
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   const checkRes = await fetch(
     `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&status=neq.cancelled&select=id&limit=1`,
     {
       headers: {
-        apikey: process.env.VITE_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: supaKey,
+        Authorization: `Bearer ${supaKey}`,
       },
     }
   );
