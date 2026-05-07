@@ -2527,7 +2527,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                   :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td></tr>)}</tbody></table></div>
                 }
 
-                <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
+                {!isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
                   <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Bookkeeping & Payouts</h3>
                   <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · 2.5% platform fee · 3.5% + $0.30 Stripe processing. Cash sales carry no processing fee. All figures are for the selected period.</p>
                   <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
@@ -2586,7 +2586,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                       <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Exports transaction detail, financial summary, and weekly payout schedule for the selected period.</p>
                     </>
                   }
-                </div>
+                </div>}
               </>;
             })()}
           </div>
