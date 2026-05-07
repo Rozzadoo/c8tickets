@@ -963,8 +963,7 @@ const LiveDash = ({ events, orders }) => {
     const ch = supabase.channel('live-' + selEventId)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `event_id=eq.${selEventId}` }, refresh)
       .subscribe();
-    const poll = setInterval(refresh, 20000);
-    return () => { supabase.removeChannel(ch); clearInterval(poll); };
+    return () => { supabase.removeChannel(ch); };
   }, [selEventId]);
 
   const ev = events.find(e => e.id === selEventId);

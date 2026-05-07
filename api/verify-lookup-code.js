@@ -1,7 +1,10 @@
 import { createHmac } from 'crypto';
 
+const LOOKUP_CODE_SECRET = process.env.LOOKUP_CODE_SECRET;
+if (!LOOKUP_CODE_SECRET) throw new Error('LOOKUP_CODE_SECRET env var is not set');
+
 function makeCode(email, slot) {
-  const buf = createHmac('sha256', process.env.LOOKUP_CODE_SECRET || 'dev-secret')
+  const buf = createHmac('sha256', LOOKUP_CODE_SECRET)
     .update(`${email}:${slot}`)
     .digest('hex');
   return String(parseInt(buf.slice(0, 8), 16) % 1000000).padStart(6, '0');

@@ -25,6 +25,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing ticketTypeId' });
     }
 
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!ids.every(id => UUID_RE.test(id))) {
+      return res.status(400).json({ error: 'Invalid ticketTypeId' });
+    }
+
     // Validate quantities before hitting Supabase
     for (const item of items) {
       if (!Number.isInteger(item.qty) || item.qty < 1 || item.qty > 20) {
