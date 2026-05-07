@@ -2403,15 +2403,15 @@ fetch(API_BASE+'/api/send-confirmation', {
               const weekMap={};
               for(const o of vo){
                 const k=weekStart(o.date);
-                if(!weekMap[k])weekMap[k]={orders:0,tickets:0,ticketRev:0};
+                if(!weekMap[k])weekMap[k]={orders:0,tickets:0,ticketRev:0,svcFees:0};
                 const f=bkFees(o);
-                weekMap[k].orders++; weekMap[k].tickets+=o.items.reduce((s,i)=>s+i.qty,0); weekMap[k].ticketRev+=f.ticketSub;
+                weekMap[k].orders++; weekMap[k].tickets+=o.items.reduce((s,i)=>s+i.qty,0); weekMap[k].ticketRev+=f.ticketSub; weekMap[k].svcFees+=f.svc;
               }
               const weekRows=Object.entries(weekMap).sort(([a],[b])=>a.localeCompare(b)).map(([wk,d])=>{
                 const pf=Math.round(d.ticketRev*PLATFORM_PCT*100)/100;
                 const vg=Math.round((d.ticketRev-pf)*100)/100;
                 const hb=Math.round(vg*hbRate*100)/100;
-                return{week:wk,...d,platformFee:pf,venueGross:vg,holdback:hb,payNow:Math.round((vg-hb)*100)/100};
+                return{week:wk,...d,platformFee:pf,venueGross:vg,holdback:hb,payNow:Math.round((vg-hb)*100)/100,c8Total:Math.round((pf+d.svcFees)*100)/100};
               });
 
               const downloadBookkeepingCSV = () => {
@@ -2459,11 +2459,11 @@ fetch(API_BASE+'/api/send-confirmation', {
                 rows.push(['Total C8Tickets Revenue',fmt(c8Rev)]);
                 rows.push([]);
                 rows.push(['WEEKLY VENUE PAYOUT']);
-                rows.push(['Week Starting','Orders','Tickets','Ticket Revenue','Platform Fee (2.5%)','Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue']);
+                rows.push(['Week Starting','Orders','Tickets','Ticket Revenue','Service Fees ($2/tkt)','Platform Fee (2.5%)','Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue','Your Revenue (Svc + Platform)']);
                 for(const r of weekRows){
                   rows.push([
                     new Date(r.week+'T12:00:00').toLocaleDateString('en-US'),
-                    r.orders, r.tickets, fmt(r.ticketRev), fmt(r.platformFee), fmt(r.venueGross), fmt(r.holdback), fmt(r.payNow),
+                    r.orders, r.tickets, fmt(r.ticketRev), fmt(r.svcFees), fmt(r.platformFee), fmt(r.venueGross), fmt(r.holdback), fmt(r.payNow), fmt(r.c8Total),
                   ]);
                 }
                 const csv=rows.map(r=>r.map(c=>typeof c==='string'&&(c.includes(',')||c.includes('"'))?q(c):c).join(',')).join('\n');
@@ -2564,17 +2564,19 @@ fetch(API_BASE+'/api/send-confirmation', {
                         <h4 className="dsp" style={{fontSize:15,marginBottom:10}}>Weekly Venue Payout Schedule</h4>
                         <div style={{overflowX:'auto',marginBottom:20}}>
                           <table className="dt">
-                            <thead><tr><th>Week of</th><th>Orders</th><th>Tickets</th><th>Ticket Rev</th><th>Platform Fee</th><th>Venue Gross</th><th>Holdback</th><th style={{color:'var(--gold)'}}>Pay Venue</th></tr></thead>
+                            <thead><tr><th>Week of</th><th>Orders</th><th>Tickets</th><th>Ticket Rev</th><th>Service Fees</th><th>Platform Fee</th><th>Venue Gross</th><th>Holdback</th><th style={{color:'var(--gold)'}}>Pay Venue</th><th style={{color:'var(--green)'}}>Your Revenue</th></tr></thead>
                             <tbody>
                               {weekRows.map(r=>(
                                 <tr key={r.week}>
                                   <td style={{fontWeight:600}}>{new Date(r.week+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</td>
                                   <td>{r.orders}</td><td>{r.tickets}</td>
                                   <td>{fmtCurrency(r.ticketRev)}</td>
-                                  <td style={{color:'var(--text3)'}}>−{fmtCurrency(r.platformFee)}</td>
+                                  <td style={{color:'var(--green)',fontWeight:600}}>{fmtCurrency(r.svcFees)}</td>
+                                  <td style={{color:'var(--green)',fontWeight:600}}>{fmtCurrency(r.platformFee)}</td>
                                   <td>{fmtCurrency(r.venueGross)}</td>
                                   <td style={{color:'var(--text3)'}}>−{fmtCurrency(r.holdback)}</td>
                                   <td style={{fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(r.payNow)}</td>
+                                  <td style={{fontWeight:700,color:'var(--green)'}}>{fmtCurrency(r.c8Total)}</td>
                                 </tr>
                               ))}
                             </tbody>
