@@ -1036,6 +1036,7 @@ export default function App() {
   const [reportFilter, setReportFilter] = useState('month');
   const [reportCustomStart, setReportCustomStart] = useState('');
   const [reportCustomEnd, setReportCustomEnd] = useState('');
+  const [holdbackPct, setHoldbackPct] = useState(10);
   const [filter, setFilter] = useState("All");
   const [editEvt, setEditEvt] = useState(null);
   const [modal, setModal] = useState(false);
@@ -2372,6 +2373,107 @@ fetch(API_BASE+'/api/send-confirmation', {
               for(const o of vo){for(const item of o.items){if(!ciTypeMap[item.type])ciTypeMap[item.type]={sold:0,checkedIn:0};ciTypeMap[item.type].sold+=item.qty;if(o.checkedIn)ciTypeMap[item.type].checkedIn+=item.qty;}}
               const ciTypeRows=Object.entries(ciTypeMap).sort((a,b)=>b[1].sold-a[1].sold);
 
+              // Bookkeeping calculations
+              const PLATFORM_PCT = 0.025;
+              const bkFees = (o) => {
+                const ticketSub = o.items.reduce((s,i)=>s+i.qty*i.price,0);
+                const qty = o.items.reduce((s,i)=>s+i.qty,0);
+                const tax = Math.round(ticketSub*0.06*100)/100;
+                const svc = qty*2;
+                const isCash = o.source==='door_cash';
+                const proc = isCash ? 0 : Math.max(0, Math.round((o.total-ticketSub-tax-svc)*100)/100);
+                return {ticketSub, tax, svc, proc, isCash};
+              };
+              const bk = vo.reduce((acc,o)=>{
+                const f=bkFees(o);
+                acc.ticketRev+=f.ticketSub; acc.tax+=f.tax; acc.svc+=f.svc; acc.proc+=f.proc;
+                acc.grossCard+=f.isCash?0:o.total; acc.grossCash+=f.isCash?o.total:0;
+                return acc;
+              },{ticketRev:0,tax:0,svc:0,proc:0,grossCard:0,grossCash:0});
+              const hbRate = holdbackPct/100;
+              const platformFees = Math.round(bk.ticketRev*PLATFORM_PCT*100)/100;
+              const venueGross = Math.round((bk.ticketRev-platformFees)*100)/100;
+              const holdbackAmt = Math.round(venueGross*hbRate*100)/100;
+              const venuePayNow = Math.round((venueGross-holdbackAmt)*100)/100;
+              const netStripeDeposit = Math.round((bk.grossCard-bk.proc)*100)/100;
+              const c8Rev = Math.round((bk.svc+platformFees)*100)/100;
+
+              // Weekly venue payout grouping (Mon–Sun weeks)
+              const weekStart = (d) => { const dt=new Date(d); const day=dt.getDay(); dt.setDate(dt.getDate()-((day+6)%7)); return dt.toISOString().slice(0,10); };
+              const weekMap={};
+              for(const o of vo){
+                const k=weekStart(o.date);
+                if(!weekMap[k])weekMap[k]={orders:0,tickets:0,ticketRev:0};
+                const f=bkFees(o);
+                weekMap[k].orders++; weekMap[k].tickets+=o.items.reduce((s,i)=>s+i.qty,0); weekMap[k].ticketRev+=f.ticketSub;
+              }
+              const weekRows=Object.entries(weekMap).sort(([a],[b])=>a.localeCompare(b)).map(([wk,d])=>{
+                const pf=Math.round(d.ticketRev*PLATFORM_PCT*100)/100;
+                const vg=Math.round((d.ticketRev-pf)*100)/100;
+                const hb=Math.round(vg*hbRate*100)/100;
+                return{week:wk,...d,platformFee:pf,venueGross:vg,holdback:hb,payNow:Math.round((vg-hb)*100)/100};
+              });
+
+              const downloadBookkeepingCSV = () => {
+                const fmt = (n) => Number(n).toFixed(2);
+                const q = (s) => `"${String(s).replace(/"/g,'""')}"`;
+                const rows = [];
+                rows.push(['C8 Tickets Bookkeeping Export']);
+                rows.push([`Period: ${filterLabels[reportFilter]}`]);
+                rows.push([`Generated: ${new Date().toLocaleDateString('en-US')}`]);
+                rows.push([]);
+                rows.push(['TRANSACTION DETAIL']);
+                rows.push(['Date','Order ID','Event','Buyer Name','Channel','Qty Tickets','Ticket Subtotal','Sales Tax (6%)','Service Fees ($2/tkt)','Processing Fee','Grand Total','Net Bank Deposit']);
+                for(const o of vo){
+                  const evTitle=events.find(e=>e.id===o.eventId)?.title||o.eventId;
+                  const f=bkFees(o);
+                  const ch=o.source==='door_cash'?'Door – Cash':o.source==='door'?'Door – Card':'Online';
+                  rows.push([
+                    new Date(o.date).toLocaleDateString('en-US'),
+                    o.id.slice(0,8).toUpperCase(),
+                    evTitle, o.buyer.name, ch,
+                    o.items.reduce((s,i)=>s+i.qty,0),
+                    fmt(f.ticketSub), fmt(f.tax), fmt(f.svc),
+                    f.isCash?'0.00':fmt(f.proc),
+                    fmt(o.total),
+                    f.isCash?'Cash ('+fmt(o.total)+')':fmt(o.total-f.proc),
+                  ]);
+                }
+                rows.push([]);
+                rows.push(['FINANCIAL SUMMARY']);
+                rows.push(['Item','Amount']);
+                rows.push(['Gross Collected — Card (online + door)',fmt(bk.grossCard)]);
+                rows.push(['Gross Collected — Cash (door)',fmt(bk.grossCash)]);
+                rows.push(['Total Gross Collected',fmt(bk.grossCard+bk.grossCash)]);
+                rows.push(['Less: Stripe Processing Fees','-'+fmt(bk.proc)]);
+                rows.push(['Net Stripe Bank Deposit',fmt(netStripeDeposit)]);
+                rows.push(['Cash Collected (door, not via Stripe)',fmt(bk.grossCash)]);
+                rows.push(['Total Funds Received',fmt(netStripeDeposit+bk.grossCash)]);
+                rows.push([]);
+                rows.push(['ALLOCATIONS']);
+                rows.push(['Idaho Sales Tax — Remit to State',fmt(bk.tax)]);
+                rows.push([`Venue Payout (before ${holdbackPct}% holdback)`,fmt(venuePayNow)]);
+                rows.push([`Holdback Retained (${holdbackPct}% of venue gross)`,fmt(holdbackAmt)]);
+                rows.push(['C8Tickets Revenue — Service Fees ($2/ticket)',fmt(bk.svc)]);
+                rows.push(['C8Tickets Revenue — Platform Fee (2.5% of ticket rev)',fmt(platformFees)]);
+                rows.push(['Total C8Tickets Revenue',fmt(c8Rev)]);
+                rows.push([]);
+                rows.push(['WEEKLY VENUE PAYOUT']);
+                rows.push(['Week Starting','Orders','Tickets','Ticket Revenue','Platform Fee (2.5%)','Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue']);
+                for(const r of weekRows){
+                  rows.push([
+                    new Date(r.week+'T12:00:00').toLocaleDateString('en-US'),
+                    r.orders, r.tickets, fmt(r.ticketRev), fmt(r.platformFee), fmt(r.venueGross), fmt(r.holdback), fmt(r.payNow),
+                  ]);
+                }
+                const csv=rows.map(r=>r.map(c=>typeof c==='string'&&(c.includes(',')||c.includes('"'))?q(c):c).join(',')).join('\n');
+                const blob=new Blob([csv],{type:'text/csv'});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a');
+                a.href=url; a.download=`c8tickets-bookkeeping-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+                URL.revokeObjectURL(url);
+              };
+
               return <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                   <h2 className="dsp" style={{fontSize:26}}>Reports</h2>
@@ -2424,6 +2526,67 @@ fetch(API_BASE+'/api/send-confirmation', {
                   ?<div className="empty" style={{marginBottom:28}}><p>No repeat buyers yet.</p></div>
                   :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td></tr>)}</tbody></table></div>
                 }
+
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
+                  <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Bookkeeping & Payouts</h3>
+                  <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · 2.5% platform fee · 3.5% + $0.30 Stripe processing. Cash sales carry no processing fee. All figures are for the selected period.</p>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+                    <label style={{fontSize:12,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Holdback %</label>
+                    <input className="fi" type="number" min="0" max="100" step="1" value={holdbackPct} onChange={e=>setHoldbackPct(Math.max(0,Math.min(100,Number(e.target.value))))} style={{width:70,margin:0}} />
+                    <span style={{fontSize:12,color:'var(--text3)'}}>Reserve withheld from each venue payout and released after the chargeback window closes.</span>
+                  </div>
+                  {vo.length===0
+                    ?<div className="empty" style={{marginBottom:28}}><p>No orders in this period.</p></div>
+                    :<>
+                      <div style={{overflowX:'auto',marginBottom:28}}>
+                        <table className="dt">
+                          <thead><tr><th style={{width:'62%'}}>Item</th><th style={{textAlign:'right'}}>Amount</th></tr></thead>
+                          <tbody>
+                            <tr><td style={{fontWeight:700,paddingTop:10}}>Gross Collected</td><td style={{textAlign:'right',fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(bk.grossCard+bk.grossCash)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Card payments (online + door)</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(bk.grossCard)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Cash collected at door</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(bk.grossCash)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--red)',fontSize:13}}>Less: Stripe processing fees</td><td style={{textAlign:'right',color:'var(--red)',fontSize:13}}>−{fmtCurrency(bk.proc)}</td></tr>
+                            <tr style={{borderTop:'1px solid var(--border)'}}><td style={{fontWeight:700}}>Net Deposited to Bank</td><td style={{textAlign:'right',fontWeight:700}}>{fmtCurrency(netStripeDeposit+bk.grossCash)}</td></tr>
+
+                            <tr><td colSpan={2} style={{paddingTop:16,paddingBottom:2,fontSize:11,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Allocations from Your Account</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Idaho sales tax — remit to state (6%)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(bk.tax)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Venue payout (after 2.5% platform fee)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(venuePayNow)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Holdback retained ({holdbackPct}% of venue gross)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>+{fmtCurrency(holdbackAmt)}</td></tr>
+
+                            <tr style={{borderTop:'1px solid var(--border)'}}><td style={{fontWeight:700}}>C8Tickets Revenue</td><td style={{textAlign:'right',fontWeight:700,color:'var(--green)'}}>{fmtCurrency(c8Rev)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Service fees ($2/ticket × {vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)})</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(bk.svc)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Platform fee (2.5% of ${bk.ticketRev.toFixed(2)} ticket rev)</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(platformFees)}</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {weekRows.length>0&&<>
+                        <h4 className="dsp" style={{fontSize:15,marginBottom:10}}>Weekly Venue Payout Schedule</h4>
+                        <div style={{overflowX:'auto',marginBottom:20}}>
+                          <table className="dt">
+                            <thead><tr><th>Week of</th><th>Orders</th><th>Tickets</th><th>Ticket Rev</th><th>Platform Fee</th><th>Venue Gross</th><th>Holdback</th><th style={{color:'var(--gold)'}}>Pay Venue</th></tr></thead>
+                            <tbody>
+                              {weekRows.map(r=>(
+                                <tr key={r.week}>
+                                  <td style={{fontWeight:600}}>{new Date(r.week+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</td>
+                                  <td>{r.orders}</td><td>{r.tickets}</td>
+                                  <td>{fmtCurrency(r.ticketRev)}</td>
+                                  <td style={{color:'var(--text3)'}}>−{fmtCurrency(r.platformFee)}</td>
+                                  <td>{fmtCurrency(r.venueGross)}</td>
+                                  <td style={{color:'var(--text3)'}}>−{fmtCurrency(r.holdback)}</td>
+                                  <td style={{fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(r.payNow)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>}
+
+                      <button className="btn gold" onClick={downloadBookkeepingCSV}>Download CSV for QuickBooks</button>
+                      <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Exports transaction detail, financial summary, and weekly payout schedule for the selected period.</p>
+                    </>
+                  }
+                </div>
               </>;
             })()}
           </div>
