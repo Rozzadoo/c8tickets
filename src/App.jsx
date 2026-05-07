@@ -17,6 +17,20 @@ const DEFAULT_VENUE = {
   phone: "(208) 991-0788",
 };
 
+const TICKET_SIZES = [
+  { id: 'strip',  label: 'Standard Strip',    sublabel: '5.5" × 2" — concert stub',        cols: 2, height: '2in',   photoW: '32%', fScale: 1.0 },
+  { id: 'wide',   label: 'Wide Strip',         sublabel: '7" × 2.75" — standard ticket',    cols: 1, height: '2.75in',photoW: '33%', fScale: 1.2 },
+  { id: 'half',   label: 'Half Page',          sublabel: '5.5" × 4.25" — premium ticket',   cols: 2, height: '3.8in', photoW: '36%', fScale: 1.6 },
+  { id: 'full',   label: 'Full Page',          sublabel: '7.5" × 5" — collector\'s ticket', cols: 1, height: '4.8in', photoW: '42%', fScale: 2.0 },
+  { id: 'custom', label: 'Custom',             sublabel: 'Enter your own dimensions',        cols: null, height: null, photoW: null, fScale: null },
+];
+
+const resolveCustomSize = (w, h) => {
+  const wn = Math.max(2, Math.min(8.5, parseFloat(w) || 5.5));
+  const hn = Math.max(1, Math.min(10,  parseFloat(h) || 2));
+  return { id: 'custom', label: 'Custom', sublabel: `${wn}" × ${hn}"`, cols: wn <= 4.0 ? 2 : 1, height: `${hn}in`, photoW: hn > 3 ? '38%' : '32%', fScale: Math.max(0.8, Math.min(2.5, hn / 2)) };
+};
+
 const mapEvent = (e) => ({
   id: e.id,
   venueId: TENANT_ID,
@@ -1068,6 +1082,10 @@ const [resetError, setResetError] = useState('');
   const [lookupCode, setLookupCode] = useState('');
   const [lookupError, setLookupError] = useState('');
   const [generatingPhysical, setGeneratingPhysical] = useState(false);
+  const [ticketSizeModal, setTicketSizeModal] = useState(null);
+  const [ticketSizeSelected, setTicketSizeSelected] = useState('strip');
+  const [ticketSizeCustomW, setTicketSizeCustomW] = useState('5.5');
+  const [ticketSizeCustomH, setTicketSizeCustomH] = useState('2');
   const [editEmailOrder, setEditEmailOrder] = useState(null);
   const [editEmailValue, setEditEmailValue] = useState('');
   const [editEmailSaving, setEditEmailSaving] = useState(false);
@@ -1299,66 +1317,75 @@ const verifyLookupCode = async () => {
   setLookupOrders(data.orders || []);
 };
 
-const openPrintPage = (ev, tickets, venue) => {
+const openPrintPage = (ev, tickets, venue, size = TICKET_SIZES[0]) => {
+  const fs = size.fScale ?? 1;
+  const r = (n) => Math.round(n * fs);
+  const qrSz = r(88);
+  const stubW = r(108);
+  const hasImg = !!(ev.image && ev.image.startsWith('http'));
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Physical Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:1px solid #d9d0c0;display:flex;align-items:center;gap:16px}
 .toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
 .toolbar p{font-size:13px;color:#6b5e47}
-.sheet{padding:0.3in;display:grid;grid-template-columns:1fr 1fr;gap:0.15in}
-.tkt{width:100%;background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;display:flex;overflow:hidden;position:relative;page-break-inside:avoid}
-.tkt-body{flex:1;padding:14px 12px 12px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.35)}
-.tkt-stub{width:108px;flex-shrink:0;padding:12px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
-.gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a)}
-.brand{font-size:13px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
-.brand-loc{font-size:7.5px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
-.evt-title{font-size:15px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:8px 0 6px}
-.evt-meta{font-size:8.5px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;line-height:2}
-.tkt-type{margin-top:8px;font-size:8px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px;border:1px solid rgba(200,146,42,.5);border-radius:3px;padding:2px 7px;display:inline-block}
-.admit{font-size:7.5px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px}
+.sheet{padding:0.3in;display:grid;grid-template-columns:repeat(${size.cols},1fr);gap:0.15in}
+.tkt{width:100%;${size.height?`min-height:${size.height};`:''}background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;display:flex;overflow:hidden;position:relative;page-break-inside:avoid}
+.tkt-img{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;opacity:0.18}
+.tkt-body{flex:1;padding:${r(14)}px ${r(12)}px ${r(12)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.35);position:relative;z-index:1}
+.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(12)}px ${r(10)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(6)}px;position:relative;z-index:1}
+.gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a);z-index:2}
+.brand{font-size:${r(13)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
+.brand-loc{font-size:${r(7.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
+.evt-title{font-size:${r(15)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(6)}px}
+.evt-meta{font-size:${r(8.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;line-height:2}
+.tkt-type{margin-top:${r(8)}px;font-size:${r(8)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px;border:1px solid rgba(200,146,42,.5);border-radius:3px;padding:2px 7px;display:inline-block}
+.admit{font-size:${r(7.5)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px}
 .qr-wrap{background:#fff;padding:5px;border-radius:4px}
-.tkt-id{font-size:6.5px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center;word-break:break-all;line-height:1.4}
+.tkt-id{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center;word-break:break-all;line-height:1.4}
 @media print{.toolbar{display:none}.sheet{padding:0.2in}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:letter portrait;margin:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; Use "Save as PDF" in the print dialog to send to a print shop</p></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Use "Save as PDF" to send to a print shop</p></div>
 <div class="sheet">
-${tickets.map(t=>`<div class="tkt"><div class="gold-bar"></div><div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 ${venue.location}</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=${t.id}" width="88" height="88" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
+${tickets.map(t=>`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 ${venue.location}</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSz}x${qrSz}&data=${t.id}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
 </div></body></html>`;
   const win = window.open('', '_blank');
   if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
   win.document.write(html); win.document.close();
 };
 
-const openPhotoPage = (ev, tickets, venue) => {
+const openPhotoPage = (ev, tickets, venue, size = TICKET_SIZES[0]) => {
+  const fs = size.fScale ?? 1;
+  const r = (n) => Math.round(n * fs);
+  const qrSz = r(72);
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
 .toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:1px solid #d9d0c0;display:flex;align-items:center;gap:16px}
 .toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
 .toolbar p{font-size:13px;color:#6b5e47}
-.sheet{padding:0.3in;display:grid;grid-template-columns:1fr 1fr;gap:0.18in}
-.tkt{display:flex;height:2.4in;background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;overflow:hidden;page-break-inside:avoid;box-shadow:0 2px 8px rgba(0,0,0,.25)}
-.tkt-photo{width:33%;flex-shrink:0;background-size:cover;background-repeat:no-repeat;position:relative}
+.sheet{padding:0.3in;display:grid;grid-template-columns:repeat(${size.cols},1fr);gap:0.18in}
+.tkt{display:flex;height:${size.height ?? '2.4in'};background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;overflow:hidden;page-break-inside:avoid;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.tkt-photo{width:${size.photoW ?? '33%'};flex-shrink:0;background-size:cover;background-repeat:no-repeat;position:relative}
 .tkt-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,rgba(28,25,20,0) 40%,rgba(28,25,20,.75) 100%)}
 .tkt-stripe{width:3px;flex-shrink:0;background:linear-gradient(to bottom,#c8922a,#f0c050,#c8922a)}
-.tkt-main{flex:1;padding:13px 12px 11px 14px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
-.brand{font-size:11.5px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
-.brand-sub{font-size:7px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
-.gold-rule{width:32px;height:2px;background:#c8922a;margin:7px 0 8px}
-.evt-name{font-size:15.5px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:5px}
-.evt-date{font-size:8px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
-.evt-venue{font-size:7px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
-.tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
-.tier-label{font-size:6.5px;color:#c8922a;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:3px}
-.tier-name{font-size:10px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
-.tkt-code{font-size:6.5px;color:#7a6c54;font-family:monospace;letter-spacing:1px}
+.tkt-main{flex:1;padding:${r(13)}px ${r(12)}px ${r(11)}px ${r(14)}px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.brand{font-size:${r(11.5)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
+.brand-sub{font-size:${r(7)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
+.gold-rule{width:${r(32)}px;height:2px;background:#c8922a;margin:${r(7)}px 0 ${r(8)}px}
+.evt-name{font-size:${r(15.5)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:${r(5)}px}
+.evt-date{font-size:${r(8)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(3)}px}
+.evt-venue{font-size:${r(7)}px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
+.tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:${r(8)}px}
+.tier-label{font-size:${r(6.5)}px;color:#c8922a;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(3)}px}
+.tier-name{font-size:${r(10)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(4)}px}
+.tkt-code{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:1px}
 .qr-box{background:#fff;padding:4px;border-radius:4px;flex-shrink:0}
 .qr-box img{display:block}
 .no-photo{background:linear-gradient(135deg,#2a2218 0%,#1c1914 60%,#0e0c09 100%)}
 @media print{.toolbar{display:none}.sheet{padding:0.2in}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-shadow:none}@page{size:letter portrait;margin:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; Save as PDF and send to your print shop for professional printing</p></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Save as PDF and send to your print shop</p></div>
 <div class="sheet">
 ${tickets.map(t=>{const hasImg=t.image&&t.image.startsWith('http');return`<div class="tkt">
   <div class="tkt-photo ${hasImg?'':'no-photo'}" style="${hasImg?`background-image:url('${t.image}');background-position:${t.focalX??50}% ${t.focalY??50}%`:''}"></div>
@@ -1378,7 +1405,7 @@ ${tickets.map(t=>{const hasImg=t.image&&t.image.startsWith('http');return`<div c
         <div class="tier-name">${t.type}</div>
         <div class="tkt-code">#${t.id.slice(0,8).toUpperCase()}</div>
       </div>
-      <div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${t.id}" width="72" height="72" alt="QR"></div>
+      <div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSz}x${qrSz}&data=${t.id}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
     </div>
   </div>
 </div>`;}).join('\n')}
@@ -1414,7 +1441,7 @@ const fetchOrCreatePhysicalOrders = async (ev) => {
   return results;
 };
 
-const generatePhysicalTickets = async (ev) => {
+const generatePhysicalTickets = async (ev, size = TICKET_SIZES[0]) => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
@@ -1422,10 +1449,10 @@ const generatePhysicalTickets = async (ev) => {
   setGeneratingPhysical(ev.id);
   const orders = await fetchOrCreatePhysicalOrders(ev);
   setGeneratingPhysical(false);
-  if (orders.length > 0) openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })), venue);
+  if (orders.length > 0) openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })), venue, size);
 };
 
-const generatePhotoTickets = async (ev) => {
+const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
@@ -1433,7 +1460,7 @@ const generatePhotoTickets = async (ev) => {
   setGeneratingPhysical(ev.id + '-photo');
   const orders = await fetchOrCreatePhysicalOrders(ev);
   setGeneratingPhysical(false);
-  if (orders.length > 0) openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })), venue);
+  if (orders.length > 0) openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })), venue, size);
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
   const publicEvents = vEvents.filter(e => e.published !== false);
@@ -2265,7 +2292,7 @@ fetch(API_BASE+'/api/send-confirmation', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>generatePhysicalTickets(ev)}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>generatePhotoTickets(ev)}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
@@ -2693,6 +2720,34 @@ fetch(API_BASE+'/api/send-confirmation', {
             <div style={{display:"flex",gap:10,marginTop:4}}>
               <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={cancelling} onClick={confirmCancelOrder}>{cancelling ? "Processing..." : "Confirm — Cancel & Refund"}</button>
               <button className="btn" style={{padding:"10px 20px"}} disabled={cancelling} onClick={()=>setCancelTarget(null)}>Go Back</button>
+            </div>
+          </div>
+        </div>}
+
+        {ticketSizeModal && <div className="modal-bg" onClick={()=>setTicketSizeModal(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:540}}>
+            <h2 className="dsp" style={{fontSize:22,marginBottom:6}}>Choose Ticket Size</h2>
+            <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>{ticketSizeModal.mode==='photo'?'Photo PDF — event image on left panel':'Text layout — event photo as subtle background texture'}</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+              {TICKET_SIZES.map(s=><button key={s.id} onClick={()=>setTicketSizeSelected(s.id)} style={{padding:"14px 16px",textAlign:"left",border:`2px solid ${ticketSizeSelected===s.id?"var(--gold)":"var(--border)"}`,borderRadius:8,background:ticketSizeSelected===s.id?"rgba(200,146,42,0.1)":"var(--card)",cursor:"pointer",color:"var(--text)"}}>
+                <div style={{fontWeight:700,fontSize:13}}>{s.label}</div>
+                <div style={{fontSize:11,color:"var(--text2)",marginTop:3}}>{s.sublabel}</div>
+              </button>)}
+            </div>
+            {ticketSizeSelected==='custom'&&<div style={{display:"flex",gap:12,marginBottom:20,alignItems:"flex-end"}}>
+              <div className="fg" style={{margin:0,flex:1}}><label className="fl">Width (inches)</label><input className="fi" type="number" step="0.25" min="2" max="8.5" value={ticketSizeCustomW} onChange={e=>setTicketSizeCustomW(e.target.value)}/></div>
+              <div style={{fontSize:22,paddingBottom:10,color:"var(--text2)"}}>×</div>
+              <div className="fg" style={{margin:0,flex:1}}><label className="fl">Height (inches)</label><input className="fi" type="number" step="0.25" min="1" max="10" value={ticketSizeCustomH} onChange={e=>setTicketSizeCustomH(e.target.value)}/></div>
+            </div>}
+            <div style={{display:"flex",gap:10}}>
+              <button className="buy" style={{flex:1}} disabled={!!generatingPhysical} onClick={async()=>{
+                const size=ticketSizeSelected==='custom'?resolveCustomSize(ticketSizeCustomW,ticketSizeCustomH):TICKET_SIZES.find(s=>s.id===ticketSizeSelected);
+                const{ev,mode}=ticketSizeModal;
+                setTicketSizeModal(null);
+                if(mode==='print') await generatePhysicalTickets(ev,size);
+                else await generatePhotoTickets(ev,size);
+              }}>{generatingPhysical?"Generating…":"Generate PDF"}</button>
+              <button className="btn" style={{padding:"10px 20px"}} onClick={()=>setTicketSizeModal(null)}>Cancel</button>
             </div>
           </div>
         </div>}

@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   const isBot = BOT_RE.test(req.headers['user-agent'] || '');
   const title = event.title ?? 'Event';
   const description = event.description ? event.description.slice(0, 200) : 'Buy tickets at C8Tickets';
-  const image = event.image_url ?? 'https://c8tickets.com/logo.jpg';
+  const image = `https://c8tickets.com/api/og-image?id=${id}`;
   const canonical = `https://c8tickets.com/e/${id}`;
   const dest = `/?event=${id}`;
 
