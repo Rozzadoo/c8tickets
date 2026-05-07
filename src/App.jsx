@@ -531,6 +531,15 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [tendered, setTendered] = useState('');
   const [lastSale, setLastSale] = useState(null);
   const [loadingIntent, setLoadingIntent] = useState(false);
+  // Terminal reader state
+  const [terminal, setTerminal] = useState(null);
+  const [readers, setReaders] = useState([]);
+  const [connectedReader, setConnectedReader] = useState(null);
+  const [readerDiscovering, setReaderDiscovering] = useState(false);
+  const [readerConnecting, setReaderConnecting] = useState(false);
+  const [readerError, setReaderError] = useState('');
+  const [terminalPaymentStatus, setTerminalPaymentStatus] = useState('idle');
+  const [terminalAmounts, setTerminalAmounts] = useState(null);
 
   const ev = events.find(e => e.id === selEventId);
   const cartItems = ev ? ev.tickets.map((t, i) => ({ ...t, qty: doorCart[i] || 0, effectivePrice: t.doorPrice ?? t.price })) : [];
@@ -553,13 +562,118 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     setStep('payment');
   };
 
-  const handleSuccess = async (paymentIntentId) => {
+  const initAndDiscover = async () => {
+    setReaderError('');
+    setReaders([]);
+    setReaderDiscovering(true);
+    try {
+      const { loadStripeTerminal } = await import('@stripe/terminal-js');
+      const StripeTerminal = await loadStripeTerminal();
+      const term = StripeTerminal.create({
+        onFetchConnectionToken: async () => {
+          const { data: { session: s } } = await supabase.auth.getSession();
+          const r = await fetch(API_BASE + '/api/terminal-connection-token', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${s?.access_token || ''}` },
+          });
+          const d = await r.json();
+          if (d.error) throw new Error(d.error);
+          return d.secret;
+        },
+        onUnexpectedReaderDisconnect: () => {
+          setConnectedReader(null);
+          setTerminalPaymentStatus('idle');
+          setReaderError('Reader disconnected unexpectedly.');
+        },
+      });
+      setTerminal(term);
+      const result = await term.discoverReaders({ simulated: false });
+      setReaderDiscovering(false);
+      if (result.error) {
+        setReaderError(result.error.message);
+      } else if (result.discoveredReaders.length === 0) {
+        setReaderError('No readers found. Make sure the reader is powered on and on the same network.');
+      } else {
+        setReaders(result.discoveredReaders);
+      }
+    } catch (err) {
+      setReaderDiscovering(false);
+      setReaderError(err.message || 'Failed to initialize terminal.');
+    }
+  };
+
+  const connectToReader = async (reader) => {
+    if (!terminal) return;
+    setReaderConnecting(true);
+    setReaderError('');
+    const result = await terminal.connectReader(reader);
+    setReaderConnecting(false);
+    if (result.error) {
+      setReaderError(result.error.message);
+    } else {
+      setConnectedReader(result.reader);
+      setReaders([]);
+    }
+  };
+
+  const disconnectReader = async () => {
+    if (terminal) await terminal.disconnectReader().catch(() => {});
+    setConnectedReader(null);
+    setTerminal(null);
+    setReaders([]);
+    setReaderError('');
+  };
+
+  const startTerminalPayment = async () => {
+    if (!terminal || !connectedReader || cartN === 0) return;
+    const { data: { session: doorSession } } = await supabase.auth.getSession();
+    setLoadingIntent(true);
+    const res = await fetch(API_BASE + '/api/create-terminal-payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
+      body: JSON.stringify({
+        items: cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id })),
+        eventId: selEventId, tenantId: TENANT_ID,
+        eventMeta: { title: ev?.title || '' },
+      }),
+    });
+    const data = await res.json();
+    setLoadingIntent(false);
+    if (!data.clientSecret) { alert(data.error || 'Payment setup failed. Please try again.'); return; }
+    setTerminalAmounts(data);
+    setStep('terminal_payment');
+    setTerminalPaymentStatus('waiting_for_card');
+    const collectResult = await terminal.collectPaymentMethod(data.clientSecret);
+    if (collectResult.error) {
+      if (collectResult.error.code !== 'canceled') alert(collectResult.error.message);
+      setStep('select'); setTerminalPaymentStatus('idle');
+      return;
+    }
+    setTerminalPaymentStatus('processing');
+    const processResult = await terminal.processPayment(collectResult.paymentIntent);
+    if (processResult.error) {
+      alert(processResult.error.message);
+      setStep('select'); setTerminalPaymentStatus('idle');
+      return;
+    }
+    setTerminalPaymentStatus('idle');
+    await handleSuccess(processResult.paymentIntent.id, data);
+  };
+
+  const cancelTerminalPayment = async () => {
+    if (terminal) await terminal.cancelCollectPaymentMethod().catch(() => {});
+    setStep('select');
+    setTerminalPaymentStatus('idle');
+  };
+
+  const handleSuccess = async (paymentIntentId, amountsData) => {
+    const eff = amountsData || amounts;
     const { data: { session: doorSession } } = await supabase.auth.getSession();
     const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       tenant_id: TENANT_ID, event_id: selEventId,
       buyer_name: buyerName.trim() || 'Walk-In', buyer_email: '', buyer_phone: '',
-      status: 'checked_in', total_amount: amounts.grandTotal,
+      status: 'checked_in', total_amount: eff.grandTotal,
       stripe_payment_intent_id: paymentIntentId, source: 'door',
     }).select().single();
     if (orderError) { alert('Order save failed. Payment ref: ' + paymentIntentId); return; }
@@ -582,9 +696,9 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       id: order.id, eventId: selEventId, venueId: venue.id,
       buyer: { name: buyerName.trim() || 'Walk-In', email: '', phone: '' },
       items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
-      ticketTotal: amounts.ticketTotal, salesTax: amounts.salesTax,
-      serviceFees: amounts.serviceFees, processingFee: amounts.processingFee,
-      total: amounts.grandTotal, date: new Date().toISOString(), checkedIn: true, source: 'door',
+      ticketTotal: eff.ticketTotal, salesTax: eff.salesTax,
+      serviceFees: eff.serviceFees, processingFee: eff.processingFee,
+      total: eff.grandTotal, date: new Date().toISOString(), checkedIn: true, source: 'door',
     };
     updateOrders(prev => [...prev, localOrder]);
     updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
@@ -633,7 +747,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     setStep('confirm');
   };
 
-  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); };
+  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); };
 
   return (
     <div>
@@ -678,12 +792,42 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
             <input className="fi" value={buyerName} onChange={e=>setBuyerName(e.target.value)} placeholder="Walk-In" />
           </div>
           <div style={{display:'flex',gap:10}}>
-            <button className="buy" style={{flex:1}} disabled={cartN===0||loadingIntent} onClick={startPayment}>
-              {loadingIntent?'Preparing…':'💳 Charge Card'}
+            <button className="buy" style={{flex:1}} disabled={cartN===0||loadingIntent} onClick={connectedReader ? startTerminalPayment : startPayment}>
+              {loadingIntent ? 'Preparing…' : connectedReader ? '💳 Charge Card (Reader)' : '💳 Charge Card (Online)'}
             </button>
             <button className="buy" style={{flex:1,background:'var(--green)',borderColor:'var(--green)'}} disabled={cartN===0} onClick={startCash}>
               💵 Cash Sale
             </button>
+          </div>
+          <div style={{marginTop:18,padding:'12px 16px',background:'var(--surface2)',borderRadius:'var(--rs)',fontSize:13}}>
+            {connectedReader ? (
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                <span style={{color:'var(--green)',fontWeight:600}}>Reader: {connectedReader.label || connectedReader.serial_number}</span>
+                <button className="btn" style={{padding:'4px 10px',fontSize:12}} onClick={disconnectReader}>Disconnect</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom: readers.length > 0 ? 10 : 0}}>
+                  <span style={{color:'var(--text3)'}}>No reader connected</span>
+                  <button className="btn" style={{padding:'4px 10px',fontSize:12}} disabled={readerDiscovering} onClick={initAndDiscover}>
+                    {readerDiscovering ? 'Searching…' : 'Find Reader'}
+                  </button>
+                </div>
+                {readerError && <p style={{color:'var(--red)',fontSize:12,marginTop:6,marginBottom:0}}>{readerError}</p>}
+                {readers.length > 0 && (
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {readers.map(r => (
+                      <div key={r.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--surface)',borderRadius:6,padding:'6px 10px'}}>
+                        <span style={{fontSize:13}}>{r.label || r.serial_number}</span>
+                        <button className="btn" style={{padding:'4px 10px',fontSize:12}} disabled={readerConnecting} onClick={() => connectToReader(r)}>
+                          {readerConnecting ? 'Connecting…' : 'Connect'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </>}
       </>}
@@ -712,6 +856,34 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
             ✓ Cash Collected — Complete Sale
           </button>
           <button className="btn" style={{width:'100%'}} onClick={()=>setStep('select')}>← Back</button>
+        </div>
+      )}
+
+      {step === 'terminal_payment' && terminalAmounts && (
+        <div style={{maxWidth:400,textAlign:'center',paddingTop:20}}>
+          <h3 className="dsp" style={{fontSize:20,marginBottom:20}}>Card Reader</h3>
+          <div className="tkt-sec" style={{marginBottom:24,textAlign:'left'}}>
+            {terminalAmounts.resolvedItems?.map((i,idx) => (
+              <div className="cart-ln" key={idx}><span>{i.qty}× {i.type}</span><span>{fmtCurrency(i.qty * i.price)}</span></div>
+            ))}
+            <div className="cart-ln"><span>Sales Tax (6%)</span><span>${terminalAmounts.salesTax?.toFixed(2)}</span></div>
+            <div className="cart-ln"><span>Service Fee</span><span>{fmtCurrency(terminalAmounts.serviceFees)}</span></div>
+            <div className="cart-ln"><span>Processing Fee</span><span>{fmtCurrency(terminalAmounts.processingFee)}</span></div>
+            <div className="cart-tot"><span>Total</span><span>{fmtCurrency(terminalAmounts.grandTotal)}</span></div>
+          </div>
+          {terminalPaymentStatus === 'waiting_for_card' && (
+            <>
+              <div style={{fontSize:48,marginBottom:12}}>💳</div>
+              <p style={{color:'var(--text2)',marginBottom:20}}>Present card to reader…</p>
+              <button className="btn" style={{width:'100%'}} onClick={cancelTerminalPayment}>Cancel</button>
+            </>
+          )}
+          {terminalPaymentStatus === 'processing' && (
+            <>
+              <div style={{fontSize:48,marginBottom:12}}>⏳</div>
+              <p style={{color:'var(--text2)'}}>Processing payment…</p>
+            </>
+          )}
         </div>
       )}
 
