@@ -2529,7 +2529,7 @@ fetch(API_BASE+'/api/send-confirmation', {
 
                 {!isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
                   <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Bookkeeping & Payouts</h3>
-                  <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · 2.5% platform fee · 3.5% + $0.30 Stripe processing. Cash sales carry no processing fee. All figures are for the selected period.</p>
+                  <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · 2.5% platform fee · 3.5% + $0.30 processing fee charged to customers (Stripe's actual cost: 2.9% + $0.30 — the 0.6% spread is additional C8Tickets revenue). Cash sales carry no processing fee. All figures are for the selected period.</p>
                   <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
                     <label style={{fontSize:12,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Holdback %</label>
                     <input className="fi" type="number" min="0" max="100" step="1" value={holdbackPct} onChange={e=>setHoldbackPct(Math.max(0,Math.min(100,Number(e.target.value))))} style={{width:70,margin:0}} />
