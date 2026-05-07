@@ -125,13 +125,15 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [agreed, setAgreed] = useState(false);
+  const submittingRef = useRef(false);
   const serviceFees = totalTickets * 2;
   const salesTax = paymentAmounts?.salesTax ?? 0;
   const processingFee = paymentAmounts?.processingFee ?? 0;
   const grandTotal = paymentAmounts?.grandTotal || (cartTotal + serviceFees);
 
   const handleSubmit = async () => {
-    if (!stripe || !elements) return;
+    if (submittingRef.current || !stripe || !elements) return;
+    submittingRef.current = true;
     setProcessing(true);
     setError(null);
 
@@ -146,6 +148,7 @@ const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBa
     if (confirmError) {
       setError(confirmError.message);
       setProcessing(false);
+      submittingRef.current = false;
     } else if (paymentIntent && paymentIntent.status === 'succeeded') {
       onSuccess(paymentIntent.id);
     }
@@ -1802,6 +1805,13 @@ const generatePhotoTickets = async (ev) => {
             const items = sel.tickets
               .map((t, i) => ({ type: t.type, qty: cart[i] || 0, price: t.price, ticketTypeId: t.id }))
               .filter(i => i.qty > 0);
+
+            const { data: existingOrder } = await supabase
+              .from('orders')
+              .select('id')
+              .eq('stripe_payment_intent_id', paymentIntentId)
+              .maybeSingle();
+            if (existingOrder) return;
 
             const { data: order, error: orderError } = await supabase
               .from('orders')
