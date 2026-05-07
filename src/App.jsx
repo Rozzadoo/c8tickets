@@ -524,6 +524,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [selEventId, setSelEventId] = useState('');
   const [doorCart, setDoorCart] = useState({});
   const [buyerName, setBuyerName] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState('');
   const [step, setStep] = useState('select');
   const [clientSecret, setClientSecret] = useState(null);
   const [amounts, setAmounts] = useState(null);
@@ -672,7 +673,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       tenant_id: TENANT_ID, event_id: selEventId,
-      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: '', buyer_phone: '',
+      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
       status: 'checked_in', total_amount: eff.grandTotal,
       stripe_payment_intent_id: paymentIntentId, source: 'door',
     }).select().single();
@@ -692,9 +693,16 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
         ticketSummary: soldItems.map(i => `${i.qty}x ${i.type}`).join(', '),
       }),
     }).catch(() => {});
+    if (buyerEmail.trim()) {
+      fetch(API_BASE + '/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
+        body: JSON.stringify({ order: { id: order.id } }),
+      }).catch(() => {});
+    }
     const localOrder = {
       id: order.id, eventId: selEventId, venueId: venue.id,
-      buyer: { name: buyerName.trim() || 'Walk-In', email: '', phone: '' },
+      buyer: { name: buyerName.trim() || 'Walk-In', email: buyerEmail.trim(), phone: '' },
       items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
       ticketTotal: eff.ticketTotal, salesTax: eff.salesTax,
       serviceFees: eff.serviceFees, processingFee: eff.processingFee,
@@ -747,7 +755,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     setStep('confirm');
   };
 
-  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); };
+  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); };
 
   return (
     <div>
@@ -787,9 +795,13 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
             {cartItems.filter(i=>i.qty>0).map((t,i)=><div className="cart-ln" key={i}><span>{t.qty}× {t.type}</span><span>{fmtCurrency(t.qty*t.effectivePrice)}</span></div>)}
             <div className="cart-tot"><span>Subtotal (before fees)</span><span>{fmtCurrency(cartTotal)}</span></div>
           </div>}
-          <div className="fg" style={{marginBottom:16,marginTop:4}}>
+          <div className="fg" style={{marginBottom:10,marginTop:4}}>
             <label className="fl">Customer Name <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
             <input className="fi" value={buyerName} onChange={e=>setBuyerName(e.target.value)} placeholder="Walk-In" />
+          </div>
+          <div className="fg" style={{marginBottom:16}}>
+            <label className="fl">Email for Receipt <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
+            <input className="fi" type="email" value={buyerEmail} onChange={e=>setBuyerEmail(e.target.value)} placeholder="Leave blank to skip" />
           </div>
           <div style={{display:'flex',gap:10}}>
             <button className="buy" style={{flex:1}} disabled={cartN===0||loadingIntent} onClick={connectedReader ? startTerminalPayment : startPayment}>
