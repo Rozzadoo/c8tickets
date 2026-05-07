@@ -103,6 +103,35 @@ const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { w
 const fmtCurrency = (n) => n === 0 ? "FREE" : "$" + Number(n).toFixed(2);
 const fmtTime = (t) => t ? new Date('1970-01-01T' + t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "";
 
+const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+const exportOrdersCSV = (orders, events, filename = 'orders.csv') => {
+  const headers = ['Order ID','Date','Buyer Name','Buyer Email','Buyer Phone','Event','Items','Subtotal','Total','Status','Source','Stripe PI'];
+  const rows = orders.slice().reverse().map(o => {
+    const ev = events.find(e => e.id === o.eventId);
+    return [
+      o.id,
+      new Date(o.date).toLocaleString('en-US'),
+      o.buyer?.name || '',
+      o.buyer?.email || '',
+      o.buyer?.phone || '',
+      ev?.title || '',
+      o.items.map(i => `${i.qty}x ${i.type}`).join('; '),
+      Number(o.total).toFixed(2),
+      Number(o.total).toFixed(2),
+      o.status,
+      o.source || 'online',
+      o.stripePaymentIntentId || '',
+    ].map(csvCell).join(',');
+  });
+  const csv = [headers.map(csvCell).join(','), ...rows].join('\r\n');
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+    download: filename,
+  });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+};
+
 const buildGCalUrl = (ev, loc) => {
   const [y, m, d] = ev.date.split('-');
   const [h = '20', min = '00'] = (ev.time || '').split(':');
@@ -2303,11 +2332,12 @@ fetch(API_BASE+'/api/send-confirmation', {
                   <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
                   <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
                 </div>
-                <div style={{display:"flex",gap:6,marginBottom:16}}>
+                <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
                   {[['all','All'],['online','Online'],['door','Door']].map(([val,label])=>(
                     <button key={val} className={`chip ${orderSourceFilter===val?'on':''}`} onClick={()=>setOrderSourceFilter(val)}>{label}</button>
                   ))}
                   <span style={{fontSize:12,color:"var(--text3)",alignSelf:"center",marginLeft:4}}>{fo.length} order{fo.length!==1?'s':''}</span>
+                  {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
                 </div>
                 {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
               </>; })()}
