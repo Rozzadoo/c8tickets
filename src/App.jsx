@@ -1100,6 +1100,7 @@ const [resetError, setResetError] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [adminScan, setAdminScan] = useState(false);
   const [scanMsg, setScanMsg] = useState(null);
+  const [sendingReminder, setSendingReminder] = useState(null);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderSourceFilter, setOrderSourceFilter] = useState('all');
   const [soldOutError, setSoldOutError] = useState('');
@@ -1289,6 +1290,25 @@ const confirmCancelOrder = async () => {
     }
   } finally {
     setCancelling(false);
+  }
+};
+
+const sendReminder = async (ev) => {
+  const { data: { session: adminSession } } = await supabase.auth.getSession();
+  setSendingReminder(ev.id);
+  try {
+    const res = await fetch(API_BASE + '/api/send-reminder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
+      body: JSON.stringify({ eventId: ev.id }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(`Failed to send reminders: ${data.error || 'Unknown error'}`); return; }
+    alert(data.sent === 0 ? 'No confirmed orders found for this event.' : `Reminder sent to ${data.sent} of ${data.total} buyer${data.total !== 1 ? 's' : ''}.`);
+  } catch {
+    alert('Failed to send reminders — please try again.');
+  } finally {
+    setSendingReminder(null);
   }
 };
 
@@ -2320,7 +2340,7 @@ fetch(API_BASE+'/api/send-confirmation', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} onClick={()=>togglePublish(ev)}>{ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
