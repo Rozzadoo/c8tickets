@@ -15,11 +15,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  try {
-    const { order, event, venue } = req.body;
+  const { type, order, event, venue } = req.body;
 
-    // Verify the order exists and get the canonical buyer email from the DB.
-    // This prevents sending confirmation emails to arbitrary addresses.
+  if (type === 'cancellation') {
+    return sendCancellation(res, { order, event, venue }, req.headers.authorization);
+  }
+
+  try {
     const orderId = order?.id;
     if (!orderId || !/^[0-9a-f-]{36}$/i.test(orderId)) {
       return res.status(400).json({ error: 'Invalid order ID' });
@@ -31,7 +33,7 @@ export default async function handler(req, res) {
     );
     const rows = await checkRes.json();
     if (!Array.isArray(rows) || rows.length === 0) {
-      return res.status(200).json({ success: true }); // Silent — order not found
+      return res.status(200).json({ success: true });
     }
     const toEmail = rows[0].buyer_email;
     if (!toEmail) return res.status(200).json({ success: true });
@@ -56,21 +58,18 @@ export default async function handler(req, res) {
         <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
         <body style="margin:0;padding:0;background:#0c0a07;font-family:'Helvetica Neue',Arial,sans-serif">
           <div style="max-width:520px;margin:0 auto;padding:40px 20px">
-            
-            <!-- Header -->
+
             <div style="text-align:center;margin-bottom:32px">
               <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${escHtml(venueName)}</div>
               <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">${escHtml(venueAddress)}</div>
             </div>
 
-            <!-- You're In -->
             <div style="text-align:center;margin-bottom:28px">
               <div style="font-size:36px;margin-bottom:8px">🎉</div>
               <div style="font-size:24px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:2px">You're In!</div>
               <div style="font-size:14px;color:#b5a78a;margin-top:6px">Your tickets have been confirmed</div>
             </div>
 
-            <!-- Event Card -->
             <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px">
               <div style="font-size:11px;color:#c8922a;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">${escHtml(event.category)}</div>
               <div style="font-size:22px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">${escHtml(event.title)}</div>
@@ -82,7 +81,6 @@ export default async function handler(req, res) {
               </div>
             </div>
 
-            <!-- Order Summary -->
             <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px">
               <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Order Summary</div>
               <table style="width:100%;border-collapse:collapse">
@@ -107,7 +105,6 @@ export default async function handler(req, res) {
               <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${escHtml(order.id)}</div>
             </div>
 
-            <!-- QR Code -->
             <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
             <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
             <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
@@ -121,17 +118,15 @@ export default async function handler(req, res) {
             </div>
             </div>
 
-            <!-- Refund Policy -->
             <div style="background:#161310;border:1px solid rgba(200,146,42,.08);border-radius:10px;padding:14px 18px;margin-bottom:20px;text-align:center">
               <div style="font-size:11px;color:#7a6c54;line-height:1.8"><strong style="color:#b5a78a">Refund Policy:</strong> All ticket sales are final and non-refundable unless the event is cancelled by the organizer. If you have questions, contact us at <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a>.</div>
             </div>
 
-            <!-- Footer -->
             <div style="text-align:center;font-size:11px;color:#7a6c54;line-height:1.8">
             Questions? Contact us at <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a><br>
             C8Tickets<br>
-            <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a> - 
-            <a href="https://c8tickets.com/terms" style="color:#c8922a">Terms</a> - 
+            <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a> -
+            <a href="https://c8tickets.com/terms" style="color:#c8922a">Terms</a> -
             <a href="https://c8tickets.com/privacy" style="color:#c8922a">Privacy</a><br><br>
             <span style="color:#3a3028">You received this email because you purchased tickets through C8Tickets. This is a transactional email confirming your order.</span>
             </div>
@@ -150,5 +145,83 @@ export default async function handler(req, res) {
     res.status(200).json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+}
+
+async function sendCancellation(res, { order, event, venue }, authHeader) {
+  const token = (authHeader || '').startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const userRes = await fetch(`${process.env.VITE_SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+  });
+  if (!userRes.ok) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    if (!order?.buyer?.email) return res.status(400).json({ error: 'Missing buyer email' });
+
+    const venueName = venue?.name || 'Crooked 8';
+    const venueAddress = venue?.location || '';
+
+    const itemsHtml = (order.items || []).map(i => `
+      <tr>
+        <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">${escHtml(i.qty)}× ${escHtml(i.type)}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${(i.qty * i.price).toFixed(2)}</td>
+      </tr>`).join('');
+
+    await resend.emails.send({
+      from: 'C8Tickets <noreply@c8tickets.com>',
+      to: order.buyer.email,
+      subject: `Your order has been cancelled — ${escHtml(event?.title || 'C8Tickets')}`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0c0a07;font-family:'Helvetica Neue',Arial,sans-serif">
+<div style="max-width:520px;margin:0 auto;padding:40px 20px">
+
+  <div style="text-align:center;margin-bottom:32px">
+    <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${escHtml(venueName)}</div>
+    <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">${escHtml(venueAddress)}</div>
+  </div>
+
+  <div style="text-align:center;margin-bottom:28px">
+    <div style="font-size:24px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:2px">Order Cancelled</div>
+    <div style="font-size:14px;color:#b5a78a;margin-top:6px">Your order has been cancelled and a full refund has been issued</div>
+  </div>
+
+  <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px">
+    <div style="font-size:11px;color:#c8922a;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">${escHtml(event?.category || '')}</div>
+    <div style="font-size:22px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">${escHtml(event?.title || '')}</div>
+    <div style="font-size:13px;color:#b5a78a;line-height:1.8">
+      📅 <strong style="color:#f0e9da">${escHtml(event?.date || '')}</strong><br>
+      🕐 <strong style="color:#f0e9da">${escHtml(event?.time || '')}</strong><br>
+      📍 <strong style="color:#f0e9da">${escHtml(venueName)}</strong> — ${escHtml(venueAddress)}
+    </div>
+  </div>
+
+  <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Cancelled Order Summary</div>
+    <table style="width:100%;border-collapse:collapse">
+      ${itemsHtml}
+      <tr><td style="padding:10px 0;font-weight:700;color:#f0e9da;font-size:15px">Refund Amount</td><td style="padding:10px 0;font-weight:700;color:#c8922a;font-size:15px;text-align:right">$${Number(order.total).toFixed(2)}</td></tr>
+    </table>
+    <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${escHtml(order.id)}</div>
+  </div>
+
+  <div style="background:#161310;border:1px solid rgba(200,146,42,.08);border-radius:10px;padding:20px 24px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:700;color:#f0e9da;margin-bottom:10px">About Your Refund</div>
+    <div style="font-size:12px;color:#b5a78a;line-height:1.8">Your refund of <strong style="color:#f0e9da">$${Number(order.total).toFixed(2)}</strong> has been submitted to your original payment method. Refunds typically appear within <strong style="color:#f0e9da">5–10 business days</strong> depending on your bank or card issuer.</div>
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:#7a6c54;line-height:1.8">
+    Questions? <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a><br>
+    C8Tickets — <a href="https://c8tickets.com" style="color:#c8922a">c8tickets.com</a><br><br>
+    <span style="color:#3a3028">You received this email because an order was cancelled on your account.</span>
+  </div>
+
+</div>
+</body></html>`,
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 }

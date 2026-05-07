@@ -576,7 +576,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       const term = StripeTerminal.create({
         onFetchConnectionToken: async () => {
           const { data: { session: s } } = await supabase.auth.getSession();
-          const r = await fetch(API_BASE + '/api/terminal-connection-token', {
+          const r = await fetch(API_BASE + '/api/terminal?action=connection-token', {
             method: 'POST',
             headers: { Authorization: `Bearer ${s?.access_token || ''}` },
           });
@@ -632,7 +632,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     if (!terminal || !connectedReader || cartN === 0) return;
     const { data: { session: doorSession } } = await supabase.auth.getSession();
     setLoadingIntent(true);
-    const res = await fetch(API_BASE + '/api/create-terminal-payment-intent', {
+    const res = await fetch(API_BASE + '/api/terminal?action=payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
       body: JSON.stringify({
@@ -1225,10 +1225,11 @@ const confirmCancelOrder = async () => {
 
     const ev = events.find(e => e.id === o.eventId);
     if (o.buyer?.email) {
-      fetch(API_BASE + '/api/send-cancellation', {
+      fetch(API_BASE + '/api/send-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
         body: JSON.stringify({
+          type: 'cancellation',
           order: o,
           event: {
             title: ev?.title || '',
