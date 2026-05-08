@@ -248,12 +248,14 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .btn.gold{background:linear-gradient(135deg,var(--gold),var(--gold-d));color:var(--bg);border-color:var(--gold)}
 .btn.gold:hover{filter:brightness(1.15)}
 
-.hero{padding:36px 20px 28px;text-align:center;position:relative;overflow:hidden}
-.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.09) 0%,transparent 70%);pointer-events:none}
+.hero{padding:72px 20px 60px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.2) 0%,transparent 60%),radial-gradient(ellipse at 50% 120%,rgba(200,146,42,.07) 0%,transparent 55%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
-.hero-logo{height:80px;filter:invert(1);opacity:.9;margin-bottom:12px}
-.hero p{color:var(--text);font-size:15px;font-weight:400;letter-spacing:1.5px;text-transform:uppercase;opacity:.75}
-.hero-sub{display:flex;justify-content:center;gap:16px;margin-top:12px;font-size:12px;color:var(--text3);flex-wrap:wrap}
+.hero-logo{height:110px;filter:invert(1);opacity:.93;margin-bottom:24px}
+.hero p{color:var(--text2);font-size:clamp(13px,1.8vw,16px);font-weight:400;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:28px}
+.hero-cta{display:inline-flex;align-items:center;gap:8px;padding:12px 32px;border:1px solid rgba(200,146,42,.5);border-radius:99px;color:var(--gold);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;background:rgba(200,146,42,.06);transition:all .25s;margin-bottom:28px}
+.hero-cta:hover{background:rgba(200,146,42,.14);border-color:var(--gold)}
+.hero-sub{display:flex;justify-content:center;gap:16px;font-size:11px;color:var(--text3);flex-wrap:wrap}
 
 .sec{padding:20px;max-width:1200px;margin:0 auto;width:100%;position:relative;z-index:1}
 .sec-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
@@ -277,15 +279,15 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 
 .feat{border-radius:var(--r);overflow:hidden;cursor:pointer;margin-bottom:28px;border:1px solid rgba(200,146,42,.2);transition:border-color .3s,box-shadow .3s}
 .feat:hover{box-shadow:0 16px 48px rgba(200,146,42,.18);border-color:rgba(200,146,42,.4)}
-.feat-bg{height:320px;background:linear-gradient(135deg,var(--bg3),var(--bg4));background-size:cover;background-position:center;position:relative;display:flex;align-items:flex-end}
-.feat-grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,10,7,1) 0%,rgba(12,10,7,.75) 45%,rgba(12,10,7,.1) 100%)}
-.feat-body{position:relative;z-index:1;padding:24px 28px;width:100%}
-.feat-eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(200,146,42,.15);border:1px solid rgba(200,146,42,.35);color:var(--gold);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2.5px;padding:4px 12px;border-radius:99px;margin-bottom:12px}
-.feat-title{font-family:'Barlow Condensed',sans-serif;font-size:clamp(26px,5vw,42px);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text);line-height:1.1;margin-bottom:6px}
-.feat-date{font-size:12px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px}
+.feat-bg{height:400px;background:linear-gradient(135deg,var(--bg3),var(--bg4));background-size:cover;background-position:center;position:relative;display:flex;align-items:flex-end}
+.feat-grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,10,7,1) 0%,rgba(12,10,7,.7) 40%,rgba(12,10,7,.05) 100%)}
+.feat-body{position:relative;z-index:1;padding:28px 32px;width:100%}
+.feat-eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(200,146,42,.15);border:1px solid rgba(200,146,42,.35);color:var(--gold);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2.5px;padding:4px 12px;border-radius:99px;margin-bottom:14px}
+.feat-title{font-family:'Barlow Condensed',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text);line-height:1.05;margin-bottom:8px}
+.feat-date{font-size:12px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:18px}
 .feat-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
-.feat-price{font-size:18px;font-weight:700;color:var(--text)}
-@media(max-width:600px){.feat-bg{height:240px}.feat-body{padding:18px 20px}}
+.feat-price{font-size:20px;font-weight:700;color:var(--text)}
+@media(max-width:600px){.feat-bg{height:300px}.feat-body{padding:20px 22px}}
 
 .back{display:inline-flex;align-items:center;gap:5px;color:var(--text2);cursor:pointer;font-size:13px;margin-bottom:20px;padding:6px 0;transition:color .2s;text-transform:uppercase;letter-spacing:1px;font-weight:600}
 .back:hover{color:var(--gold)}
@@ -1711,14 +1713,18 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
 
         {view === "home" && <div className="fade">
           <div className="hero">
-            <div style={{position:"relative",display:"inline-block",marginBottom:16}}>
-              <img src={LOGO_SRC} alt="Crooked 8" className="hero-logo" style={{marginBottom:0}} />
+            <div style={{position:"relative",display:"inline-block",marginBottom:24}}>
+              <img src={LOGO_SRC} alt="C8 Tickets" className="hero-logo" style={{marginBottom:0}} />
               <div style={{position:"absolute",bottom:-10,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:11,letterSpacing:4,textTransform:"uppercase",padding:"2px 12px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
-              </div>
+            </div>
             <p>{venue.tagline}</p>
-            <div className="hero-sub"><span>Questions? <a href="mailto:support@c8tickets.com" style={{color:"var(--text2)"}}>support@c8tickets.com</a></span></div>
+            <button className="hero-cta" onClick={()=>document.getElementById('events')?.scrollIntoView({behavior:'smooth'})}>
+              See What's On
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div className="hero-sub"><span>Questions? <a href="mailto:support@c8tickets.com" style={{color:"var(--text3)"}}>support@c8tickets.com</a></span></div>
           </div>
-          <div className="sec">
+          <div className="sec" id="events">
             {(() => {
               const oa = (t) => Math.max(0, t.available - (t.physicalQty ?? 0));
               const sorted = [...publicEvents].sort((a,b) => new Date(a.date)-new Date(b.date));
@@ -1750,7 +1756,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                   );
                 })()}
                 <div style={{marginBottom:20}}>
-                  <div className="sec-title dsp" style={{marginBottom:12}}>Upcoming Events</div>
+                  <div style={{display:'flex',alignItems:'baseline',gap:12,marginBottom:14,flexWrap:'wrap'}}>
+                    <div className="sec-title dsp" style={{fontSize:'clamp(26px,4vw,36px)',letterSpacing:2}}>Upcoming Events</div>
+                    <div style={{height:2,flex:1,minWidth:32,background:'linear-gradient(90deg,rgba(200,146,42,.35),transparent)',borderRadius:2,alignSelf:'center'}}/>
+                  </div>
                   <div className="filters">{CATS.map(c=><button key={c} className={`chip ${filter===c?"on":""}`} onClick={()=>setFilter(c)}>{c}</button>)}</div>
                 </div>
                 {gridEvents.length===0?(
