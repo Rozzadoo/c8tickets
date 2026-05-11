@@ -1779,8 +1779,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                 ):
                   <div className="grid">{gridEvents.map(ev=>{const mp=ev.tickets.length>0?Math.min(...ev.tickets.map(t=>t.price)):0;const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
                     <div key={ev.id} className="card" onClick={()=>open(ev.id)} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
-                      <div className="card-img" style={{backgroundImage:ev.image&&ev.image.startsWith('http')?`url(${ev.image})`:'none',backgroundSize:'cover',backgroundPosition:`${ev.focalX??50}% ${ev.focalY??50}%`}}>
-                        {(!ev.image||!ev.image.startsWith('http'))&&<span style={{fontSize:48}}>🎵</span>}
+                      <div className="card-img">
+                        {ev.image&&ev.image.startsWith('http')
+                          ?<img src={ev.image} alt={ev.title} loading="lazy" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',objectPosition:`${ev.focalX??50}% ${ev.focalY??50}%`}} />
+                          :<span style={{fontSize:48}}>🎵</span>}
                         <div className="card-cat">{ev.category}</div>
                         {soldOut&&<div style={{position:'absolute',inset:0,background:'rgba(12,10,7,.6)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(1px)'}}><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:22,letterSpacing:5,textTransform:'uppercase',color:'#f0e9da',border:'2px solid rgba(240,233,218,.6)',padding:'6px 20px',borderRadius:4}}>Sold Out</span></div>}
                         {lowTickets&&<div style={{position:'absolute',bottom:10,left:10,background:'rgba(179,58,42,.92)',backdropFilter:'blur(4px)',padding:'3px 10px',borderRadius:99,fontSize:9,fontWeight:700,color:'#f0e9da',textTransform:'uppercase',letterSpacing:1.5,border:'1px solid rgba(240,120,100,.3)'}}>Selling Fast</div>}
@@ -2157,7 +2159,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                           <div key={ev.id} className="card" onClick={() => { setSelId(ev.id); setCart({}); setView('detail'); window.history.pushState({}, '', `/e/${ev.id}`); }}>
                             <div className="card-img">
                               {ev.image
-                                ? <img src={ev.image} alt={ev.title} style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:`${(ev.focalX??50)}% ${(ev.focalY??50)}%`}} />
+                                ? <img src={ev.image} alt={ev.title} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:`${(ev.focalX??50)}% ${(ev.focalY??50)}%`}} />
                                 : <div style={{width:'100%',height:'100%',background:'var(--bg3)'}} />}
                               {soldOut && <div className="sold-out-badge">Sold Out</div>}
                             </div>
