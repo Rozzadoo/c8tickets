@@ -7,13 +7,22 @@ export default async function handler(req, res) {
   }
 
   const supaUrl = process.env.VITE_SUPABASE_URL;
-  // Use service role key if set — bypasses RLS. Falls back to anon key.
   const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   const headers = {
     apikey: supaKey,
     Authorization: `Bearer ${supaKey}`,
     'Content-Type': 'application/json',
   };
+
+  // Check whether the caller is an authenticated admin — if so, return full PII
+  const bearerToken = (req.headers.authorization || '').startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
+  let isAdmin = false;
+  if (bearerToken) {
+    const userRes = await fetch(`${supaUrl}/auth/v1/user`, {
+      headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${bearerToken}` },
+    });
+    if (userRes.ok) isAdmin = true;
+  }
 
   const orderRes = await fetch(
     `${supaUrl}/rest/v1/orders?id=eq.${id}&select=*,order_items(*)&limit=1`,
@@ -55,6 +64,11 @@ export default async function handler(req, res) {
       const inserted = await insertRes.json();
       tickets = Array.isArray(inserted) ? inserted : [];
     }
+  }
+
+  if (!isAdmin) {
+    delete order.buyer_email;
+    delete order.buyer_phone;
   }
 
   return res.status(200).json({ order, tickets });
