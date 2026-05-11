@@ -33,7 +33,7 @@ const resolveCustomSize = (w, h) => {
 
 const mapEvent = (e) => ({
   id: e.id,
-  venueId: TENANT_ID,
+  venueId: e.tenant_id,
   title: e.title,
   date: e.event_date.slice(0, 10),
   time: e.event_date.slice(11, 16),
@@ -56,6 +56,17 @@ const mapEvent = (e) => ({
   }))
 });
 
+const mapVenue = (v) => ({
+  id: v.id,
+  name: v.name,
+  slug: v.slug || v.id,
+  tagline: "Local Events, Easy Tickets.",
+  location: v.address || DEFAULT_VENUE.location,
+  phone: v.contact_phone || '',
+  email: v.contact_email || '',
+  website: v.website || '',
+});
+
 const useStorage = () => {
   const [venues, setVenues] = useState([DEFAULT_VENUE]);
   const [events, setEvents] = useState([]);
@@ -63,27 +74,12 @@ const useStorage = () => {
 
   useEffect(() => {
     const load = async () => {
-      const { data: venueData } = await supabase
-  .from('tenants')
-  .select('*')
-  .eq('id', TENANT_ID)
-  .single();
+      const { data: venueRows } = await supabase.from('tenants').select('*');
+      if (venueRows?.length) setVenues(venueRows.map(mapVenue));
 
-if (venueData) {
-  setVenues([{
-    id: TENANT_ID,
-    name: venueData.name,
-    tagline: "Local Events, Easy Tickets.",
-    location: venueData.address || DEFAULT_VENUE.location,
-    phone: venueData.contact_phone || "",
-    email: venueData.contact_email || "",
-    website: venueData.website || "",
-  }]);
-}
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*, ticket_types(*)')
-        .eq('tenant_id', TENANT_ID)
         .order('event_date', { ascending: true });
 
       if (eventsError) console.error(eventsError);
@@ -1085,6 +1081,8 @@ export default function App() {
   const [reportCustomEnd, setReportCustomEnd] = useState('');
   const [holdbackPct, setHoldbackPct] = useState(10);
   const [filter, setFilter] = useState("All");
+  const [venueFilter, setVenueFilter] = useState('All');
+  const [venueProfileId, setVenueProfileId] = useState(null);
   const [editEvt, setEditEvt] = useState(null);
   const [modal, setModal] = useState(false);
   const [session, setSession] = useState(null);
@@ -1128,7 +1126,9 @@ const [resetError, setResetError] = useState('');
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [expandedTickets, setExpandedTickets] = useState({});
 
-  const venue = venues[0] || DEFAULT_VENUE;
+  const venue = venues.find(v => v.id === TENANT_ID) || venues[0] || DEFAULT_VENUE;
+  const sel = events.find(e => e.id === selId) || null;
+  const selVenue = (sel ? venues.find(v => v.id === sel.venueId) : null) || venue;
   const isGate = session?.user?.user_metadata?.role === 'gate';
   const isVenueUser = session?.user?.user_metadata?.role === 'venue';
   useEffect(() => {
@@ -1186,7 +1186,12 @@ const [resetError, setResetError] = useState('');
     if (eventId) { setSelId(eventId); setCart({}); setView('detail'); }
     const ticketMatch = window.location.pathname.match(/^\/t\/([0-9a-f-]{36})$/i);
     if (ticketMatch) { setTicketOrderId(ticketMatch[1]); setView('mytickets'); }
-  }, [loaded]);
+    const venueMatch = window.location.pathname.match(/^\/v\/([^/]+)$/i);
+    if (venueMatch) {
+      const slugMatch = venues.find(v => v.slug === venueMatch[1]);
+      if (slugMatch) { setVenueProfileId(slugMatch.id); setView('venue'); }
+    }
+  }, [loaded, venues]);
 
   useEffect(() => {
     if (view !== 'mytickets' || !ticketOrderId) return;
@@ -1209,6 +1214,7 @@ const [resetError, setResetError] = useState('');
     else if (view === 'ticket' || view === 'mytickets') document.title = `Your Tickets — ${base}`;
     else if (view === 'admin') document.title = `Admin — ${base}`;
     else if (view === 'lookup') document.title = `Find My Tickets — ${base}`;
+    else if (view === 'venue') { const vp = venues.find(v => v.id === venueProfileId); if (vp) document.title = `${vp.name} — ${base}`; }
     else document.title = base;
   }, [view, selId, events, venue]);
 
@@ -1513,10 +1519,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   if (orders.length > 0) openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })), venue, size);
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
-  const publicEvents = vEvents.filter(e => e.published !== false);
+  const allPublicEvents = events.filter(e => e.published !== false);
+  const publicEvents = venueFilter === 'All' ? allPublicEvents : allPublicEvents.filter(e => e.venueId === venueFilter);
   const CATS = ["All", "Live Music", "Rodeo", "Family", "Other Events"];
   const filtered = (filter === "All" ? publicEvents : publicEvents.filter(e => e.category === filter));
-  const sel = events.find(e => e.id === selId);
   const cartTotal = useMemo(() => sel ? sel.tickets.reduce((s, t, i) => s + (cart[i] || 0) * t.price, 0) : 0, [cart, sel]);
   const cartN = Object.values(cart).reduce((a, b) => a + b, 0);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email);
@@ -1548,7 +1554,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           tenantId: TENANT_ID,
           buyer: { name: buyer.name.trim(), email: buyer.email.trim(), phone: buyer.phone.trim() },
           eventMeta: { title: sel.title, date: fmtDate(sel.date), time: fmtTime(sel.time), doors: fmtTime(sel.doors), category: sel.category || '' },
-          venueMeta: { name: venue.name, address: venue.location },
+          venueMeta: { name: selVenue.name, address: selVenue.location },
         }),
       });
       const data = await res.json();
@@ -1760,6 +1766,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                     <div className="sec-title dsp" style={{fontSize:'clamp(26px,4vw,36px)',letterSpacing:2}}>Upcoming Events</div>
                     <div style={{height:2,flex:1,minWidth:32,background:'linear-gradient(90deg,rgba(200,146,42,.35),transparent)',borderRadius:2,alignSelf:'center'}}/>
                   </div>
+                  {venues.length > 1 && <div className="filters" style={{marginBottom:8}}>
+                    <button className={`chip ${venueFilter==='All'?'on':''}`} onClick={()=>setVenueFilter('All')}>All Venues</button>
+                    {venues.map(v=><button key={v.id} className={`chip ${venueFilter===v.id?'on':''}`} onClick={()=>setVenueFilter(v.id)}>{v.name}</button>)}
+                  </div>}
                   <div className="filters">{CATS.map(c=><button key={c} className={`chip ${filter===c?"on":""}`} onClick={()=>setFilter(c)}>{c}</button>)}</div>
                 </div>
                 {gridEvents.length===0?(
@@ -1778,6 +1788,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                       <div className="card-body">
                         <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
                         <div className="card-title dsp">{ev.title}</div>
+                        {venues.length > 1 && <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,fontWeight:700,marginBottom:4}}>{venues.find(v=>v.id===ev.venueId)?.name||''}</div>}
                         <div className="card-desc">{ev.description}</div>
                         <div className="card-foot"><div className="card-price">{soldOut?<span style={{color:'var(--text3)',fontWeight:600,fontSize:14,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span>:<>{fmtCurrency(mp)}{mp>0&&<small> & up</small>}</>}</div>{soldOut?null:<button className="btn gold" onClick={e=>{e.stopPropagation();open(ev.id);}}>Tickets</button>}</div>
                       </div>
@@ -1819,12 +1830,12 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   <span>📅 <strong>{fmtDate(sel.date)}</strong></span>
   <span>🕐 <strong>{fmtTime(sel.time)}</strong></span>
   <span>🚪 Doors <strong>{fmtTime(sel.doors)}</strong></span>
-  <span>📍 <strong>{venue.name}</strong> — {venue.location}</span>
-  {venue.phone && <span>📞 <strong>{venue.phone}</strong></span>}
-  {venue.email && <span>✉️ <a href={`mailto:${venue.email}`} style={{color:"var(--gold)"}}>{venue.email}</a></span>}
-  {venue.website && <span>🌐 <a href={venue.website} target="_blank" rel="noopener noreferrer" style={{color:"var(--gold)"}}>{venue.website.replace('https://','')}</a></span>}
+  <span>📍 <strong><button style={{background:'none',border:'none',padding:0,color:'var(--gold)',cursor:'pointer',fontWeight:700,fontSize:'inherit'}} onClick={()=>{setVenueProfileId(selVenue.id);setView('venue');window.history.pushState({},'',(selVenue.slug&&selVenue.slug!==selVenue.id)?`/v/${selVenue.slug}`:`/v/${selVenue.id}`);}}>{selVenue.name}</button></strong> — {selVenue.location}</span>
+  {selVenue.phone && <span>📞 <strong>{selVenue.phone}</strong></span>}
+  {selVenue.email && <span>✉️ <a href={`mailto:${selVenue.email}`} style={{color:"var(--gold)"}}>{selVenue.email}</a></span>}
+  {selVenue.website && <span>🌐 <a href={selVenue.website} target="_blank" rel="noopener noreferrer" style={{color:"var(--gold)"}}>{selVenue.website.replace('https://','')}</a></span>}
 </div>
-          <a className="directions-btn" href={`https://maps.google.com/?q=${encodeURIComponent(venue.location)}`} target="_blank" rel="noopener noreferrer">📍 Get Directions</a>
+          <a className="directions-btn" href={`https://maps.google.com/?q=${encodeURIComponent(selVenue.location)}`} target="_blank" rel="noopener noreferrer">📍 Get Directions</a>
           <p className="d-desc">{sel.description}</p>
           <div className="tkt-sec"><h3 className="dsp">Select Tickets</h3>
             {sel.tickets.map((t, i) => { const oa = Math.max(0, t.available - (t.physicalQty ?? 0)); const total = t.total ?? t.available; const lowStock = oa > 0 && total > 0 && oa / total <= 0.25; return <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4>{oa === 0 ? <p>Sold Out</p> : lowStock ? <p style={{color:'var(--red)',fontWeight:700,fontSize:12}}>Almost Gone — Grab Yours Now!</p> : null}</div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv">{cart[i]||0}</div><button className="qb" disabled={(cart[i]||0) >= oa || oa === 0} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>; })}
@@ -2116,6 +2127,54 @@ fetch(API_BASE+'/api/send-confirmation', {
               })
           )}
         </div>}
+
+        {view === "venue" && (() => {
+          const vp = venues.find(v => v.id === venueProfileId) || venue;
+          const vpEvents = allPublicEvents
+            .filter(e => e.venueId === vp.id)
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+          return (
+            <div className="fade">
+              <div className="back" onClick={goHome}>← All Events</div>
+              <div style={{maxWidth:820,margin:'0 auto',padding:'0 0 60px'}}>
+                <div style={{borderBottom:'1px solid var(--border)',paddingBottom:32,marginBottom:40}}>
+                  <h1 className="dsp" style={{fontSize:'clamp(28px,5vw,48px)',marginBottom:8}}>{vp.name}</h1>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'16px 24px',fontSize:14,color:'var(--text2)',marginTop:16}}>
+                    {vp.location && <span style={{display:'flex',alignItems:'center',gap:6}}><span style={{color:'var(--gold)'}}>Location</span>{vp.location}</span>}
+                    {vp.phone && <span style={{display:'flex',alignItems:'center',gap:6}}><span style={{color:'var(--gold)'}}>Phone</span>{vp.phone}</span>}
+                    {vp.email && <span style={{display:'flex',alignItems:'center',gap:6}}><span style={{color:'var(--gold)'}}>Email</span><a href={`mailto:${vp.email}`} style={{color:'inherit'}}>{vp.email}</a></span>}
+                    {vp.website && <span style={{display:'flex',alignItems:'center',gap:6}}><span style={{color:'var(--gold)'}}>Web</span><a href={vp.website} target="_blank" rel="noopener noreferrer" style={{color:'var(--gold)'}}>{vp.website.replace(/^https?:\/\//,'')}</a></span>}
+                  </div>
+                  {vp.location && <a className="directions-btn" style={{marginTop:20,display:'inline-block'}} href={`https://maps.google.com/?q=${encodeURIComponent(vp.location)}`} target="_blank" rel="noopener noreferrer">Get Directions</a>}
+                </div>
+                <h2 className="dsp" style={{fontSize:22,marginBottom:24}}>Upcoming Events</h2>
+                {vpEvents.length === 0
+                  ? <div className="empty"><div className="ic" style={{fontSize:36}}>🎟</div><p>No upcoming events at this venue.</p></div>
+                  : <div className="grid">
+                      {vpEvents.map(ev => {
+                        const soldOut = ev.tickets?.every(t => t.available <= 0);
+                        return (
+                          <div key={ev.id} className="card" onClick={() => { setSelId(ev.id); setCart({}); setView('detail'); window.history.pushState({}, '', `/e/${ev.id}`); }}>
+                            <div className="card-img">
+                              {ev.image
+                                ? <img src={ev.image} alt={ev.title} style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:`${(ev.focalX??50)}% ${(ev.focalY??50)}%`}} />
+                                : <div style={{width:'100%',height:'100%',background:'var(--bg3)'}} />}
+                              {soldOut && <div className="sold-out-badge">Sold Out</div>}
+                            </div>
+                            <div className="card-body">
+                              <div className="card-cat">{ev.category}</div>
+                              <div className="card-title">{ev.title}</div>
+                              <div className="card-date">{fmtDate(ev.date)}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                }
+              </div>
+            </div>
+          );
+        })()}
 
         {view === "about" && <div className="fade">
           <div className="about-hero">
