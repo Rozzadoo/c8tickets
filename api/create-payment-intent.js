@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta } = req.body;
+    const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta, promoCode } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Invalid items' });
@@ -67,9 +67,37 @@ export default async function handler(req, res) {
       resolvedItems.push({ ticketTypeId: item.ticketTypeId, type: row.name, qty: item.qty, price: unitPrice });
     }
 
-    const salesTax = Math.round(ticketTotal * SALES_TAX_RATE * 100) / 100;
+    // Validate and apply promo code if provided
+    let discountAmount = 0;
+    let promoId = null;
+    if (promoCode && tenantId) {
+      const normalized = promoCode.trim().toUpperCase();
+      const promoRes = await fetch(
+        `${process.env.VITE_SUPABASE_URL}/rest/v1/promo_codes?code=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&active=eq.true&select=*&limit=1`,
+        { headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` } }
+      );
+      const promoRows = await promoRes.json();
+      const promo = Array.isArray(promoRows) ? promoRows[0] : null;
+      if (promo) {
+        const notExpired = !promo.expires_at || new Date(promo.expires_at) >= new Date();
+        const notMaxed = promo.max_uses === null || promo.uses_count < promo.max_uses;
+        const eventOk = !promo.event_id || promo.event_id === eventId;
+        if (notExpired && notMaxed && eventOk) {
+          if (promo.discount_type === 'percent') {
+            discountAmount = Math.round(ticketTotal * Number(promo.discount_value) / 100 * 100) / 100;
+          } else {
+            discountAmount = Math.min(Number(promo.discount_value), ticketTotal);
+            discountAmount = Math.round(discountAmount * 100) / 100;
+          }
+          promoId = promo.id;
+        }
+      }
+    }
+
+    const discountedTicketTotal = ticketTotal - discountAmount;
+    const salesTax = Math.round(discountedTicketTotal * SALES_TAX_RATE * 100) / 100;
     const serviceFees = totalTickets * SERVICE_FEE_PER_TICKET;
-    const subtotal = ticketTotal + salesTax + serviceFees;
+    const subtotal = discountedTicketTotal + salesTax + serviceFees;
     const processingFee = Math.round((subtotal * PROCESSING_FEE_RATE + PROCESSING_FEE_FLAT) * 100) / 100;
     const grandTotal = subtotal + processingFee;
 
@@ -95,6 +123,8 @@ export default async function handler(req, res) {
         venue_name: venueMeta?.name || '',
         venue_address: venueMeta?.address || '',
         // Fee breakdown — for confirmation email
+        discount_amount: String(discountAmount),
+        promo_code_id: promoId || '',
         sales_tax: String(salesTax),
         service_fees: String(serviceFees),
         processing_fee: String(processingFee),
@@ -107,6 +137,7 @@ export default async function handler(req, res) {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       ticketTotal,
+      discountAmount,
       salesTax,
       serviceFees,
       processingFee,

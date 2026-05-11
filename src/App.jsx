@@ -739,7 +739,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       }),
     }).catch(() => {});
     if (buyerEmail.trim()) {
-      fetch(API_BASE + '/api/send-confirmation', {
+      fetch(API_BASE + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
         body: JSON.stringify({ order: { id: order.id } }),
@@ -1126,6 +1126,14 @@ const [resetError, setResetError] = useState('');
   const [ticketPageLoading, setTicketPageLoading] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [expandedTickets, setExpandedTickets] = useState({});
+  const [promoInput, setPromoInput] = useState('');
+  const [promoApplied, setPromoApplied] = useState(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState('');
+  const [promos, setPromos] = useState([]);
+  const [promosLoaded, setPromosLoaded] = useState(false);
+  const [promoForm, setPromoForm] = useState({ code: '', discountType: 'percent', discountValue: '', maxUses: '', eventId: '', expiresAt: '' });
+  const [promoSaving, setPromoSaving] = useState(false);
 
   const venue = venues.find(v => v.id === TENANT_ID) || venues[0] || DEFAULT_VENUE;
   const sel = events.find(e => e.id === selId) || null;
@@ -1281,7 +1289,7 @@ const confirmCancelOrder = async () => {
 
     const ev = events.find(e => e.id === o.eventId);
     if (o.buyer?.email) {
-      fetch(API_BASE + '/api/send-confirmation', {
+      fetch(API_BASE + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
         body: JSON.stringify({
@@ -1306,10 +1314,10 @@ const sendReminder = async (ev) => {
   const { data: { session: adminSession } } = await supabase.auth.getSession();
   setSendingReminder(ev.id);
   try {
-    const res = await fetch(API_BASE + '/api/send-reminder', {
+    const res = await fetch(API_BASE + '/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
-      body: JSON.stringify({ eventId: ev.id }),
+      body: JSON.stringify({ type: 'reminder', eventId: ev.id }),
     });
     const data = await res.json();
     if (!res.ok) { alert(`Failed to send reminders: ${data.error || 'Unknown error'}`); return; }
@@ -1329,7 +1337,7 @@ const resendEmail = async (o) => {
   const salesTax = Math.round(ticketTotal * 0.06 * 100) / 100;
   const serviceFees = totalQty * 2;
   const processingFee = Math.max(0, Math.round((o.total - ticketTotal - salesTax - serviceFees) * 100) / 100);
-  const res = await fetch(API_BASE+'/api/send-confirmation', {
+  const res = await fetch(API_BASE+'/api/send-email', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       order: { id: o.id, buyer: o.buyer, items: o.items, salesTax, serviceFees, processingFee, total: o.total },
@@ -1352,12 +1360,81 @@ const updateOrderEmail = async () => {
   setEditEmailValue('');
 };
 
+const applyPromo = async () => {
+  const code = promoInput.trim().toUpperCase();
+  if (!code) return;
+  setPromoLoading(true);
+  setPromoError('');
+  try {
+    const res = await fetch(API_BASE + '/api/promo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'validate', code, eventId: sel?.id, tenantId: TENANT_ID }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setPromoError(data.error || 'Invalid promo code'); return; }
+    setPromoApplied({ code, ...data });
+    setPromoInput('');
+  } catch { setPromoError('Could not validate code. Please try again.'); }
+  finally { setPromoLoading(false); }
+};
+
+const loadPromos = async () => {
+  const { data: { session: s } } = await supabase.auth.getSession();
+  const res = await fetch(API_BASE + '/api/promo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
+    body: JSON.stringify({ action: 'list', tenantId: TENANT_ID }),
+  });
+  const data = await res.json();
+  setPromos(data.promos || []);
+  setPromosLoaded(true);
+};
+
+const savePromo = async () => {
+  setPromoSaving(true);
+  try {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    const res = await fetch(API_BASE + '/api/promo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
+      body: JSON.stringify({ action: 'create', tenantId: TENANT_ID, ...promoForm }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Failed to create promo code'); return; }
+    setPromos(prev => [data.promo, ...prev]);
+    setPromoForm({ code: '', discountType: 'percent', discountValue: '', maxUses: '', eventId: '', expiresAt: '' });
+  } catch { alert('Failed to create promo code'); }
+  finally { setPromoSaving(false); }
+};
+
+const togglePromo = async (id, active) => {
+  const { data: { session: s } } = await supabase.auth.getSession();
+  await fetch(API_BASE + '/api/promo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
+    body: JSON.stringify({ action: 'toggle', id, active }),
+  });
+  setPromos(prev => prev.map(p => p.id === id ? { ...p, active } : p));
+};
+
+const deletePromo = async (id) => {
+  if (!confirm('Delete this promo code?')) return;
+  const { data: { session: s } } = await supabase.auth.getSession();
+  await fetch(API_BASE + '/api/promo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
+    body: JSON.stringify({ action: 'delete', id }),
+  });
+  setPromos(prev => prev.filter(p => p.id !== id));
+};
+
 const sendLookupCode = async () => {
   const email = lookupEmail.toLowerCase().trim();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
   setLookupLoading(true);
   setLookupError('');
-  await fetch(API_BASE+'/api/send-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+  await fetch(API_BASE+'/api/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'send', email }) });
   setLookupLoading(false);
   setLookupStep('code');
 };
@@ -1367,7 +1444,7 @@ const verifyLookupCode = async () => {
   if (!email || !lookupCode.trim()) return;
   setLookupLoading(true);
   setLookupError('');
-  const res = await fetch(API_BASE+'/api/verify-lookup-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code: lookupCode.trim() }) });
+  const res = await fetch(API_BASE+'/api/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'verify', email, code: lookupCode.trim() }) });
   const data = await res.json();
   setLookupLoading(false);
   if (!res.ok) { setLookupError('That code is incorrect or has expired. Please try again.'); return; }
@@ -1556,6 +1633,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           buyer: { name: buyer.name.trim(), email: buyer.email.trim(), phone: buyer.phone.trim() },
           eventMeta: { title: sel.title, date: fmtDate(sel.date), time: fmtTime(sel.time), doors: fmtTime(sel.doors), category: sel.category || '' },
           venueMeta: { name: selVenue.name, address: selVenue.location },
+          promoCode: promoApplied?.code || null,
         }),
       });
       const data = await res.json();
@@ -1575,7 +1653,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       if (!data.clientSecret) { alert('Payment setup failed. Please try again.'); return; }
       setSoldOutError('');
       setClientSecret(data.clientSecret);
-      setPaymentAmounts({ ticketTotal: data.ticketTotal, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
+      setPaymentAmounts({ ticketTotal: data.ticketTotal, discountAmount: data.discountAmount || 0, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
     } catch {
       alert('Payment setup failed. Please try again.');
     } finally {
@@ -1871,9 +1949,15 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", marginTop: 10 }}>Enter a valid name and email above to continue.</p>
         )}
         {buyerReady && (() => {
-          const tax = Math.round(cartTotal * 0.06 * 100) / 100;
+          const discount = promoApplied
+            ? promoApplied.discountType === 'percent'
+              ? Math.round(cartTotal * promoApplied.discountValue / 100 * 100) / 100
+              : Math.min(promoApplied.discountValue, cartTotal)
+            : 0;
+          const discounted = cartTotal - discount;
+          const tax = Math.round(discounted * 0.06 * 100) / 100;
           const svcFees = cartN * 2.00;
-          const subtotal = cartTotal + tax + svcFees;
+          const subtotal = discounted + tax + svcFees;
           const procFee = Math.round((subtotal * 0.035 + 0.30) * 100) / 100;
           const grand = subtotal + procFee;
           return (
@@ -1881,10 +1965,27 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               <h3 className="dsp">Order Summary</h3>
               <div className="cart-sum">
                 {sel.tickets.map((t, i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i] * t.price)}</span></div>)}
+                {promoApplied && <div className="cart-ln" style={{color:'var(--green)'}}><span>Promo: {promoApplied.code}</span><span>-{fmtCurrency(discount)}</span></div>}
                 <div className="cart-ln"><span>Sales Tax (6%)</span><span>{fmtCurrency(tax)}</span></div>
                 <div className="cart-ln"><span>Service Fees</span><span>{fmtCurrency(svcFees)}</span></div>
                 <div className="cart-ln"><span>Processing Fee</span><span>{fmtCurrency(procFee)}</span></div>
                 <div className="cart-tot"><span>Total</span><span>{fmtCurrency(grand)}</span></div>
+              </div>
+              <div style={{marginTop:14}}>
+                {!promoApplied ? (
+                  <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+                    <div style={{flex:1}}>
+                      <input className="fi" style={{margin:0,textTransform:'uppercase',letterSpacing:1}} placeholder="Promo code" value={promoInput} onChange={e=>setPromoInput(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&applyPromo()} aria-label="Promo code" />
+                      {promoError && <p style={{fontSize:11,color:'var(--red)',marginTop:4}}>{promoError}</p>}
+                    </div>
+                    <button className="btn" style={{flexShrink:0,padding:'10px 16px'}} disabled={promoLoading||!promoInput.trim()} onClick={applyPromo}>{promoLoading?'Checking…':'Apply'}</button>
+                  </div>
+                ) : (
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'rgba(76,175,125,.1)',border:'1px solid rgba(76,175,125,.3)',borderRadius:'var(--rs)',padding:'10px 14px',fontSize:13}}>
+                    <span style={{color:'var(--green)',fontWeight:600}}>{promoApplied.description}</span>
+                    <button style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:18,lineHeight:1,padding:'0 4px'}} onClick={()=>{setPromoApplied(null);setPromoError('');}} aria-label="Remove promo code">×</button>
+                  </div>
+                )}
               </div>
               {soldOutError && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"12px 14px",marginTop:12,marginBottom:4,color:"var(--red)",fontSize:13}}>Availability changed: {soldOutError}. Your cart has been cleared — please select new quantities.</div>}
               <button className="buy" style={{ marginTop: 12 }} onClick={createPaymentIntent} disabled={creatingPayment || !!soldOutError}>
@@ -1982,12 +2083,20 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             setBuyer({ name: "", email: "", phone: "" });
             setCart({});
             setClientSecret(null);
+            if (promoApplied) {
+              fetch(API_BASE + '/api/promo', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'redeem', code: promoApplied.code, tenantId: TENANT_ID }),
+              }).catch(() => {});
+              setPromoApplied(null);
+            }
+            setPromoInput('');
 
-fetch(API_BASE+'/api/send-confirmation', {
+fetch(API_BASE+'/api/send-email', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    order: localOrder,
+    order: { ...localOrder, discountAmount: paymentAmounts.discountAmount || 0 },
     event: {
       title: sel.title,
       date: fmtDate(sel.date),
@@ -2359,7 +2468,7 @@ fetch(API_BASE+'/api/send-confirmation', {
         {view === "gate" && <GateView events={events} onLogout={logout} />}
 
         {view === "admin" && <div className="admin fade">
-          <div className="aside">{["dashboard","events","orders","check-in","door","live","reports"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => setATab(t)}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":t==="live"?"📡 ":"📈 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t==="reports"?"Reports":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
+          <div className="aside">{["dashboard","events","orders","check-in","door","live","reports","promos"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); }}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":t==="live"?"📡 ":t==="reports"?"📈 ":"🏷 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t==="reports"?"Reports":t==="promos"?"Promo Codes":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => {
               const now = new Date();
@@ -2751,6 +2860,53 @@ fetch(API_BASE+'/api/send-confirmation', {
                 </div>}
               </>;
             })()}
+
+            {aTab === "promos" && <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:10}}>
+                <h2 className="dsp" style={{fontSize:26}}>Promo Codes</h2>
+              </div>
+
+              <div className="tkt-sec" style={{marginBottom:28}}>
+                <h3 className="dsp" style={{fontSize:16,marginBottom:14}}>Create New Code</h3>
+                <div className="fr">
+                  <div className="fg"><label className="fl">Code</label><input className="fi" style={{textTransform:'uppercase',letterSpacing:1}} value={promoForm.code} onChange={e=>setPromoForm({...promoForm,code:e.target.value.toUpperCase().replace(/\s/g,'')})} placeholder="SUMMER20" /></div>
+                  <div className="fg"><label className="fl">Type</label><select className="fi" value={promoForm.discountType} onChange={e=>setPromoForm({...promoForm,discountType:e.target.value})}><option value="percent">% Off</option><option value="flat">$ Off</option></select></div>
+                  <div className="fg"><label className="fl">{promoForm.discountType==='percent'?'Percent':'Amount ($)'}</label><input className="fi" type="number" min="0" step={promoForm.discountType==='percent'?'1':'0.01'} value={promoForm.discountValue} onChange={e=>setPromoForm({...promoForm,discountValue:e.target.value})} placeholder={promoForm.discountType==='percent'?'20':'5.00'} /></div>
+                </div>
+                <div className="fr">
+                  <div className="fg"><label className="fl">Max Uses <span style={{fontWeight:400,color:'var(--text3)'}}>(blank = unlimited)</span></label><input className="fi" type="number" min="1" value={promoForm.maxUses} onChange={e=>setPromoForm({...promoForm,maxUses:e.target.value})} placeholder="Unlimited" /></div>
+                  <div className="fg"><label className="fl">Expires <span style={{fontWeight:400,color:'var(--text3)'}}>(blank = no expiry)</span></label><input className="fi" type="date" value={promoForm.expiresAt} onChange={e=>setPromoForm({...promoForm,expiresAt:e.target.value})} /></div>
+                  <div className="fg"><label className="fl">Event <span style={{fontWeight:400,color:'var(--text3)'}}>(blank = all events)</span></label><select className="fi" value={promoForm.eventId} onChange={e=>setPromoForm({...promoForm,eventId:e.target.value})}><option value="">All Events</option>{vEvents.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}</select></div>
+                </div>
+                <button className="buy" style={{marginTop:8}} disabled={promoSaving||!promoForm.code||!promoForm.discountValue} onClick={savePromo}>{promoSaving?'Saving…':'Create Promo Code'}</button>
+              </div>
+
+              <h3 className="dsp" style={{fontSize:16,marginBottom:14}}>Existing Codes</h3>
+              {!promosLoaded
+                ? <p style={{color:'var(--text3)',fontSize:13}}>Loading…</p>
+                : promos.length === 0
+                  ? <div className="empty"><p>No promo codes yet.</p></div>
+                  : <div style={{overflowX:'auto'}}><table className="dt"><thead><tr><th>Code</th><th>Discount</th><th>Uses</th><th>Event</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
+                      {promos.map(p => {
+                        const ev = p.event_id ? vEvents.find(e=>e.id===p.event_id) : null;
+                        const expired = p.expires_at && new Date(p.expires_at) < new Date();
+                        const maxed = p.max_uses !== null && p.uses_count >= p.max_uses;
+                        return <tr key={p.id}>
+                          <td style={{fontFamily:'monospace',fontWeight:700,letterSpacing:1}}>{p.code}</td>
+                          <td>{p.discount_type==='percent'?`${p.discount_value}% off`:`$${Number(p.discount_value).toFixed(2)} off`}</td>
+                          <td>{p.uses_count}{p.max_uses!==null?` / ${p.max_uses}`:''}</td>
+                          <td style={{fontSize:12}}>{ev?ev.title:'All Events'}</td>
+                          <td style={{fontSize:12}}>{p.expires_at?new Date(p.expires_at).toLocaleDateString():'-'}</td>
+                          <td><span className={`badge ${p.active&&!expired&&!maxed?'badge-ok':'badge-cancelled'}`}>{expired?'Expired':maxed?'Maxed':p.active?'Active':'Inactive'}</span></td>
+                          <td style={{display:'flex',gap:4}}>
+                            <button className="btn" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>togglePromo(p.id,!p.active)}>{p.active?'Disable':'Enable'}</button>
+                            <button className="btn" style={{fontSize:11,padding:'4px 8px',color:'var(--red)'}} onClick={()=>deletePromo(p.id)}>Delete</button>
+                          </td>
+                        </tr>;
+                      })}
+                    </tbody></table></div>
+              }
+            </div>}
           </div>
         </div>}
 
