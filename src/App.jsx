@@ -235,6 +235,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .app{min-height:100vh;display:flex;flex-direction:column}
 .dsp{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
 
+.skip-link{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}.skip-link:focus{position:fixed;top:0;left:0;width:auto;height:auto;padding:10px 16px;background:var(--gold);color:var(--bg);font-weight:700;z-index:9999;text-decoration:none;border-radius:0 0 6px 0}
 .nav{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
 .nav-logo{cursor:pointer;display:flex;align-items:center;gap:10px}
 .nav-logo img{height:40px;filter:invert(1);opacity:.92}
@@ -1703,8 +1704,9 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   return (
     <><style>{CSS}</style>
       <div className="app">
-        <nav className="nav">
-          <div className="nav-logo" onClick={goHome} style={{position:"relative"}}>
+        <a href="#main-content" className="skip-link">Skip to main content</a>
+        <nav className="nav" aria-label="Main navigation">
+          <div className="nav-logo" onClick={goHome} onKeyDown={e=>{if(e.key==='Enter')goHome();}} role="button" tabIndex={0} aria-label="Go to home page" style={{position:"relative"}}>
             <img src={LOGO_SRC} alt="Crooked 8" />
             <div style={{position:"absolute",bottom:-4,left:"50%",transform:"translateX(-50%)",background:"var(--gold)",color:"var(--bg)",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:8,letterSpacing:3,textTransform:"uppercase",padding:"2px 6px",borderRadius:2,whiteSpace:"nowrap"}}>TICKETS</div>
             </div>
@@ -1717,6 +1719,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           </div>
         </nav>
 
+        <main id="main-content">
         {view === "home" && <div className="fade">
           <div className="hero">
             <div style={{position:"relative",display:"inline-block",marginBottom:24}}>
@@ -1767,10 +1770,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                     <div style={{height:2,flex:1,minWidth:32,background:'linear-gradient(90deg,rgba(200,146,42,.35),transparent)',borderRadius:2,alignSelf:'center'}}/>
                   </div>
                   {venues.length > 1 && <div className="filters" style={{marginBottom:8}}>
-                    <button className={`chip ${venueFilter==='All'?'on':''}`} onClick={()=>setVenueFilter('All')}>All Venues</button>
-                    {venues.map(v=><button key={v.id} className={`chip ${venueFilter===v.id?'on':''}`} onClick={()=>setVenueFilter(v.id)}>{v.name}</button>)}
+                    <button className={`chip ${venueFilter==='All'?'on':''}`} aria-pressed={venueFilter==='All'} onClick={()=>setVenueFilter('All')}>All Venues</button>
+                    {venues.map(v=><button key={v.id} className={`chip ${venueFilter===v.id?'on':''}`} aria-pressed={venueFilter===v.id} onClick={()=>setVenueFilter(v.id)}>{v.name}</button>)}
                   </div>}
-                  <div className="filters">{CATS.map(c=><button key={c} className={`chip ${filter===c?"on":""}`} onClick={()=>setFilter(c)}>{c}</button>)}</div>
+                  <div className="filters" role="group" aria-label="Filter by category">{CATS.map(c=><button key={c} className={`chip ${filter===c?"on":""}`} aria-pressed={filter===c} onClick={()=>setFilter(c)}>{c}</button>)}</div>
                 </div>
                 {gridEvents.length===0?(
                   publicEvents.length===0
@@ -1778,7 +1781,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                     : <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>
                 ):
                   <div className="grid">{gridEvents.map(ev=>{const mp=ev.tickets.length>0?Math.min(...ev.tickets.map(t=>t.price)):0;const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
-                    <div key={ev.id} className="card" onClick={()=>open(ev.id)} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
+                    <div key={ev.id} className="card" role="button" tabIndex={0} onClick={()=>open(ev.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(ev.id);}}} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
                       <div className="card-img">
                         {ev.image&&ev.image.startsWith('http')
                           ?<img src={ev.image} alt={ev.title} loading="lazy" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',objectPosition:`${ev.focalX??50}% ${ev.focalY??50}%`}} />
@@ -1840,7 +1843,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <a className="directions-btn" href={`https://maps.google.com/?q=${encodeURIComponent(selVenue.location)}`} target="_blank" rel="noopener noreferrer">📍 Get Directions</a>
           <p className="d-desc">{sel.description}</p>
           <div className="tkt-sec"><h3 className="dsp">Select Tickets</h3>
-            {sel.tickets.map((t, i) => { const oa = Math.max(0, t.available - (t.physicalQty ?? 0)); const total = t.total ?? t.available; const lowStock = oa > 0 && total > 0 && oa / total <= 0.25; return <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4>{oa === 0 ? <p>Sold Out</p> : lowStock ? <p style={{color:'var(--red)',fontWeight:700,fontSize:12}}>Almost Gone — Grab Yours Now!</p> : null}</div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv">{cart[i]||0}</div><button className="qb" disabled={(cart[i]||0) >= oa || oa === 0} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>; })}
+            {sel.tickets.map((t, i) => { const oa = Math.max(0, t.available - (t.physicalQty ?? 0)); const total = t.total ?? t.available; const lowStock = oa > 0 && total > 0 && oa / total <= 0.25; return <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4>{oa === 0 ? <p>Sold Out</p> : lowStock ? <p style={{color:'var(--red)',fontWeight:700,fontSize:12}}>Almost Gone — Grab Yours Now!</p> : null}</div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" aria-label={`Remove one ${t.type}`} disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv" aria-live="polite" aria-label={`${cart[i]||0} ${t.type} selected`}>{cart[i]||0}</div><button className="qb" aria-label={`Add one ${t.type}`} disabled={(cart[i]||0) >= oa || oa === 0} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>; })}
             {cartN > 0 && <div className="cart-sum">{sel.tickets.map((t,i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i]*t.price)}</span></div>)}<div className="cart-tot"><span>Total</span><span>{fmtCurrency(cartTotal)}</span></div></div>}
             <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
               <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
@@ -1858,10 +1861,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       <>
         <div className="tkt-sec" style={{ marginBottom: 20 }}>
           <h3 className="dsp">Your Info</h3>
-          <div className="fg"><label className="fl">Full Name *</label><input className="fi" autoComplete="name" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
+          <div className="fg"><label className="fl" htmlFor="buyer-name">Full Name *</label><input id="buyer-name" className="fi" autoComplete="name" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
           <div className="fr">
-            <div className="fg"><label className="fl">Email *</label><input className="fi" type="email" autoComplete="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
-            <div className="fg"><label className="fl">Phone</label><input className="fi" type="tel" autoComplete="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
+            <div className="fg"><label className="fl" htmlFor="buyer-email">Email *</label><input id="buyer-email" className="fi" type="email" autoComplete="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
+            <div className="fg"><label className="fl" htmlFor="buyer-phone">Phone</label><input id="buyer-phone" className="fi" type="tel" autoComplete="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
           </div>
         </div>
         {!buyerReady && (
@@ -2098,14 +2101,14 @@ fetch(API_BASE+'/api/send-confirmation', {
           {lookupStep === 'email' && <>
             <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>Enter the email address you used when purchasing. We'll send a verification code to confirm it's you.</p>
             <div className="tkt-sec" style={{marginBottom:20}}>
-              <div className="fg"><label className="fl">Email Address</label><input className="fi" type="email" value={lookupEmail} onChange={e=>setLookupEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendLookupCode()} placeholder="jane@email.com" /></div>
+              <div className="fg"><label className="fl" htmlFor="lookup-email">Email Address</label><input id="lookup-email" className="fi" type="email" value={lookupEmail} onChange={e=>setLookupEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendLookupCode()} placeholder="jane@email.com" /></div>
               <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||!lookupEmail} onClick={sendLookupCode}>{lookupLoading?"Sending…":"Send Verification Code"}</button>
             </div>
           </>}
           {lookupStep === 'code' && lookupOrders === null && <>
             <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>A 6-digit code was sent to <strong style={{color:"var(--text1)"}}>{lookupEmail}</strong>. Enter it below. It's valid for one hour.</p>
             <div className="tkt-sec" style={{marginBottom:20}}>
-              <div className="fg"><label className="fl">Verification Code</label><input className="fi" type="text" inputMode="numeric" maxLength={6} value={lookupCode} onChange={e=>setLookupCode(e.target.value.replace(/\D/g,''))} onKeyDown={e=>e.key==='Enter'&&verifyLookupCode()} placeholder="000000" style={{letterSpacing:6,fontSize:22,textAlign:"center"}} /></div>
+              <div className="fg"><label className="fl" htmlFor="lookup-code">Verification Code</label><input id="lookup-code" className="fi" type="text" inputMode="numeric" maxLength={6} value={lookupCode} onChange={e=>setLookupCode(e.target.value.replace(/\D/g,''))} onKeyDown={e=>e.key==='Enter'&&verifyLookupCode()} placeholder="000000" style={{letterSpacing:6,fontSize:22,textAlign:"center"}} /></div>
               {lookupError && <p style={{fontSize:12,color:"var(--red)",marginTop:6}}>{lookupError}</p>}
               <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||lookupCode.length!==6} onClick={verifyLookupCode}>{lookupLoading?"Verifying…":"Access My Tickets"}</button>
               <button style={{width:"100%",marginTop:8,background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer",padding:4}} onClick={()=>{setLookupStep('email');setLookupCode('');setLookupError('');}}>Use a different email</button>
@@ -2156,7 +2159,7 @@ fetch(API_BASE+'/api/send-confirmation', {
                       {vpEvents.map(ev => {
                         const soldOut = ev.tickets?.every(t => t.available <= 0);
                         return (
-                          <div key={ev.id} className="card" onClick={() => { setSelId(ev.id); setCart({}); setView('detail'); window.history.pushState({}, '', `/e/${ev.id}`); }}>
+                          <div key={ev.id} className="card" role="button" tabIndex={0} onClick={() => { setSelId(ev.id); setCart({}); setView('detail'); window.history.pushState({}, '', `/e/${ev.id}`); }} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelId(ev.id);setCart({});setView('detail');window.history.pushState({},'',(ev.id));}}}>
                             <div className="card-img">
                               {ev.image
                                 ? <img src={ev.image} alt={ev.title} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:`${(ev.focalX??50)}% ${(ev.focalY??50)}%`}} />
@@ -2313,8 +2316,8 @@ fetch(API_BASE+'/api/send-confirmation', {
   <div className="tkt-sec">
     {!resetSent ? <>
       <div className="fg">
-        <label className="fl">Email</label>
-        <input className="fi" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="your@email.com" />
+        <label className="fl" htmlFor="reset-email">Email</label>
+        <input id="reset-email" className="fi" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="your@email.com" />
       </div>
       {resetError && <p style={{ color: "var(--red)", fontSize: 12, marginBottom: 10 }}>{resetError}</p>}
       <button className="buy" onClick={sendReset} disabled={!resetEmail}>Send Reset Link</button>
@@ -2330,8 +2333,8 @@ fetch(API_BASE+'/api/send-confirmation', {
   <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Enter your new password below.</p>
   <div className="tkt-sec">
     <div className="fg">
-      <label className="fl">New Password</label>
-      <input className="fi" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Minimum 6 characters" />
+      <label className="fl" htmlFor="new-password">New Password</label>
+      <input id="new-password" className="fi" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Minimum 6 characters" />
     </div>
     <button className="buy" onClick={() => { if (newPassword.length >= 6) { updatePassword(newPassword); setNewPassword(''); } }}>Update Password</button>
   </div>
@@ -2341,12 +2344,12 @@ fetch(API_BASE+'/api/send-confirmation', {
   <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Enter your staff credentials</p>
   <div className="tkt-sec">
     <div className="fg">
-      <label className="fl">Email</label>
-      <input className="fi" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="admin@crooked8.com" />
+      <label className="fl" htmlFor="auth-email">Email</label>
+      <input id="auth-email" className="fi" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="admin@crooked8.com" />
     </div>
     <div className="fg">
-      <label className="fl">Password</label>
-      <input className="fi" type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="••••••••" />
+      <label className="fl" htmlFor="auth-password">Password</label>
+      <input id="auth-password" className="fi" type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="••••••••" />
     </div>
     {authError && <p style={{ color: "var(--red)", fontSize: 12, marginBottom: 10 }}>{authError}</p>}
     <button className="buy" onClick={login}>Sign In</button>
@@ -2870,6 +2873,7 @@ fetch(API_BASE+'/api/send-confirmation', {
             </div>
           </div>
         </div>}
+        </main>
 
       <footer className="footer">
           <div className="footer-links">
