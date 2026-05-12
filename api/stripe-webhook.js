@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { Resend } from 'resend';
+import QRCode from 'qrcode';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -118,6 +119,9 @@ export default async function handler(req, res) {
     }).catch(e => console.error('PI tag error:', e.message));
 
     // Send confirmation email
+    const qrSvgRaw = await QRCode.toString(order.id, { type: 'svg', width: 180, margin: 1, color: { dark: '#1a1007', light: '#ffffff' } });
+    const qrSvg = qrSvgRaw.replace(/^[\s\S]*?(?=<svg)/, '');
+
     const itemsHtml = items.map(i => `
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">${escHtml(i.qty)}× ${escHtml(i.type)}</td>
@@ -164,7 +168,7 @@ export default async function handler(req, res) {
   <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
     <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
     <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(order.id)}" alt="QR Code" width="180" height="180" style="display:block" />
+      ${qrSvg}
     </div>
     <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
     <div style="font-size:12px;color:#b5a78a;line-height:1.7">📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>Buying for a group? View and share individual tickets at:<br><a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="color:#c8922a;font-weight:700">c8tickets.com/t/${order.id.slice(0,8).toLowerCase()}…</a></div>

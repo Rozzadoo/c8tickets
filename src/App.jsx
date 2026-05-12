@@ -272,6 +272,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .card:hover{transform:translateY(-3px);box-shadow:0 10px 36px rgba(200,146,42,.1);border-color:rgba(200,146,42,.25)}
 .card-img{height:190px;display:flex;align-items:center;justify-content:center;font-size:48px;background:linear-gradient(135deg,var(--bg3),var(--bg4));position:relative}
 .card-cat{position:absolute;top:10px;right:10px;background:rgba(12,10,7,.8);backdrop-filter:blur(6px);padding:3px 10px;border-radius:99px;font-size:9px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;border:1px solid rgba(200,146,42,.2)}
+.sold-out-badge{position:absolute;inset:0;background:rgba(12,10,7,.6);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(1px);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;letter-spacing:5px;text-transform:uppercase;color:#f0e9da;border:none}
 .card-body{padding:16px}
 .card-date{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
 .card-title{font-size:20px;margin-bottom:4px;line-height:1.2}
@@ -748,7 +749,24 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       fetch(API_BASE + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
-        body: JSON.stringify({ order: { id: order.id } }),
+        body: JSON.stringify({
+          order: {
+            id: order.id,
+            items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
+            salesTax: eff.salesTax,
+            serviceFees: eff.serviceFees,
+            processingFee: eff.processingFee,
+            total: eff.grandTotal,
+          },
+          event: {
+            title: ev?.title || '',
+            category: ev?.category || '',
+            date: fmtDate(ev?.date || ''),
+            time: fmtTime(ev?.time || ''),
+            doors: fmtTime(ev?.doors || ''),
+          },
+          venue: { name: venue.name, location: venue.location },
+        }),
       }).catch(() => {});
     }
     const localOrder = {
@@ -2486,11 +2504,11 @@ fetch(API_BASE+'/api/send-email', {
   <div className="tkt-sec">
     <div className="fg">
       <label className="fl" htmlFor="auth-email">Email</label>
-      <input id="auth-email" className="fi" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="admin@crooked8.com" />
+      <input id="auth-email" className="fi" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && login()} placeholder="admin@crooked8.com" />
     </div>
     <div className="fg">
       <label className="fl" htmlFor="auth-password">Password</label>
-      <input id="auth-password" className="fi" type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="••••••••" />
+      <input id="auth-password" className="fi" type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && login()} placeholder="••••••••" />
     </div>
     {authError && <p style={{ color: "var(--red)", fontSize: 12, marginBottom: 10 }}>{authError}</p>}
     <button className="buy" onClick={login}>Sign In</button>
