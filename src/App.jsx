@@ -1081,6 +1081,7 @@ export default function App() {
   const [reportCustomStart, setReportCustomStart] = useState('');
   const [reportCustomEnd, setReportCustomEnd] = useState('');
   const [holdbackPct, setHoldbackPct] = useState(10);
+  const [platformFeePct, setPlatformFeePct] = useState(2.5);
   const [filter, setFilter] = useState("All");
   const [venueFilter, setVenueFilter] = useState('All');
   const [venueProfileId, setVenueProfileId] = useState(null);
@@ -2676,7 +2677,7 @@ fetch(API_BASE+'/api/send-email', {
               const ciTypeRows=Object.entries(ciTypeMap).sort((a,b)=>b[1].sold-a[1].sold);
 
               // Bookkeeping calculations
-              const PLATFORM_PCT = 0.025;
+              const PLATFORM_PCT = platformFeePct / 100;
               const bkFees = (o) => {
                 const ticketSub = o.items.reduce((s,i)=>s+i.qty*i.price,0);
                 const qty = o.items.reduce((s,i)=>s+i.qty,0);
@@ -2757,11 +2758,11 @@ fetch(API_BASE+'/api/send-email', {
                 rows.push([`Venue Payout (before ${holdbackPct}% holdback)`,fmt(venuePayNow)]);
                 rows.push([`Holdback Retained (${holdbackPct}% of venue gross)`,fmt(holdbackAmt)]);
                 rows.push(['C8Tickets Revenue — Service Fees ($2/ticket)',fmt(bk.svc)]);
-                rows.push(['C8Tickets Revenue — Platform Fee (2.5% of ticket rev)',fmt(platformFees)]);
+                rows.push([`C8Tickets Revenue — Platform Fee (${platformFeePct}% of ticket rev)`,fmt(platformFees)]);
                 rows.push(['Total C8Tickets Revenue',fmt(c8Rev)]);
                 rows.push([]);
                 rows.push(['WEEKLY VENUE PAYOUT']);
-                rows.push(['Week Starting','Orders','Tickets','Ticket Revenue','Service Fees ($2/tkt)','Platform Fee (2.5%)','Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue','Your Revenue (Svc + Platform)']);
+                rows.push(['Week Starting','Orders','Tickets','Ticket Revenue','Service Fees ($2/tkt)',`Platform Fee (${platformFeePct}%)`,'Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue','Your Revenue (Svc + Platform)']);
                 for(const r of weekRows){
                   rows.push([
                     new Date(r.week+'T12:00:00').toLocaleDateString('en-US'),
@@ -2831,11 +2832,17 @@ fetch(API_BASE+'/api/send-email', {
 
                 {!isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
                   <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Bookkeeping & Payouts</h3>
-                  <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · 2.5% platform fee · 3.5% + $0.30 processing fee charged to customers (Stripe's actual cost: 2.9% + $0.30 — the 0.6% spread is additional C8Tickets revenue). Cash sales carry no processing fee. All figures are for the selected period.</p>
-                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
-                    <label style={{fontSize:12,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Holdback %</label>
-                    <input className="fi" type="number" min="0" max="100" step="1" value={holdbackPct} onChange={e=>setHoldbackPct(Math.max(0,Math.min(100,Number(e.target.value))))} style={{width:70,margin:0}} />
-                    <span style={{fontSize:12,color:'var(--text3)'}}>Reserve withheld from each venue payout and released after the chargeback window closes.</span>
+                  <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · {platformFeePct}% platform fee · 3.5% + $0.30 processing fee charged to customers (Stripe's actual cost: 2.9% + $0.30 — the 0.6% spread is additional C8Tickets revenue). Cash sales carry no processing fee. All figures are for the selected period.</p>
+                  <div style={{display:'flex',alignItems:'center',gap:20,marginBottom:20,flexWrap:'wrap'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <label style={{fontSize:12,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Platform Fee %</label>
+                      <input className="fi" type="number" min="0" max="100" step="0.5" value={platformFeePct} onChange={e=>setPlatformFeePct(Math.max(0,Math.min(100,Number(e.target.value))))} style={{width:70,margin:0}} />
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <label style={{fontSize:12,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Holdback %</label>
+                      <input className="fi" type="number" min="0" max="100" step="1" value={holdbackPct} onChange={e=>setHoldbackPct(Math.max(0,Math.min(100,Number(e.target.value))))} style={{width:70,margin:0}} />
+                    </div>
+                    <span style={{fontSize:12,color:'var(--text3)'}}>Set Platform Fee to 0% for venues not yet on the platform fee. Holdback is a reserve withheld from each payout.</span>
                   </div>
                   {vo.length===0
                     ?<div className="empty" style={{marginBottom:28}}><p>No orders in this period.</p></div>
@@ -2852,12 +2859,12 @@ fetch(API_BASE+'/api/send-email', {
 
                             <tr><td colSpan={2} style={{paddingTop:16,paddingBottom:2,fontSize:11,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Allocations from Your Account</td></tr>
                             <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Idaho sales tax — remit to state (6%)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(bk.tax)}</td></tr>
-                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Venue payout (after 2.5% platform fee)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(venuePayNow)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Venue payout (after {platformFeePct}% platform fee)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(venuePayNow)}</td></tr>
                             <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Holdback retained ({holdbackPct}% of venue gross)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>+{fmtCurrency(holdbackAmt)}</td></tr>
 
                             <tr style={{borderTop:'1px solid var(--border)'}}><td style={{fontWeight:700}}>C8Tickets Revenue</td><td style={{textAlign:'right',fontWeight:700,color:'var(--green)'}}>{fmtCurrency(c8Rev)}</td></tr>
                             <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Service fees ($2/ticket × {vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)})</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(bk.svc)}</td></tr>
-                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Platform fee (2.5% of ${bk.ticketRev.toFixed(2)} ticket rev)</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(platformFees)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Platform fee ({platformFeePct}% of ${bk.ticketRev.toFixed(2)} ticket rev)</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(platformFees)}</td></tr>
                           </tbody>
                         </table>
                       </div>
