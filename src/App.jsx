@@ -1082,6 +1082,7 @@ export default function App() {
   const [reportCustomEnd, setReportCustomEnd] = useState('');
   const [holdbackPct, setHoldbackPct] = useState(10);
   const [platformFeePct, setPlatformFeePct] = useState(2.5);
+  const [bkVenueFilter, setBkVenueFilter] = useState('all');
   const [filter, setFilter] = useState("All");
   const [venueFilter, setVenueFilter] = useState('All');
   const [venueProfileId, setVenueProfileId] = useState(null);
@@ -1173,13 +1174,12 @@ const [resetError, setResetError] = useState('');
     supabase
       .from('orders')
       .select('*, order_items(*)')
-      .eq('tenant_id', TENANT_ID)
       .then(({ data, error }) => {
         if (error) { console.error(error); return; }
         setOrders((data || []).map(o => ({
           id: o.id,
           eventId: o.event_id,
-          venueId: TENANT_ID,
+          venueId: o.tenant_id,
           buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
           items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price), ticketTypeId: i.ticket_type_id })),
           total: Number(o.total_amount),
@@ -2677,6 +2677,8 @@ fetch(API_BASE+'/api/send-email', {
               const ciTypeRows=Object.entries(ciTypeMap).sort((a,b)=>b[1].sold-a[1].sold);
 
               // Bookkeeping calculations
+              const allDateOrders = orders.filter(o => o.status !== 'cancelled' && inRange(o));
+              const bkOrders = bkVenueFilter === 'all' ? allDateOrders : allDateOrders.filter(o => o.venueId === bkVenueFilter);
               const PLATFORM_PCT = platformFeePct / 100;
               const bkFees = (o) => {
                 const ticketSub = o.items.reduce((s,i)=>s+i.qty*i.price,0);
@@ -2687,7 +2689,7 @@ fetch(API_BASE+'/api/send-email', {
                 const proc = isCash ? 0 : Math.max(0, Math.round((o.total-ticketSub-tax-svc)*100)/100);
                 return {ticketSub, tax, svc, proc, isCash};
               };
-              const bk = vo.reduce((acc,o)=>{
+              const bk = bkOrders.reduce((acc,o)=>{
                 const f=bkFees(o);
                 acc.ticketRev+=f.ticketSub; acc.tax+=f.tax; acc.svc+=f.svc; acc.proc+=f.proc;
                 acc.grossCard+=f.isCash?0:o.total; acc.grossCash+=f.isCash?o.total:0;
@@ -2704,7 +2706,7 @@ fetch(API_BASE+'/api/send-email', {
               // Weekly venue payout grouping (Mon–Sun weeks)
               const weekStart = (d) => { const dt=new Date(d); const day=dt.getDay(); dt.setDate(dt.getDate()-((day+6)%7)); return dt.toISOString().slice(0,10); };
               const weekMap={};
-              for(const o of vo){
+              for(const o of bkOrders){
                 const k=weekStart(o.date);
                 if(!weekMap[k])weekMap[k]={orders:0,tickets:0,ticketRev:0,svcFees:0};
                 const f=bkFees(o);
@@ -2721,13 +2723,15 @@ fetch(API_BASE+'/api/send-email', {
                 const fmt = (n) => Number(n).toFixed(2);
                 const q = (s) => `"${String(s).replace(/"/g,'""')}"`;
                 const rows = [];
+                const bkVenueName = bkVenueFilter === 'all' ? 'All Venues' : (venues.find(v=>v.id===bkVenueFilter)?.name || bkVenueFilter);
                 rows.push(['C8 Tickets Bookkeeping Export']);
+                rows.push([`Organizer: ${bkVenueName}`]);
                 rows.push([`Period: ${filterLabels[reportFilter]}`]);
                 rows.push([`Generated: ${new Date().toLocaleDateString('en-US')}`]);
                 rows.push([]);
                 rows.push(['TRANSACTION DETAIL']);
                 rows.push(['Date','Order ID','Event','Buyer Name','Channel','Qty Tickets','Ticket Subtotal','Sales Tax (6%)','Service Fees ($2/tkt)','Processing Fee','Grand Total','Net Bank Deposit']);
-                for(const o of vo){
+                for(const o of bkOrders){
                   const evTitle=events.find(e=>e.id===o.eventId)?.title||o.eventId;
                   const f=bkFees(o);
                   const ch=o.source==='door_cash'?'Door – Cash':o.source==='door'?'Door – Card':'Online';
@@ -2773,7 +2777,8 @@ fetch(API_BASE+'/api/send-email', {
                 const blob=new Blob([csv],{type:'text/csv'});
                 const url=URL.createObjectURL(blob);
                 const a=document.createElement('a');
-                a.href=url; a.download=`c8tickets-bookkeeping-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+                const bkSlug = bkVenueFilter === 'all' ? 'all-venues' : bkVenueName.toLowerCase().replace(/[^\w]+/g,'-');
+                a.href=url; a.download=`c8tickets-bookkeeping-${bkSlug}-${new Date().toISOString().slice(0,10)}.csv`; a.click();
                 URL.revokeObjectURL(url);
               };
 
@@ -2831,7 +2836,16 @@ fetch(API_BASE+'/api/send-email', {
                 }
 
                 {!isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
-                  <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Bookkeeping & Payouts</h3>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6,flexWrap:'wrap',gap:10}}>
+                    <h3 className="dsp" style={{fontSize:18}}>Bookkeeping & Payouts</h3>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <label style={{fontSize:11,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Organizer</label>
+                      <select className="fi" style={{margin:0,width:'auto',minWidth:160}} value={bkVenueFilter} onChange={e=>setBkVenueFilter(e.target.value)}>
+                        <option value="all">All Venues</option>
+                        {venues.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
                   <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · {platformFeePct}% platform fee · 3.5% + $0.30 processing fee charged to customers (Stripe's actual cost: 2.9% + $0.30 — the 0.6% spread is additional C8Tickets revenue). Cash sales carry no processing fee. All figures are for the selected period.</p>
                   <div style={{display:'flex',alignItems:'center',gap:20,marginBottom:20,flexWrap:'wrap'}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -2863,7 +2877,7 @@ fetch(API_BASE+'/api/send-email', {
                             <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Holdback retained ({holdbackPct}% of venue gross)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>+{fmtCurrency(holdbackAmt)}</td></tr>
 
                             <tr style={{borderTop:'1px solid var(--border)'}}><td style={{fontWeight:700}}>C8Tickets Revenue</td><td style={{textAlign:'right',fontWeight:700,color:'var(--green)'}}>{fmtCurrency(c8Rev)}</td></tr>
-                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Service fees ($2/ticket × {vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)})</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(bk.svc)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Service fees ($2/ticket × {bkOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)})</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(bk.svc)}</td></tr>
                             <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Platform fee ({platformFeePct}% of ${bk.ticketRev.toFixed(2)} ticket rev)</td><td style={{textAlign:'right',fontSize:13}}>{fmtCurrency(platformFees)}</td></tr>
                           </tbody>
                         </table>
