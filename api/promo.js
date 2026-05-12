@@ -136,6 +136,17 @@ async function handleDelete(req, res) {
   return res.status(200).json({ ok: true });
 }
 
+async function handleUsage(req, res) {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: 'Missing id' });
+  const r = await fetch(
+    `${supaUrl()}/rest/v1/orders?promo_code_id=eq.${id}&select=id,buyer_name,buyer_email,created_at,total_amount,status&order=created_at.desc`,
+    { headers: supaHeaders() }
+  );
+  const rows = await r.json();
+  return res.status(200).json({ orders: Array.isArray(rows) ? rows : [] });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
@@ -152,6 +163,7 @@ export default async function handler(req, res) {
   if (action === 'create') return handleCreate(req, res);
   if (action === 'toggle') return handleToggle(req, res);
   if (action === 'delete') return handleDelete(req, res);
+  if (action === 'usage') return handleUsage(req, res);
 
   return res.status(400).json({ error: 'Invalid action' });
 }

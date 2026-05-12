@@ -1127,6 +1127,8 @@ const [resetError, setResetError] = useState('');
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [expandedTickets, setExpandedTickets] = useState({});
   const [togglingPublish, setTogglingPublish] = useState(new Set());
+  const [expandedPromos, setExpandedPromos] = useState(new Set());
+  const [promoUsage, setPromoUsage] = useState({});
   const [promoInput, setPromoInput] = useState('');
   const [promoApplied, setPromoApplied] = useState(null);
   const [promoLoading, setPromoLoading] = useState(false);
@@ -1432,6 +1434,18 @@ const deletePromo = async (id) => {
     body: JSON.stringify({ action: 'delete', id }),
   });
   setPromos(prev => prev.filter(p => p.id !== id));
+};
+
+const loadPromoUsage = async (id) => {
+  if (promoUsage[id]) return;
+  const { data: { session: s } } = await supabase.auth.getSession();
+  const res = await fetch(API_BASE + '/api/promo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
+    body: JSON.stringify({ action: 'usage', id }),
+  });
+  const data = await res.json();
+  setPromoUsage(prev => ({ ...prev, [id]: data.orders || [] }));
 };
 
 const sendLookupCode = async () => {
@@ -2036,6 +2050,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                 total_amount: paymentAmounts.grandTotal,
                 stripe_payment_intent_id: paymentIntentId,
                 source: 'online',
+                promo_code_id: promoApplied?.id || null,
               })
               .select()
               .single();
@@ -2477,7 +2492,16 @@ fetch(API_BASE+'/api/send-email', {
         {view === "gate" && <GateView events={events} onLogout={logout} />}
 
         {view === "admin" && <div className="admin fade">
-          <div className="aside">{["dashboard","events","orders","check-in","door","live","reports","promos"].map(t => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); }}>{t==="dashboard"?"📊 ":t==="events"?"🎫 ":t==="orders"?"📋 ":t==="check-in"?"✅ ":t==="door"?"🏪 ":t==="live"?"📡 ":t==="reports"?"📈 ":"🏷 "}{t==="check-in"?"Check-In":t==="door"?"Door Sales":t==="reports"?"Reports":t==="promos"?"Promo Codes":t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</div>
+          <div className="aside">{[
+            ['dashboard','Dashboard',<svg key="d" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>],
+            ['events','Events',<svg key="e" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>],
+            ['orders','Orders',<svg key="o" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>],
+            ['check-in','Check-In',<svg key="c" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>],
+            ['door','Door Sales',<svg key="ds" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>],
+            ['live','Live',<svg key="l" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>],
+            ['reports','Reports',<svg key="r" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>],
+            ['promos','Promo Codes',<svg key="p" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>],
+          ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); }} style={{display:'flex',alignItems:'center',gap:8}}>{icon}{label}</button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => {
               const now = new Date();
@@ -2531,7 +2555,7 @@ fetch(API_BASE+'/api/send-email', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>{ if (window.confirm(`Delete "${ev.title}"? This cannot be undone.`)) delEvt(ev.id); }}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
@@ -2550,7 +2574,7 @@ fetch(API_BASE+'/api/send-email', {
                   <span style={{fontSize:12,color:"var(--text3)",alignSelf:"center",marginLeft:4}}>{fo.length} order{fo.length!==1?'s':''}</span>
                   {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';return <tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>;})}</tbody></table></div>}
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
               </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'); return <>
@@ -2895,23 +2919,48 @@ fetch(API_BASE+'/api/send-email', {
                 ? <p style={{color:'var(--text3)',fontSize:13}}>Loading…</p>
                 : promos.length === 0
                   ? <div className="empty"><p>No promo codes yet.</p></div>
-                  : <div style={{overflowX:'auto'}}><table className="dt"><thead><tr><th>Code</th><th>Discount</th><th>Uses</th><th>Event</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
-                      {promos.map(p => {
+                  : <div style={{overflowX:'auto'}}><table className="dt"><thead><tr><th></th><th>Code</th><th>Discount</th><th>Uses</th><th>Event</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
+                      {promos.flatMap(p => {
                         const ev = p.event_id ? vEvents.find(e=>e.id===p.event_id) : null;
                         const expired = p.expires_at && new Date(p.expires_at) < new Date();
                         const maxed = p.max_uses !== null && p.uses_count >= p.max_uses;
-                        return <tr key={p.id}>
-                          <td style={{fontFamily:'monospace',fontWeight:700,letterSpacing:1}}>{p.code}</td>
-                          <td>{p.discount_type==='percent'?`${p.discount_value}% off`:`$${Number(p.discount_value).toFixed(2)} off`}</td>
-                          <td>{p.uses_count}{p.max_uses!==null?` / ${p.max_uses}`:''}</td>
-                          <td style={{fontSize:12}}>{ev?ev.title:'All Events'}</td>
-                          <td style={{fontSize:12}}>{p.expires_at?new Date(p.expires_at).toLocaleDateString():'-'}</td>
-                          <td><span className={`badge ${p.active&&!expired&&!maxed?'badge-ok':'badge-cancelled'}`}>{expired?'Expired':maxed?'Maxed':p.active?'Active':'Inactive'}</span></td>
-                          <td style={{display:'flex',gap:4}}>
-                            <button className="btn" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>togglePromo(p.id,!p.active)}>{p.active?'Disable':'Enable'}</button>
-                            <button className="btn" style={{fontSize:11,padding:'4px 8px',color:'var(--red)'}} onClick={()=>deletePromo(p.id)}>Delete</button>
-                          </td>
-                        </tr>;
+                        const isExp = expandedPromos.has(p.id);
+                        const usage = promoUsage[p.id];
+                        const togglePromoExp = () => {
+                          const next = new Set(expandedPromos);
+                          if (isExp) { next.delete(p.id); setExpandedPromos(next); }
+                          else { next.add(p.id); setExpandedPromos(next); loadPromoUsage(p.id); }
+                        };
+                        return [
+                          <tr key={p.id}>
+                            <td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={togglePromoExp}>{isExp?'▲':'▼'}</button></td>
+                            <td style={{fontFamily:'monospace',fontWeight:700,letterSpacing:1}}>{p.code}</td>
+                            <td>{p.discount_type==='percent'?`${p.discount_value}% off`:`$${Number(p.discount_value).toFixed(2)} off`}</td>
+                            <td>{p.uses_count}{p.max_uses!==null?` / ${p.max_uses}`:''}</td>
+                            <td style={{fontSize:12}}>{ev?ev.title:'All Events'}</td>
+                            <td style={{fontSize:12}}>{p.expires_at?new Date(p.expires_at).toLocaleDateString():'-'}</td>
+                            <td><span className={`badge ${p.active&&!expired&&!maxed?'badge-ok':'badge-cancelled'}`}>{expired?'Expired':maxed?'Maxed':p.active?'Active':'Inactive'}</span></td>
+                            <td style={{display:'flex',gap:4}}>
+                              <button className="btn" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>togglePromo(p.id,!p.active)}>{p.active?'Disable':'Enable'}</button>
+                              <button className="btn" style={{fontSize:11,padding:'4px 8px',color:'var(--red)'}} onClick={()=>deletePromo(p.id)}>Delete</button>
+                            </td>
+                          </tr>,
+                          isExp && <tr key={p.id+'-usage'}><td colSpan={8} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>
+                            {!usage ? <p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading…</p>
+                              : usage.length === 0 ? <p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No orders have used this code yet.</p>
+                              : <table className="dt" style={{marginTop:6}}><thead><tr><th>Order ID</th><th>Buyer</th><th>Email</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>
+                                {usage.map(u => <tr key={u.id}>
+                                  <td style={{fontFamily:'monospace',fontSize:11}}>{u.id.slice(0,12)}</td>
+                                  <td style={{fontSize:12}}>{u.buyer_name}</td>
+                                  <td style={{fontSize:11}}>{u.buyer_email}</td>
+                                  <td style={{fontSize:11}}>{new Date(u.created_at).toLocaleDateString()}</td>
+                                  <td style={{fontSize:12,fontWeight:700}}>{fmtCurrency(u.total_amount)}</td>
+                                  <td><span className={`badge ${u.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{u.status}</span></td>
+                                </tr>)}
+                              </tbody></table>
+                            }
+                          </td></tr>
+                        ].filter(Boolean);
                       })}
                     </tbody></table></div>
               }
