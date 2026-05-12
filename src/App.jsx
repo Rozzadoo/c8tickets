@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import QRCodeLib from 'qrcode';
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from './lib/supabase';
 import { TENANT_ID, API_BASE, APP_URL } from './constants';
@@ -152,10 +153,15 @@ const downloadIcs = (ev, loc) => {
 };
 
 // ── QR Code ──
-const QRCode = ({ value, size = 160 }) => {
-  const cells = useMemo(() => { let h = 0; for (let i = 0; i < value.length; i++) h = ((h << 5) - h + value.charCodeAt(i)) | 0; const g = [], n = 21; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const tl = r < 7 && c < 7, tr = r < 7 && c >= n - 7, bl = r >= n - 7 && c < 7; if (tl || tr || bl) { const lr = tl ? r : tr ? r : r - (n - 7), lc = tl ? c : tr ? c - (n - 7) : c; g.push({ r, c, on: lr === 0 || lr === 6 || lc === 0 || lc === 6 || (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4) }); } else { h = ((h * 1103515245 + 12345) & 0x7fffffff); g.push({ r, c, on: (h % 3) !== 0 }); } } return g; }, [value]);
-  const s = size / 21;
-  return (<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><rect width={size} height={size} fill="white" rx="4" />{cells.filter(c => c.on).map((c, i) => <rect key={i} x={c.c * s} y={c.r * s} width={s + .5} height={s + .5} fill="#1a1007" rx=".5" />)}</svg>);
+const QRImg = ({ value, size = 160, style }) => {
+  const [src, setSrc] = useState('');
+  useEffect(() => {
+    QRCodeLib.toDataURL(value, { width: size, margin: 1, color: { dark: '#1a1007', light: '#ffffff' } })
+      .then(setSrc).catch(console.error);
+  }, [value, size]);
+  return src
+    ? <img src={src} width={size} height={size} alt="QR Code" style={{ display: 'block', ...(style || {}) }} />
+    : <div style={{ width: size, height: size, background: '#f0f0f0', borderRadius: 4, ...(style || {}) }} />;
 };
 // ── Stripe Checkout Form ──
 const CheckoutForm = ({ cartTotal, totalTickets, paymentAmounts, onSuccess, onBack }) => {
@@ -959,7 +965,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <p style={{color:'var(--text2)',fontSize:14,marginBottom:4}}>{lastSale.buyer.name}</p>
           <p style={{color:'var(--gold)',fontWeight:700,fontSize:20,marginBottom:24}}>{fmtCurrency(lastSale.total)}</p>
           <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:16}}>
-            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${lastSale.id}`} width={180} height={180} alt="QR" style={{display:'block'}} />
+            <QRImg value={lastSale.id} size={180} />
           </div>
           <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>CHECKED IN {lastSale.source==='door_cash'?'· CASH':''}</p>
           <p style={{fontFamily:'monospace',fontSize:10,color:'var(--text3)',marginBottom:28,letterSpacing:.5}}>{lastSale.id.toUpperCase()}</p>
@@ -1471,11 +1477,12 @@ const verifyLookupCode = async () => {
   setLookupOrders(data.orders || []);
 };
 
-const openPrintPage = (ev, tickets, venue, size = TICKET_SIZES[0]) => {
+const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0]) => {
   const fs = size.fScale ?? 1;
   const r = (n) => Math.round(n * fs);
   const qrSz = r(88);
   const stubW = r(108);
+  const qrDataUrls = await Promise.all(tickets.map(t => QRCodeLib.toDataURL(t.id, { width: qrSz, margin: 1 })));
   const hasImg = !!(ev.image && ev.image.startsWith('http'));
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Physical Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1501,17 +1508,18 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Use "Save as PDF" to send to a print shop</p></div>
 <div class="sheet">
-${tickets.map(t=>`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 ${venue.location}</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSz}x${qrSz}&data=${t.id}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
+${tickets.map((t,i)=>`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 ${venue.location}</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
 </div></body></html>`;
   const win = window.open('', '_blank');
   if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
   win.document.write(html); win.document.close();
 };
 
-const openPhotoPage = (ev, tickets, venue, size = TICKET_SIZES[0]) => {
+const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0]) => {
   const fs = size.fScale ?? 1;
   const r = (n) => Math.round(n * fs);
   const qrSz = r(72);
+  const qrDataUrls = await Promise.all(tickets.map(t => QRCodeLib.toDataURL(t.id, { width: qrSz, margin: 1 })));
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
@@ -1541,7 +1549,7 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Save as PDF and send to your print shop</p></div>
 <div class="sheet">
-${tickets.map(t=>{const hasImg=t.image&&t.image.startsWith('http');return`<div class="tkt">
+${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');return`<div class="tkt">
   <div class="tkt-photo ${hasImg?'':'no-photo'}" style="${hasImg?`background-image:url('${t.image}');background-position:${t.focalX??50}% ${t.focalY??50}%`:''}"></div>
   <div class="tkt-stripe"></div>
   <div class="tkt-main">
@@ -1559,7 +1567,7 @@ ${tickets.map(t=>{const hasImg=t.image&&t.image.startsWith('http');return`<div c
         <div class="tier-name">${t.type}</div>
         <div class="tkt-code">#${t.id.slice(0,8).toUpperCase()}</div>
       </div>
-      <div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSz}x${qrSz}&data=${t.id}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
+      <div class="qr-box"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
     </div>
   </div>
 </div>`;}).join('\n')}
@@ -1603,7 +1611,7 @@ const generatePhysicalTickets = async (ev, size = TICKET_SIZES[0]) => {
   setGeneratingPhysical(ev.id);
   const orders = await fetchOrCreatePhysicalOrders(ev);
   setGeneratingPhysical(false);
-  if (orders.length > 0) openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })), venue, size);
+  if (orders.length > 0) await openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })), venue, size);
 };
 
 const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
@@ -1614,7 +1622,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   setGeneratingPhysical(ev.id + '-photo');
   const orders = await fetchOrCreatePhysicalOrders(ev);
   setGeneratingPhysical(false);
-  if (orders.length > 0) openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })), venue, size);
+  if (orders.length > 0) await openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })), venue, size);
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
   const allPublicEvents = events.filter(e => e.published !== false);
@@ -2149,7 +2157,7 @@ fetch(API_BASE+'/api/send-email', {
               <div className="dsp" style={{fontSize:22,marginBottom:3}}>{ev?.title}</div>
               <div style={{color:"var(--gold)",fontWeight:700,fontSize:13,marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>{ev ? fmtDate(ev.date) : ""} - {fmtTime(ev?.time)}</div>
               <div><span className="badge badge-ok">✓ Valid</span></div>
-              <div className="qr"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${lastOrder.id}`} alt="Ticket QR Code" width={160} height={160} style={{display:"block"}} /></div>
+              <div className="qr"><QRImg value={lastOrder.id} size={160} /></div>
               <div className="cid">ID: {lastOrder.id.toUpperCase()}</div>
               <ul className="tkt-items">
                 {lastOrder.items.map((it,i) => <li key={i}><span>{it.qty}× {it.type}</span><span>{fmtCurrency(it.qty*it.price)}</span></li>)}
@@ -2189,11 +2197,10 @@ fetch(API_BASE+'/api/send-email', {
                 </div>
                 <div id="ticket-print-area">
                   {tickets.map((t, idx) => {
-                    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${t.id}`;
                     const shareTicket = async () => {
                       if (navigator.share) {
                         try { await navigator.share({ title: `${evTitle} — Ticket ${t.ticket_number}`, url: window.location.href }); } catch {}
-                      } else { window.open(qrUrl, '_blank'); }
+                      } else { window.open(window.location.href, '_blank'); }
                     };
                     return (
                       <div key={t.id} className="tkt-disp" style={{marginBottom:20,pageBreakInside:'avoid'}}>
@@ -2211,7 +2218,7 @@ fetch(API_BASE+'/api/send-email', {
                         {evDoors && <div style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Doors {evDoors} · {venue.name} · {venue.location}</div>}
                         <div style={{textAlign:"center",margin:"12px 0"}}>
                           <div style={{background:"white",borderRadius:8,padding:10,display:"inline-block"}}>
-                            <img src={qrUrl} alt="Ticket QR" width={160} height={160} style={{display:"block"}} />
+                            <QRImg value={t.id} size={160} />
                           </div>
                           <div style={{fontFamily:"monospace",fontSize:10,color:"var(--text3)",marginTop:6,letterSpacing:1}}>{t.id.toUpperCase()}</div>
                         </div>
@@ -2259,7 +2266,7 @@ fetch(API_BASE+'/api/send-email', {
                   <span className={`badge ${o.status==="checked_in"?"badge-done":o.status==="cancelled"?"badge-cancelled":"badge-ok"}`} style={{marginBottom:12,display:"inline-block"}}>{o.status==="checked_in"?"Checked In":o.status==="cancelled"?"Cancelled":"Valid"}</span>
                   {o.status!=="cancelled" && <>
                     <button className="buy" style={{width:"100%",marginBottom:12}} onClick={() => { setTicketOrderId(o.id); setView("mytickets"); window.history.pushState({}, '', `/t/${o.id}`); }}>View Individual Tickets</button>
-                    <div className="qr"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(o.id)}`} alt="QR Code" width={150} height={150} style={{display:"block"}} /></div>
+                    <div className="qr"><QRImg value={o.id} size={150} /></div>
                   </>}
                   <div className="cid">ID: {o.id.toUpperCase()}</div>
                 </div>;
