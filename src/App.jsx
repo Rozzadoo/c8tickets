@@ -2418,7 +2418,7 @@ fetch(API_BASE+'/api/send-email', {
 
           <div className="about-cta">
             <h2 className="dsp">Ready to Sell Tickets?</h2>
-            <p>Reach out and we'll get your events set up — usually the same day.</p>
+            <p>Reach out and we'll get your events set up quickly.</p>
             <a href="#" onClick={e=>{e.preventDefault();setView('sell');}}>Get Started</a>
           </div>
         </div>}
@@ -2427,7 +2427,7 @@ fetch(API_BASE+'/api/send-email', {
           <div className="back" onClick={() => setView("home")}>← Back</div>
           <div className="about-hero">
             <h1 className="dsp">Sell Tickets<br/>with C8</h1>
-            <p>Local ticketing built for small events. Fill out the form below and we'll get you set up — usually the same day.</p>
+            <p>Local ticketing built for small events. Fill out the form below and we'll be in touch soon.</p>
           </div>
           <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',borderBottom:'1px solid var(--border)',padding:'56px 20px'}}>
             <div style={{maxWidth:820,margin:'0 auto'}}>
@@ -2435,7 +2435,7 @@ fetch(API_BASE+'/api/send-email', {
               <div className="about-divider" style={{marginBottom:28}}></div>
               <div className="about-grid">
                 {[
-                  ['Fast Setup','We handle the event configuration — ticket tiers, payment processing, event page. Most events go live within one business day.'],
+                  ['Fast Setup','We handle the event configuration — ticket tiers, payment processing, event page. Most events go live quickly once we have your details.'],
                   ['Online & Door Sales','Customers buy in advance from any device. Staff sell at the door using a card reader or manual entry, all through the same system.'],
                   ['Automatic QR Tickets','Every buyer gets an instant confirmation email with their QR code the moment their payment clears. No manual follow-up needed.'],
                   ['Gate Check-In','Staff scan QR codes at the entrance from any phone or tablet. No paper lists, no spreadsheets.'],
