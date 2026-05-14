@@ -2485,7 +2485,7 @@ fetch(API_BASE+'/api/send-email', {
               <div className="about-divider" style={{marginBottom:28}}></div>
               <div className="about-grid">
                 {[
-                  ['Fast Setup','We handle the event configuration — ticket tiers, payment processing, event page. Most events go live quickly once we have your details.'],
+                  ['Fast Setup','Create and configure your own events directly — set ticket tiers, pricing, and event details yourself. Your event can be live and ready to sell tickets in minutes.'],
                   ['Online & Door Sales','Customers buy in advance from any device. Staff sell at the door using a card reader or manual entry, all through the same system.'],
                   ['Automatic QR Tickets','Every buyer gets an instant confirmation email with their QR code the moment their payment clears. No manual follow-up needed.'],
                   ['Gate Check-In','Staff scan QR codes at the entrance from any phone or tablet. No paper lists, no spreadsheets.'],
