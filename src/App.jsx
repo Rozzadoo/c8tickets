@@ -349,9 +349,9 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;background:rgba(200,146,42,.15);color:var(--gold)}
 
 .admin{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 61px)}
-@media(max-width:768px){.admin{grid-template-columns:1fr}}
+@media(max-width:768px){.admin{grid-template-columns:1fr;overflow-x:hidden}}
 .aside{background:var(--bg2);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;gap:3px}
-@media(max-width:768px){.aside{flex-direction:row;overflow-x:auto;padding:10px;border-right:none;border-bottom:1px solid var(--border)}}
+@media(max-width:768px){.aside{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:10px;border-right:none;border-bottom:1px solid var(--border)}}
 .aside-btn{padding:9px 14px;border-radius:var(--rs);border:none;background:transparent;color:var(--text2);cursor:pointer;font-family:'Barlow',sans-serif;font-size:13px;text-align:left;transition:all .15s;white-space:nowrap;font-weight:500}
 .aside-btn:hover,.aside-btn.on{background:var(--bg3);color:var(--gold)}
 .amain{padding:28px;overflow-y:auto;overflow-x:hidden;max-width:100%}
