@@ -1866,9 +1866,9 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             </div>
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={goHome}>Events</button>
+            <button className={`btn ${view === "lookup" || view === "mytickets" ? "on" : ""}`} onClick={() => { setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>My Tickets</button>
             <button className={`btn ${view === "about" ? "on" : ""}`} onClick={() => setView("about")}>About</button>
             <button className={`btn ${view === "sell" ? "on" : ""}`} onClick={() => { setSellForm({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' }); setSellStatus('idle'); setView("sell"); }}>Sell Tickets</button>
-            <button className={`btn ${view === "lookup" || view === "mytickets" ? "on" : ""}`} onClick={() => { setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>My Tickets</button>
             {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
             {session && <button className="btn" onClick={logout}>Logout</button>}
           </div>
