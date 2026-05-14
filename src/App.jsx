@@ -1170,7 +1170,7 @@ const [resetError, setResetError] = useState('');
   const [sellStatus, setSellStatus] = useState('idle');
   const [venueUsers, setVenueUsers] = useState([]);
   const [venueUsersLoaded, setVenueUsersLoaded] = useState(false);
-  const [venueUserForm, setVenueUserForm] = useState({ email:'', password:'', tenantId:'' });
+  const [venueUserForm, setVenueUserForm] = useState({ email:'', password:'', tenantId:'', role:'venue' });
   const [venueUserSaving, setVenueUserSaving] = useState(false);
   const [venueUserError, setVenueUserError] = useState('');
   const [venueUserSuccess, setVenueUserSuccess] = useState('');
@@ -1764,11 +1764,12 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       password: venueUserForm.password,
       tenantId: venueUserForm.tenantId,
       tenantName: selectedVenue?.name || '',
+      role: venueUserForm.role,
     });
     const data = await r.json();
     setVenueUserSaving(false);
     if (!r.ok) { setVenueUserError(data.error || 'Failed to create account'); }
-    else { setVenueUserSuccess(`Account created for ${venueUserForm.email}`); setVenueUserForm({ email:'', password:'', tenantId:'' }); loadVenueUsers(); }
+    else { setVenueUserSuccess(`Account created for ${venueUserForm.email}`); setVenueUserForm({ email:'', password:'', tenantId:'', role:'venue' }); loadVenueUsers(); }
   };
 
   const deleteVenueUser = async (userId, email) => {
@@ -3164,6 +3165,13 @@ fetch(API_BASE+'/api/send-email', {
                   <select id="vu-venue" className="fi" value={venueUserForm.tenantId} onChange={e=>setVenueUserForm(p=>({...p,tenantId:e.target.value}))}>
                     <option value="">Select a venue…</option>
                     {venues.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label className="fl" htmlFor="vu-role">Role</label>
+                  <select id="vu-role" className="fi" value={venueUserForm.role} onChange={e=>setVenueUserForm(p=>({...p,role:e.target.value}))}>
+                    <option value="venue">Venue Admin — full access for their venue</option>
+                    <option value="gate">Gate / Door — check-in scanner only</option>
                   </select>
                 </div>
                 {venueUserError && <p style={{fontSize:12,color:'var(--red)',marginBottom:12}}>{venueUserError}</p>}

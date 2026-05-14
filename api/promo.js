@@ -149,8 +149,10 @@ async function requireSuperAdmin(req, res) {
 }
 
 async function handleCreateVenueUser(req, res) {
-  const { email, password, tenantId, tenantName } = req.body;
+  const { email, password, tenantId, tenantName, role } = req.body;
   if (!email || !password || !tenantId) return res.status(400).json({ error: 'Missing required fields' });
+  const allowedRoles = ['venue', 'gate'];
+  const assignedRole = allowedRoles.includes(role) ? role : 'venue';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) return res.status(500).json({ error: 'Service key not configured' });
 
@@ -161,7 +163,7 @@ async function handleCreateVenueUser(req, res) {
       email,
       password,
       email_confirm: true,
-      user_metadata: { role: 'venue', tenant_id: tenantId, tenant_name: tenantName || '' },
+      user_metadata: { role: assignedRole, tenant_id: tenantId, tenant_name: tenantName || '' },
     }),
   });
   const data = await r.json();
