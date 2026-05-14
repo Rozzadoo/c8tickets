@@ -136,6 +136,66 @@ async function handleDelete(req, res) {
   return res.status(200).json({ ok: true });
 }
 
+async function requireSuperAdmin(req, res) {
+  const token = (req.headers.authorization || '').startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
+  if (!token) { res.status(401).json({ error: 'Unauthorized' }); return false; }
+  const r = await fetch(`${supaUrl()}/auth/v1/user`, {
+    headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) { res.status(401).json({ error: 'Unauthorized' }); return false; }
+  const user = await r.json();
+  if (user?.user_metadata?.role === 'venue') { res.status(403).json({ error: 'Forbidden' }); return false; }
+  return true;
+}
+
+async function handleCreateVenueUser(req, res) {
+  const { email, password, tenantId, tenantName } = req.body;
+  if (!email || !password || !tenantId) return res.status(400).json({ error: 'Missing required fields' });
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) return res.status(500).json({ error: 'Service key not configured' });
+
+  const r = await fetch(`${supaUrl()}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { role: 'venue', tenant_id: tenantId, tenant_name: tenantName || '' },
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) return res.status(400).json({ error: data.msg || data.message || 'Failed to create user' });
+  return res.status(200).json({ success: true, userId: data.id });
+}
+
+async function handleListVenueUsers(req, res) {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) return res.status(500).json({ error: 'Service key not configured' });
+
+  const r = await fetch(`${supaUrl()}/auth/v1/admin/users?per_page=100`, {
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+  });
+  const data = await r.json();
+  const all = Array.isArray(data) ? data : (data.users || []);
+  const users = all.filter(u => u.user_metadata?.role === 'venue' || u.user_metadata?.role === 'gate');
+  return res.status(200).json({ users });
+}
+
+async function handleDeleteVenueUser(req, res) {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) return res.status(500).json({ error: 'Service key not configured' });
+
+  const r = await fetch(`${supaUrl()}/auth/v1/admin/users/${userId}`, {
+    method: 'DELETE',
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+  });
+  if (!r.ok) return res.status(400).json({ error: 'Failed to delete user' });
+  return res.status(200).json({ success: true });
+}
+
 async function handleUsage(req, res) {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: 'Missing id' });
@@ -164,6 +224,14 @@ export default async function handler(req, res) {
   if (action === 'toggle') return handleToggle(req, res);
   if (action === 'delete') return handleDelete(req, res);
   if (action === 'usage') return handleUsage(req, res);
+
+  // Super-admin-only actions (venue users blocked)
+  const superOk = await requireSuperAdmin(req, res);
+  if (!superOk) return;
+
+  if (action === 'create_venue_user') return handleCreateVenueUser(req, res);
+  if (action === 'list_venue_users') return handleListVenueUsers(req, res);
+  if (action === 'delete_venue_user') return handleDeleteVenueUser(req, res);
 
   return res.status(400).json({ error: 'Invalid action' });
 }

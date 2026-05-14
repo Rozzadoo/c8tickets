@@ -1165,6 +1165,12 @@ const [resetError, setResetError] = useState('');
   const [promoSaving, setPromoSaving] = useState(false);
   const [sellForm, setSellForm] = useState({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' });
   const [sellStatus, setSellStatus] = useState('idle');
+  const [venueUsers, setVenueUsers] = useState([]);
+  const [venueUsersLoaded, setVenueUsersLoaded] = useState(false);
+  const [venueUserForm, setVenueUserForm] = useState({ email:'', password:'', tenantId:'' });
+  const [venueUserSaving, setVenueUserSaving] = useState(false);
+  const [venueUserError, setVenueUserError] = useState('');
+  const [venueUserSuccess, setVenueUserSuccess] = useState('');
 
   const venue = venues.find(v => v.id === TENANT_ID) || venues[0] || DEFAULT_VENUE;
   const sel = events.find(e => e.id === selId) || null;
@@ -1729,6 +1735,44 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     }
   };
 
+
+  const promoApiCall = async (action, body = {}) => {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    return fetch('/api/promo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.access_token}` },
+      body: JSON.stringify({ action, ...body }),
+    });
+  };
+
+  const loadVenueUsers = async () => {
+    const r = await promoApiCall('list_venue_users');
+    const data = await r.json();
+    setVenueUsers(data.users || []);
+    setVenueUsersLoaded(true);
+  };
+
+  const createVenueUser = async () => {
+    if (!venueUserForm.email || !venueUserForm.password || !venueUserForm.tenantId) return;
+    setVenueUserSaving(true); setVenueUserError(''); setVenueUserSuccess('');
+    const selectedVenue = venues.find(v => v.id === venueUserForm.tenantId);
+    const r = await promoApiCall('create_venue_user', {
+      email: venueUserForm.email,
+      password: venueUserForm.password,
+      tenantId: venueUserForm.tenantId,
+      tenantName: selectedVenue?.name || '',
+    });
+    const data = await r.json();
+    setVenueUserSaving(false);
+    if (!r.ok) { setVenueUserError(data.error || 'Failed to create account'); }
+    else { setVenueUserSuccess(`Account created for ${venueUserForm.email}`); setVenueUserForm({ email:'', password:'', tenantId:'' }); loadVenueUsers(); }
+  };
+
+  const deleteVenueUser = async (userId, email) => {
+    if (!window.confirm(`Delete account for ${email}? They will no longer be able to log in.`)) return;
+    await promoApiCall('delete_venue_user', { userId });
+    setVenueUsers(prev => prev.filter(u => u.id !== userId));
+  };
 
   const checkin = async (oid) => {
     await supabase.from('orders').update({ status: 'checked_in' }).eq('id', oid);
@@ -2305,9 +2349,11 @@ fetch(API_BASE+'/api/send-email', {
             ? <div className="empty"><div className="ic">🎫</div><p>No tickets found for that email address.</p></div>
             : lookupOrders.map(o => {
                 const ev = events.find(e => e.id === o.event_id);
+                const evTitle = ev?.title || o.events?.title || 'Event';
+                const evDate = ev?.date || o.events?.event_date?.slice(0, 10) || '';
                 return <div key={o.id} className="tkt-disp" style={{marginBottom:20}}>
-                  <div className="dsp" style={{fontSize:20,marginBottom:4}}>{ev?.title||"Event"}</div>
-                  <div style={{color:"var(--gold)",fontWeight:700,fontSize:12,marginBottom:12,textTransform:"uppercase",letterSpacing:1}}>{ev?fmtDate(ev.date):""}</div>
+                  <div className="dsp" style={{fontSize:20,marginBottom:4}}>{evTitle}</div>
+                  <div style={{color:"var(--gold)",fontWeight:700,fontSize:12,marginBottom:12,textTransform:"uppercase",letterSpacing:1}}>{evDate?fmtDate(evDate):""}</div>
                   <div style={{marginBottom:12}}>{(o.order_items||[]).map((i,idx)=><div key={idx} style={{fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</div>)}</div>
                   <span className={`badge ${o.status==="checked_in"?"badge-done":o.status==="cancelled"?"badge-cancelled":"badge-ok"}`} style={{marginBottom:12,display:"inline-block"}}>{o.status==="checked_in"?"Checked In":o.status==="cancelled"?"Cancelled":"Valid"}</span>
                   {o.status!=="cancelled" && <>
@@ -2615,7 +2661,8 @@ fetch(API_BASE+'/api/send-email', {
             ['live','Live',<svg key="l" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>],
             ['reports','Reports',<svg key="r" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>],
             ['promos','Promo Codes',<svg key="p" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>],
-          ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); }} style={{display:'flex',alignItems:'center',gap:8}}>{icon}{label}</button>)}</div>
+            ...(!isVenueUser ? [['accounts','Accounts',<svg key="ac" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>]] : []),
+          ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); if(t==='accounts'&&!venueUsersLoaded) loadVenueUsers(); }} style={{display:'flex',alignItems:'center',gap:8}}>{icon}{label}</button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => {
               const now = new Date();
@@ -3097,6 +3144,47 @@ fetch(API_BASE+'/api/send-email', {
                         ].filter(Boolean);
                       })}
                     </tbody></table></div>
+              }
+            </div>}
+
+            {aTab === 'accounts' && !isVenueUser && <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:10}}>
+                <h2 className="dsp" style={{fontSize:26}}>Venue Accounts</h2>
+              </div>
+              <p style={{color:'var(--text2)',fontSize:13,marginBottom:24,maxWidth:560}}>Create login credentials for venue operators. Venue accounts can view their own events, orders, and check-in data but cannot see C8Tickets service revenue or manage other venues.</p>
+              <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:24,marginBottom:32,maxWidth:480}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,marginBottom:16}}>Create Venue Account</div>
+                <div className="fg"><label className="fl" htmlFor="vu-email">Email Address</label><input id="vu-email" className="fi" type="email" value={venueUserForm.email} onChange={e=>setVenueUserForm(p=>({...p,email:e.target.value}))} placeholder="owner@venuename.com" /></div>
+                <div className="fg"><label className="fl" htmlFor="vu-password">Password</label><input id="vu-password" className="fi" type="text" value={venueUserForm.password} onChange={e=>setVenueUserForm(p=>({...p,password:e.target.value}))} placeholder="Minimum 6 characters" /></div>
+                <div className="fg">
+                  <label className="fl" htmlFor="vu-venue">Venue</label>
+                  <select id="vu-venue" className="fi" value={venueUserForm.tenantId} onChange={e=>setVenueUserForm(p=>({...p,tenantId:e.target.value}))}>
+                    <option value="">Select a venue…</option>
+                    {venues.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </div>
+                {venueUserError && <p style={{fontSize:12,color:'var(--red)',marginBottom:12}}>{venueUserError}</p>}
+                {venueUserSuccess && <p style={{fontSize:12,color:'var(--green)',marginBottom:12}}>{venueUserSuccess}</p>}
+                <button className="btn gold" disabled={!venueUserForm.email||!venueUserForm.password||!venueUserForm.tenantId||venueUserSaving} onClick={createVenueUser}>{venueUserSaving?'Creating…':'Create Account'}</button>
+              </div>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,marginBottom:12}}>Existing Venue Accounts</div>
+              {!venueUsersLoaded
+                ? <button className="btn" onClick={loadVenueUsers}>Load Accounts</button>
+                : venueUsers.length === 0
+                  ? <p style={{color:'var(--text2)',fontSize:13}}>No venue accounts yet.</p>
+                  : <div style={{overflowX:'auto'}}>
+                      <table className="dt"><thead><tr><th>Email</th><th>Venue</th><th>Role</th><th>Created</th><th></th></tr></thead>
+                        <tbody>{venueUsers.map(u=>(
+                          <tr key={u.id}>
+                            <td>{u.email}</td>
+                            <td style={{fontSize:12}}>{u.user_metadata?.tenant_name || '—'}</td>
+                            <td><span className="badge badge-ok" style={{fontSize:9,textTransform:'uppercase'}}>{u.user_metadata?.role || '—'}</span></td>
+                            <td style={{fontSize:11}}>{new Date(u.created_at).toLocaleDateString()}</td>
+                            <td><button className="btn" style={{fontSize:11,padding:'4px 10px',color:'var(--red)'}} onClick={()=>deleteVenueUser(u.id,u.email)}>Remove</button></td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
               }
             </div>}
           </div>

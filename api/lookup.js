@@ -38,9 +38,8 @@ async function handleSend(req, res) {
     return res.status(200).json({ ok: true });
   }
 
-  const tenantId = process.env.VITE_TENANT_ID || '2c3f53cf-929d-4484-a637-1bc31cccdbe1';
   const checkRes = await fetch(
-    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&status=neq.cancelled&select=id&limit=1`,
+    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&status=neq.cancelled&select=id&limit=1`,
     { headers: supaHeaders() }
   );
   const orders = await checkRes.json();
@@ -79,8 +78,7 @@ async function handleVerify(req, res) {
   const valid = makeCode(normalized, slot) === code || makeCode(normalized, slot - 1) === code;
   if (!valid) return res.status(401).json({ error: 'Invalid or expired code' });
 
-  const tenantId = process.env.VITE_TENANT_ID || '2c3f53cf-929d-4484-a637-1bc31cccdbe1';
-  const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&status=neq.cancelled&select=*,order_items(*)&order=created_at.desc`;
+  const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(normalized)}&status=neq.cancelled&select=*,order_items(*),events(title,event_date)&order=created_at.desc`;
   const supaRes = await fetch(url, { headers: supaHeaders() });
   const orders = await supaRes.json();
   return res.status(200).json({ orders: Array.isArray(orders) ? orders : [] });
