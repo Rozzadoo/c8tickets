@@ -174,6 +174,47 @@ async function sendCancellation(res, { order, event, venue }) {
   return res.status(200).json({ success: true });
 }
 
+async function sendOrganizerInquiry(res, { form }) {
+  const { name, email, phone, eventName, location, date, attendance, channel, notes } = form || {};
+  if (!name || !email) return res.status(400).json({ error: 'Missing required fields' });
+
+  const channelLabel = { online: 'Online only', door: 'At the door only', both: 'Online and at the door' }[channel] || channel;
+  const dateLabel = date ? new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Not specified';
+
+  const row = (label, value) => value
+    ? `<tr><td style="padding:8px 12px;font-size:12px;color:#7a6c54;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;vertical-align:top">${escHtml(label)}</td><td style="padding:8px 12px;font-size:14px;color:#f0e9da;vertical-align:top">${escHtml(value)}</td></tr>`
+    : '';
+
+  await resend.emails.send({
+    from: 'C8Tickets <noreply@c8tickets.com>',
+    to: 'support@c8tickets.com',
+    replyTo: email,
+    subject: `New organizer inquiry — ${escHtml(eventName || 'unnamed event')} from ${escHtml(name)}`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0c0a07;font-family:'Helvetica Neue',Arial,sans-serif">
+<div style="max-width:540px;margin:0 auto;padding:40px 20px">
+  <div style="font-size:20px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px;margin-bottom:24px">New Organizer Inquiry</div>
+  <div style="background:#161310;border:1px solid rgba(200,146,42,.2);border-radius:10px;overflow:hidden;margin-bottom:20px">
+    <table style="width:100%;border-collapse:collapse">
+      ${row('Name', name)}
+      ${row('Email', email)}
+      ${row('Phone', phone)}
+      ${row('Event Name / Type', eventName)}
+      ${row('Location', location)}
+      ${row('Event Date', dateLabel)}
+      ${row('Expected Attendance', attendance)}
+      ${row('Sales Channel', channelLabel)}
+      ${row('Notes', notes)}
+    </table>
+  </div>
+  <div style="font-size:11px;color:#7a6c54">Reply directly to this email to respond to ${escHtml(name)}.</div>
+</div>
+</body></html>`,
+  });
+
+  return res.status(200).json({ success: true });
+}
+
 async function sendReminder(res, { eventId }) {
   if (!eventId || !/^[0-9a-f-]{36}$/i.test(eventId)) {
     return res.status(400).json({ error: 'Invalid eventId' });
@@ -247,6 +288,11 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   const { type } = req.body;
+
+  if (type === 'organizer_inquiry') {
+    try { return await sendOrganizerInquiry(res, req.body); }
+    catch (e) { return res.status(500).json({ error: e.message }); }
+  }
 
   if (type === 'reminder') {
     const ok = await requireAdmin(req, res);

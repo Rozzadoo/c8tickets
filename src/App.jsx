@@ -1163,6 +1163,8 @@ const [resetError, setResetError] = useState('');
   const [promosLoaded, setPromosLoaded] = useState(false);
   const [promoForm, setPromoForm] = useState({ code: '', discountType: 'percent', discountValue: '', maxUses: '', eventId: '', expiresAt: '' });
   const [promoSaving, setPromoSaving] = useState(false);
+  const [sellForm, setSellForm] = useState({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' });
+  const [sellStatus, setSellStatus] = useState('idle');
 
   const venue = venues.find(v => v.id === TENANT_ID) || venues[0] || DEFAULT_VENUE;
   const sel = events.find(e => e.id === selId) || null;
@@ -1256,6 +1258,7 @@ const [resetError, setResetError] = useState('');
     else if (view === 'admin') document.title = `Admin — ${base}`;
     else if (view === 'lookup') document.title = `Find My Tickets — ${base}`;
     else if (view === 'venue') { const vp = venues.find(v => v.id === venueProfileId); if (vp) document.title = `${vp.name} — ${base}`; }
+    else if (view === 'sell') document.title = `Sell Tickets with C8 — ${base}`;
     else document.title = base;
   }, [view, selId, events, venue]);
 
@@ -1709,6 +1712,22 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
 
   const open = (id) => { setSelId(id); setCart({}); setView("detail"); window.history.pushState({}, '', `/e/${id}`); };
   const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
+
+  const submitSellInquiry = async () => {
+    if (!sellForm.name || !sellForm.email) return;
+    setSellStatus('sending');
+    try {
+      const r = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'organizer_inquiry', form: sellForm }),
+      });
+      if (!r.ok) throw new Error('failed');
+      setSellStatus('sent');
+    } catch {
+      setSellStatus('error');
+    }
+  };
 
 
   const checkin = async (oid) => {
@@ -2399,7 +2418,67 @@ fetch(API_BASE+'/api/send-email', {
           <div className="about-cta">
             <h2 className="dsp">Ready to Sell Tickets?</h2>
             <p>Reach out and we'll get your events set up — usually the same day.</p>
-            <a href="mailto:support@c8tickets.com">support@c8tickets.com</a>
+            <a href="#" onClick={e=>{e.preventDefault();setView('sell');}}>Get Started</a>
+          </div>
+        </div>}
+
+        {view === "sell" && <div className="fade">
+          <div className="back" onClick={() => setView("home")}>← Back</div>
+          <div className="about-hero">
+            <h1 className="dsp">Sell Tickets<br/>with C8</h1>
+            <p>Local ticketing built for small events. Fill out the form below and we'll get you set up — usually the same day.</p>
+          </div>
+          <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',borderBottom:'1px solid var(--border)',padding:'56px 20px'}}>
+            <div style={{maxWidth:820,margin:'0 auto'}}>
+              <h2 className="dsp" style={{fontSize:'clamp(20px,3.5vw,30px)',marginBottom:8,textAlign:'center'}}>What You Get</h2>
+              <div className="about-divider" style={{marginBottom:28}}></div>
+              <div className="about-grid">
+                {[
+                  ['Fast Setup','We handle the event configuration — ticket tiers, payment processing, event page. Most events go live within one business day.'],
+                  ['Online & Door Sales','Customers buy in advance from any device. Staff sell at the door using a card reader or manual entry, all through the same system.'],
+                  ['Automatic QR Tickets','Every buyer gets an instant confirmation email with their QR code the moment their payment clears. No manual follow-up needed.'],
+                  ['Gate Check-In','Staff scan QR codes at the entrance from any phone or tablet. No paper lists, no spreadsheets.'],
+                  ['Real-Time Dashboard','Track ticket sales and revenue as they come in, from any device, at any time.'],
+                  ['No Setup Fees','You pay nothing to get started. Fees are transparently itemized at buyer checkout — no surprise deductions from your revenue.'],
+                ].map(([title,desc])=>(
+                  <div className="about-card" key={title}><h3>{title}</h3><p>{desc}</p></div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="about-sec" style={{maxWidth:580}}>
+            <h2 className="dsp" style={{textAlign:'center'}}>Get Started</h2>
+            <div className="about-divider" style={{marginBottom:20}}></div>
+            <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,marginBottom:28,textAlign:'center'}}>Tell us about your event and how to reach you. We'll follow up to get everything configured.</p>
+            {sellStatus === 'sent' ? (
+              <div style={{textAlign:'center',padding:'40px 20px',background:'var(--bg2)',border:'1px solid rgba(200,146,42,.2)',borderRadius:'var(--r)'}}>
+                <div style={{fontSize:17,fontWeight:700,color:'var(--text)',marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Inquiry Received</div>
+                <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,margin:0}}>Thanks, {sellForm.name.split(' ')[0]}. We'll be in touch at {sellForm.email} shortly.</p>
+              </div>
+            ) : (<>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+                <div className="fg"><label className="fl" htmlFor="sell-name">Your Name *</label><input id="sell-name" className="fi" value={sellForm.name} onChange={e=>setSellForm(p=>({...p,name:e.target.value}))} placeholder="Jane Smith" /></div>
+                <div className="fg"><label className="fl" htmlFor="sell-phone">Phone Number</label><input id="sell-phone" className="fi" type="tel" value={sellForm.phone} onChange={e=>setSellForm(p=>({...p,phone:e.target.value}))} placeholder="(208) 555-1234" /></div>
+              </div>
+              <div className="fg"><label className="fl" htmlFor="sell-email">Email Address *</label><input id="sell-email" className="fi" type="email" value={sellForm.email} onChange={e=>setSellForm(p=>({...p,email:e.target.value}))} placeholder="jane@youremail.com" /></div>
+              <div className="fg"><label className="fl" htmlFor="sell-event-name">Event Name / Type *</label><input id="sell-event-name" className="fi" value={sellForm.eventName} onChange={e=>setSellForm(p=>({...p,eventName:e.target.value}))} placeholder="e.g. Summer Concert, Charity Gala, Rodeo Night" /></div>
+              <div className="fg"><label className="fl" htmlFor="sell-location">Event Location</label><input id="sell-location" className="fi" value={sellForm.location} onChange={e=>setSellForm(p=>({...p,location:e.target.value}))} placeholder="Venue name and/or address" /></div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+                <div className="fg"><label className="fl" htmlFor="sell-date">Event Date</label><input id="sell-date" className="fi" type="date" value={sellForm.date} onChange={e=>setSellForm(p=>({...p,date:e.target.value}))} /></div>
+                <div className="fg"><label className="fl" htmlFor="sell-attendance">Expected Attendance</label><input id="sell-attendance" className="fi" value={sellForm.attendance} onChange={e=>setSellForm(p=>({...p,attendance:e.target.value}))} placeholder="e.g. 150–200" /></div>
+              </div>
+              <div className="fg">
+                <label className="fl">How Will You Sell Tickets?</label>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {[['online','Online only'],['door','At the door only'],['both','Online and at the door']].map(([val,label])=>(
+                    <button key={val} type="button" className={`btn${sellForm.channel===val?' on':''}`} style={{fontSize:12,padding:'8px 14px'}} onClick={()=>setSellForm(p=>({...p,channel:val}))}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="fg"><label className="fl" htmlFor="sell-notes">Anything Else?</label><textarea id="sell-notes" className="fi" rows={4} style={{resize:'vertical'}} value={sellForm.notes} onChange={e=>setSellForm(p=>({...p,notes:e.target.value}))} placeholder="Ticket tiers, special requirements, questions, or anything else we should know…" /></div>
+              {sellStatus === 'error' && <p style={{fontSize:12,color:'var(--red)',marginBottom:12}}>Something went wrong. Please try again or email support@c8tickets.com directly.</p>}
+              <button className="buy" disabled={!sellForm.name||!sellForm.email||sellStatus==='sending'} onClick={submitSellInquiry}>{sellStatus==='sending'?'Sending…':'Send Inquiry'}</button>
+            </>)}
           </div>
         </div>}
 
@@ -3148,6 +3227,7 @@ fetch(API_BASE+'/api/send-email', {
           <div className="footer-links">
             <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("about"); }}>About C8Tickets</a>
+            <a href="#" onClick={e => { e.preventDefault(); setSellForm({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' }); setSellStatus('idle'); setView("sell"); }}>Sell Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>Find My Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
