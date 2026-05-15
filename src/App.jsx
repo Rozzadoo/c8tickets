@@ -775,10 +775,11 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     const localOrder = {
       id: order.id, eventId: selEventId, venueId: venue.id,
       buyer: { name: buyerName.trim() || 'Walk-In', email: buyerEmail.trim(), phone: '' },
-      items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
+      items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId })),
       ticketTotal: eff.ticketTotal, salesTax: eff.salesTax,
       serviceFees: eff.serviceFees, processingFee: eff.processingFee,
       total: eff.grandTotal, date: new Date().toISOString(), checkedIn: true, source: 'door',
+      stripePaymentIntentId: paymentIntentId || null,
     };
     updateOrders(prev => [...prev, localOrder]);
     updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
@@ -1022,7 +1023,7 @@ const LiveDash = ({ events, orders }) => {
   }, [selEventId]);
 
   const ev = events.find(e => e.id === selEventId);
-  const evOrders = orders.filter(o => o.eventId === selEventId);
+  const evOrders = orders.filter(o => o.eventId === selEventId && o.status !== 'cancelled');
   const ciOrders = evOrders.filter(o => checkedInIds.has(o.id));
   const totalTix = evOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
   const ciTix = ciOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
@@ -1319,6 +1320,8 @@ const confirmCancelOrder = async () => {
         alert(`Refund failed: ${refundData.error || 'Unknown error'}. The order was not cancelled.`);
         return;
       }
+    } else {
+      await supabase.from('orders').update({ status: 'cancelled' }).eq('id', o.id);
     }
     for (const item of o.items) {
       if (item.ticketTypeId) await supabase.rpc('decrement_sold', { tid: item.ticketTypeId, qty: item.qty });
