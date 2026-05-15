@@ -986,7 +986,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <p style={{color:'var(--text2)',fontSize:14,marginBottom:4}}>{lastSale.buyer.name}</p>
           <p style={{color:'var(--gold)',fontWeight:700,fontSize:20,marginBottom:24}}>{fmtCurrency(lastSale.total)}</p>
           <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:16}}>
-            <QRImg value={lastSale.id} size={180} />
+            <QRImg value={`${APP_URL}/t/${lastSale.id}`} size={180} />
           </div>
           <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>CHECKED IN {lastSale.source==='door_cash'?'· CASH':''}</p>
           <p style={{fontFamily:'monospace',fontSize:10,color:'var(--text3)',marginBottom:28,letterSpacing:.5}}>{lastSale.id.toUpperCase()}</p>
@@ -1135,11 +1135,12 @@ const [resetError, setResetError] = useState('');
   const [orderSourceFilter, setOrderSourceFilter] = useState('all');
   const [soldOutError, setSoldOutError] = useState('');
   const [lookupEmail, setLookupEmail] = useState('');
-  const [lookupOrders, setLookupOrders] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupStep, setLookupStep] = useState('email');
-  const [lookupCode, setLookupCode] = useState('');
   const [lookupError, setLookupError] = useState('');
+  const [ticketResendEmail, setTicketResendEmail] = useState('');
+  const [ticketResendSending, setTicketResendSending] = useState(false);
+  const [ticketResendSent, setTicketResendSent] = useState(false);
   const [generatingPhysical, setGeneratingPhysical] = useState(false);
   const [ticketSizeModal, setTicketSizeModal] = useState(null);
   const [ticketSizeSelected, setTicketSizeSelected] = useState('strip');
@@ -1237,7 +1238,7 @@ const [resetError, setResetError] = useState('');
       else { setSelId(eventId); setCart({}); setView('detail'); }
     }
     const ticketMatch = window.location.pathname.match(/^\/t\/([0-9a-f-]{36})$/i);
-    if (ticketMatch) { setTicketOrderId(ticketMatch[1]); setView('mytickets'); }
+    if (ticketMatch) { setTicketOrderId(ticketMatch[1]); setTicketResendEmail(''); setTicketResendSent(false); setView('mytickets'); }
     const venueMatch = window.location.pathname.match(/^\/v\/([^/]+)$/i);
     if (venueMatch) {
       const slugMatch = venues.find(v => v.slug === venueMatch[1]);
@@ -1492,19 +1493,16 @@ const sendLookupCode = async () => {
   setLookupError('');
   await fetch(API_BASE+'/api/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'send', email }) });
   setLookupLoading(false);
-  setLookupStep('code');
+  setLookupStep('sent');
 };
 
-const verifyLookupCode = async () => {
-  const email = lookupEmail.toLowerCase().trim();
-  if (!email || !lookupCode.trim()) return;
-  setLookupLoading(true);
-  setLookupError('');
-  const res = await fetch(API_BASE+'/api/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'verify', email, code: lookupCode.trim() }) });
-  const data = await res.json();
-  setLookupLoading(false);
-  if (!res.ok) { setLookupError('That code is incorrect or has expired. Please try again.'); return; }
-  setLookupOrders(data.orders || []);
+const sendTicketResend = async () => {
+  const email = ticketResendEmail.toLowerCase().trim();
+  if (!email || !ticketOrderId) return;
+  setTicketResendSending(true);
+  await fetch(API_BASE+'/api/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'resend', orderId: ticketOrderId, email }) });
+  setTicketResendSending(false);
+  setTicketResendSent(true);
 };
 
 const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0]) => {
@@ -1915,7 +1913,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             </div>
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={goHome}>Events</button>
-            <button className={`btn ${view === "lookup" || view === "mytickets" ? "on" : ""}`} onClick={() => { setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>My Tickets</button>
+            <button className={`btn ${view === "lookup" || view === "mytickets" ? "on" : ""}`} onClick={() => { setLookupEmail(''); setLookupStep('email'); setLookupError(''); setView("lookup"); }}>My Tickets</button>
             <button className={`btn ${view === "about" ? "on" : ""}`} onClick={() => setView("about")}>About</button>
             <button className={`btn ${view === "sell" ? "on" : ""}`} onClick={() => { setSellForm({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' }); setSellStatus('idle'); setView("sell"); }}>Sell Tickets</button>
             {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
@@ -2290,6 +2288,16 @@ fetch(API_BASE+'/api/send-email', {
                   {ev && <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>}
                   {ev && <button className="btn" style={{flex:1}} onClick={() => downloadIcs(ev, venue.location)}>Download .ics</button>}
                 </div>
+                <div style={{marginBottom:24,padding:"20px 16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                  <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>Want a copy in your inbox?</p>
+                  {ticketResendSent
+                    ? <p style={{fontSize:13,color:"var(--gold)",fontWeight:600}}>Sent! Check your inbox.</p>
+                    : <div style={{display:"flex",gap:8}}>
+                        <input className="fi" type="email" placeholder="your@email.com" value={ticketResendEmail} onChange={e=>setTicketResendEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendTicketResend()} style={{flex:1,padding:"8px 10px",fontSize:13}} />
+                        <button className="btn" onClick={sendTicketResend} disabled={ticketResendSending||!ticketResendEmail} style={{flexShrink:0}}>{ticketResendSending?"Sending…":"Email Me"}</button>
+                      </div>
+                  }
+                </div>
                 <div id="ticket-print-area">
                   {tickets.map((t, idx) => {
                     const shareTicket = async () => {
@@ -2335,40 +2343,18 @@ fetch(API_BASE+'/api/send-email', {
           <div className="back" onClick={goHome}>← Back to Events</div>
           <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>Find My Tickets</h1>
           {lookupStep === 'email' && <>
-            <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>Enter the email address you used when purchasing. We'll send a verification code to confirm it's you.</p>
+            <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>Enter the email address you used when purchasing. We'll send you a direct link to your tickets.</p>
             <div className="tkt-sec" style={{marginBottom:20}}>
               <div className="fg"><label className="fl" htmlFor="lookup-email">Email Address</label><input id="lookup-email" className="fi" type="email" value={lookupEmail} onChange={e=>setLookupEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendLookupCode()} placeholder="jane@email.com" /></div>
-              <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||!lookupEmail} onClick={sendLookupCode}>{lookupLoading?"Sending…":"Send Verification Code"}</button>
+              <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||!lookupEmail} onClick={sendLookupCode}>{lookupLoading?"Sending…":"Send My Ticket Links"}</button>
             </div>
           </>}
-          {lookupStep === 'code' && lookupOrders === null && <>
-            <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>A 6-digit code was sent to <strong style={{color:"var(--text1)"}}>{lookupEmail}</strong>. Enter it below. It's valid for one hour.</p>
-            <div className="tkt-sec" style={{marginBottom:20}}>
-              <div className="fg"><label className="fl" htmlFor="lookup-code">Verification Code</label><input id="lookup-code" className="fi" type="text" inputMode="numeric" maxLength={6} value={lookupCode} onChange={e=>setLookupCode(e.target.value.replace(/\D/g,''))} onKeyDown={e=>e.key==='Enter'&&verifyLookupCode()} placeholder="000000" style={{letterSpacing:6,fontSize:22,textAlign:"center"}} /></div>
-              {lookupError && <p style={{fontSize:12,color:"var(--red)",marginTop:6}}>{lookupError}</p>}
-              <button className="buy" style={{width:"100%",marginTop:10}} disabled={lookupLoading||lookupCode.length!==6} onClick={verifyLookupCode}>{lookupLoading?"Verifying…":"Access My Tickets"}</button>
-              <button style={{width:"100%",marginTop:8,background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer",padding:4}} onClick={()=>{setLookupStep('email');setLookupCode('');setLookupError('');}}>Use a different email</button>
-            </div>
-          </>}
-          {lookupOrders !== null && (lookupOrders.length === 0
-            ? <div className="empty"><div className="ic">🎫</div><p>No tickets found for that email address.</p></div>
-            : lookupOrders.map(o => {
-                const ev = events.find(e => e.id === o.event_id);
-                const evTitle = ev?.title || o.events?.title || 'Event';
-                const evDate = ev?.date || o.events?.event_date?.slice(0, 10) || '';
-                return <div key={o.id} className="tkt-disp" style={{marginBottom:20}}>
-                  <div className="dsp" style={{fontSize:20,marginBottom:4}}>{evTitle}</div>
-                  <div style={{color:"var(--gold)",fontWeight:700,fontSize:12,marginBottom:12,textTransform:"uppercase",letterSpacing:1}}>{evDate?fmtDate(evDate):""}</div>
-                  <div style={{marginBottom:12}}>{(o.order_items||[]).map((i,idx)=><div key={idx} style={{fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</div>)}</div>
-                  <span className={`badge ${o.status==="checked_in"?"badge-done":o.status==="cancelled"?"badge-cancelled":"badge-ok"}`} style={{marginBottom:12,display:"inline-block"}}>{o.status==="checked_in"?"Checked In":o.status==="cancelled"?"Cancelled":"Valid"}</span>
-                  {o.status!=="cancelled" && <>
-                    <button className="buy" style={{width:"100%",marginBottom:12}} onClick={() => { setTicketOrderId(o.id); setView("mytickets"); window.history.pushState({}, '', `/t/${o.id}`); }}>View Individual Tickets</button>
-                    <div className="qr"><QRImg value={o.id} size={150} /></div>
-                  </>}
-                  <div className="cid">ID: {o.id.toUpperCase()}</div>
-                </div>;
-              })
-          )}
+          {lookupStep === 'sent' && <div className="tkt-sec" style={{textAlign:"center",padding:"32px 20px"}}>
+            <div style={{fontSize:32,marginBottom:16}}>✉️</div>
+            <p style={{color:"var(--text1)",fontWeight:700,fontSize:16,marginBottom:8}}>Check your inbox!</p>
+            <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>If we have tickets for <strong style={{color:"var(--text1)"}}>{lookupEmail}</strong>, we've sent you direct links to access them.</p>
+            <button style={{background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer",padding:4}} onClick={()=>{setLookupStep('email');setLookupEmail('');setLookupError('');}}>Try a different email</button>
+          </div>}
         </div>}
 
         {view === "venue" && (() => {
@@ -3329,7 +3315,7 @@ fetch(API_BASE+'/api/send-email', {
             <a href="#" onClick={e => { e.preventDefault(); setView("home"); }}>Events</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("about"); }}>About C8Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setSellForm({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' }); setSellStatus('idle'); setView("sell"); }}>Sell Tickets</a>
-            <a href="#" onClick={e => { e.preventDefault(); setLookupEmail(''); setLookupOrders(null); setLookupStep('email'); setLookupCode(''); setLookupError(''); setView("lookup"); }}>Find My Tickets</a>
+            <a href="#" onClick={e => { e.preventDefault(); setLookupEmail(''); setLookupStep('email'); setLookupError(''); setView("lookup"); }}>Find My Tickets</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("terms"); }}>Terms of Service</a>
             <a href="#" onClick={e => { e.preventDefault(); setView("privacy"); }}>Privacy Policy</a>
             <a href="mailto:support@c8tickets.com">Contact Support</a>
