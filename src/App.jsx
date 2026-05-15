@@ -643,7 +643,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
         },
       });
       setTerminal(term);
-      const result = await term.discoverReaders({ simulated: false });
+      const result = await term.discoverReaders({ simulated: false, discoveryMethod: 'internet' });
       setReaderDiscovering(false);
       if (result.error) {
         setReaderError(result.error.message);
@@ -662,7 +662,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     if (!terminal) return;
     setReaderConnecting(true);
     setReaderError('');
-    const result = await terminal.connectReader(reader);
+    const result = await terminal.connectReader(reader, { fail_if_in_use: false });
     setReaderConnecting(false);
     if (result.error) {
       setReaderError(result.error.message);
