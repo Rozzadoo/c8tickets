@@ -22,10 +22,16 @@ export default async function handler(req, res) {
     const { paymentIntentId, orderId } = req.body;
     if (!paymentIntentId || !orderId) return res.status(400).json({ error: 'Missing fields' });
 
-    const refund = await stripe.refunds.create({ payment_intent: paymentIntentId });
+    let refundId = null;
+    let refundStatus = 'already_refunded';
+    try {
+      const refund = await stripe.refunds.create({ payment_intent: paymentIntentId });
+      refundId = refund.id;
+      refundStatus = refund.status;
+    } catch (stripeErr) {
+      if (stripeErr.code !== 'charge_already_refunded') throw stripeErr;
+    }
 
-    // Update order status in DB here so a client crash after refund can't leave
-    // the order stuck as 'confirmed' while the money is already returned.
     const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
       method: 'PATCH',
@@ -38,7 +44,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({ status: 'cancelled' }),
     });
 
-    res.status(200).json({ success: true, refundId: refund.id, status: refund.status });
+    res.status(200).json({ success: true, refundId, status: refundStatus });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
