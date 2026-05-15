@@ -89,7 +89,7 @@ async function handleResend(req, res) {
   }
 
   const orderRes = await fetch(
-    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=id,events(title,event_date)&limit=1`,
+    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=id,total_amount,events(title,event_date),order_items(ticket_type_name,quantity,unit_price)&limit=1`,
     { headers: supaHeaders() }
   );
   const rows = await orderRes.json();
@@ -99,6 +99,26 @@ async function handleResend(req, res) {
   const title = order.events?.title || 'Event';
   const date = fmtDate(order.events?.event_date);
   const url = `${APP_URL}/t/${orderId}`;
+  const items = Array.isArray(order.order_items) ? order.order_items : [];
+  const total = Number(order.total_amount) || 0;
+
+  const itemRows = items.map(i => {
+    const subtotal = Number(i.unit_price) * Number(i.quantity);
+    return `<tr>
+      <td style="padding:6px 0;color:#b5a78a;font-size:13px">${i.quantity}× ${i.ticket_type_name}</td>
+      <td style="padding:6px 0;color:#f0e9da;font-size:13px;text-align:right">$${subtotal.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+
+  const receiptHtml = items.length > 0 ? `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+      ${itemRows}
+      <tr><td colspan="2" style="padding:6px 0;border-top:1px solid rgba(200,146,42,.2)"></td></tr>
+      <tr>
+        <td style="padding:4px 0;color:#f0e9da;font-size:14px;font-weight:700">Total Paid</td>
+        <td style="padding:4px 0;color:#c8922a;font-size:14px;font-weight:700;text-align:right">$${total.toFixed(2)}</td>
+      </tr>
+    </table>` : '';
 
   await resend.emails.send({
     from: 'C8Tickets <noreply@c8tickets.com>',
@@ -111,7 +131,8 @@ async function handleResend(req, res) {
     <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:32px">
       <p style="color:#b5a78a;font-size:14px;margin:0 0 8px">Your tickets for</p>
       <p style="color:#f0e9da;font-size:18px;font-weight:700;margin:0 0 4px">${title}</p>
-      ${date ? `<p style="color:#b5a78a;font-size:13px;margin:0 0 28px">${date}</p>` : '<div style="margin-bottom:28px"></div>'}
+      ${date ? `<p style="color:#b5a78a;font-size:13px;margin:0 0 24px">${date}</p>` : '<div style="margin-bottom:24px"></div>'}
+      ${receiptHtml}
       <a href="${url}" style="display:inline-block;background:#c8922a;color:#0c0a07;font-weight:700;font-size:14px;padding:14px 32px;border-radius:6px;text-decoration:none;letter-spacing:.5px">View My Tickets</a>
       <p style="color:#7a6c54;font-size:12px;margin:24px 0 0">Bookmark this link for easy access anytime.</p>
     </div>
