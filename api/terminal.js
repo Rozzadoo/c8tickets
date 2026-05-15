@@ -22,7 +22,9 @@ export default async function handler(req, res) {
 
   if (action === 'connection-token') {
     try {
-      const connectionToken = await stripe.terminal.connectionTokens.create();
+      const params = {};
+      if (process.env.STRIPE_TERMINAL_LOCATION) params.location = process.env.STRIPE_TERMINAL_LOCATION;
+      const connectionToken = await stripe.terminal.connectionTokens.create(params);
       return res.json({ secret: connectionToken.secret });
     } catch (err) {
       return res.status(500).json({ error: err.message });
