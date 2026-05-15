@@ -2278,13 +2278,6 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               .map((t, i) => ({ type: t.type, qty: cart[i] || 0, price: t.price, ticketTypeId: t.id }))
               .filter(i => i.qty > 0);
 
-            const { data: existingOrder } = await supabase
-              .from('orders')
-              .select('id')
-              .eq('stripe_payment_intent_id', paymentIntentId)
-              .maybeSingle();
-            if (existingOrder) return;
-
             const { data: order, error: orderError } = await supabase
               .from('orders')
               .insert({
@@ -2307,6 +2300,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               .single();
 
             if (orderError) {
+              // 23505 = unique_violation: webhook already created this order — payment is fine, just exit
+              if (orderError.code === '23505') return;
               console.error(orderError);
               alert(`Your payment was successful but there was a problem saving your order record. Please email support@c8tickets.com immediately and include this payment reference so we can issue your tickets manually:\n\n${paymentIntentId}`);
               return;
