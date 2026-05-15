@@ -1871,7 +1871,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
         door_price: t.doorPrice ?? null,
       }))
     );
-    const mapped = { ...e, id: newEvt.id, venueId: venue.id, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
+    const { data: freshEvt } = await supabase.from('events').select('*, ticket_types(*)').eq('id', newEvt.id).single();
+    const mapped = freshEvt ? mapEvent(freshEvt) : { ...e, id: newEvt.id, venueId: venue.id, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
     updateEvents([...events, mapped]);
   }
   setModal(false);
