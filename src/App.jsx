@@ -730,6 +730,8 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       tenant_id: TENANT_ID, event_id: selEventId,
       buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
       status: 'checked_in', total_amount: eff.grandTotal,
+      ticket_subtotal: eff.ticketTotal, sales_tax: eff.salesTax,
+      service_fees: eff.serviceFees, processing_fee: eff.processingFee,
       stripe_payment_intent_id: paymentIntentId, source: 'door',
     }).select().single();
     if (orderError) { alert('Order save failed. Payment ref: ' + paymentIntentId); return; }
@@ -804,6 +806,8 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       tenant_id: TENANT_ID, event_id: selEventId,
       buyer_name: buyerName.trim() || 'Walk-In', buyer_email: '', buyer_phone: '',
       status: 'checked_in', total_amount: cashAmounts.grandTotal,
+      ticket_subtotal: cashAmounts.ticketTotal, sales_tax: cashAmounts.salesTax,
+      service_fees: cashAmounts.serviceFees, processing_fee: 0,
       stripe_payment_intent_id: ref, source: 'door_cash',
     }).select().single();
     if (orderError) { alert('Order save failed. Please try again.'); return; }
@@ -987,7 +991,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <p style={{color:'var(--text2)',fontSize:14,marginBottom:4}}>{lastSale.buyer.name}</p>
           <p style={{color:'var(--gold)',fontWeight:700,fontSize:20,marginBottom:24}}>{fmtCurrency(lastSale.total)}</p>
           <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:16}}>
-            <QRImg value={`${APP_URL}/t/${lastSale.id}`} size={180} />
+            <QRImg value={`${APP_URL}/t/${lastSale.id}?receipt=1`} size={180} />
           </div>
           <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>CHECKED IN {lastSale.source==='door_cash'?'· CASH':''}</p>
           <p style={{fontFamily:'monospace',fontSize:10,color:'var(--text3)',marginBottom:28,letterSpacing:.5}}>{lastSale.id.toUpperCase()}</p>
@@ -1155,6 +1159,8 @@ const [resetError, setResetError] = useState('');
   const [ticketOrderId, setTicketOrderId] = useState(null);
   const [ticketPageData, setTicketPageData] = useState(null);
   const [ticketPageLoading, setTicketPageLoading] = useState(false);
+  const [ticketReceiptMode, setTicketReceiptMode] = useState(false);
+  const [ticketFilterId, setTicketFilterId] = useState(null);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [expandedTickets, setExpandedTickets] = useState({});
   const [togglingPublish, setTogglingPublish] = useState(new Set());
@@ -1220,6 +1226,10 @@ const [resetError, setResetError] = useState('');
           buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
           items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price), ticketTypeId: i.ticket_type_id })),
           total: Number(o.total_amount),
+          ticketSubtotal: o.ticket_subtotal != null ? Number(o.ticket_subtotal) : null,
+          salesTax: o.sales_tax != null ? Number(o.sales_tax) : null,
+          serviceFees: o.service_fees != null ? Number(o.service_fees) : null,
+          processingFee: o.processing_fee != null ? Number(o.processing_fee) : null,
           date: o.created_at,
           status: o.status,
           checkedIn: o.status === 'checked_in',
@@ -1239,7 +1249,14 @@ const [resetError, setResetError] = useState('');
       else { setSelId(eventId); setCart({}); setView('detail'); }
     }
     const ticketMatch = window.location.pathname.match(/^\/t\/([0-9a-f-]{36})$/i);
-    if (ticketMatch) { setTicketOrderId(ticketMatch[1]); setTicketResendEmail(''); setTicketResendSent(false); setView('mytickets'); }
+    if (ticketMatch) {
+      const params = new URLSearchParams(window.location.search);
+      setTicketOrderId(ticketMatch[1]);
+      setTicketReceiptMode(params.get('receipt') === '1');
+      setTicketFilterId(params.get('ticket') || null);
+      setTicketResendEmail(''); setTicketResendSent(false);
+      setView('mytickets');
+    }
     const venueMatch = window.location.pathname.match(/^\/v\/([^/]+)$/i);
     if (venueMatch) {
       const slugMatch = venues.find(v => v.slug === venueMatch[1]);
@@ -2153,6 +2170,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                 buyer_phone: buyer.phone,
                 status: 'confirmed',
                 total_amount: paymentAmounts.grandTotal,
+                ticket_subtotal: paymentAmounts.ticketTotal,
+                sales_tax: paymentAmounts.salesTax,
+                service_fees: paymentAmounts.serviceFees,
+                processing_fee: paymentAmounts.processingFee,
                 stripe_payment_intent_id: paymentIntentId,
                 source: 'online',
                 promo_code_id: promoApplied?.id || null,
@@ -2273,24 +2294,48 @@ fetch(API_BASE+'/api/send-email', {
         {view === "mytickets" && (
           <div className="sec fade" style={{maxWidth:520}}>
             <div className="back" onClick={goHome}>← Back to Events</div>
-            <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>Your Tickets</h1>
+            <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>{ticketFilterId ? 'Your Ticket' : 'Your Tickets'}</h1>
             {ticketPageLoading && <p style={{color:"var(--text2)",fontSize:13,marginTop:20,textAlign:"center"}}>Loading your tickets…</p>}
             {!ticketPageLoading && !ticketPageData && <p style={{color:"var(--red)",fontSize:13,marginTop:20,textAlign:"center"}}>Order not found.</p>}
             {!ticketPageLoading && ticketPageData && (() => {
               const { order, tickets } = ticketPageData;
+              const displayTickets = ticketFilterId ? tickets.filter(t => t.id === ticketFilterId) : tickets;
               const ev = events.find(e => e.id === order.event_id);
               const evTitle = ev?.title || '';
               const evDate = ev ? fmtDate(ev.date) : '';
               const evTime = ev ? fmtTime(ev.time) : '';
               const evDoors = ev ? fmtTime(ev.doors) : '';
+              const hasReceipt = ticketReceiptMode && order.ticket_subtotal != null;
+              const shareAll = async () => {
+                const url = `${APP_URL}/t/${ticketOrderId}`;
+                if (navigator.share) { try { await navigator.share({ title: `${evTitle} — Tickets`, url }); } catch {} }
+                else { navigator.clipboard?.writeText(url); }
+              };
               return <>
                 <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>{evTitle}{evDate ? ` — ${evDate}` : ''}</p>
                 {order.status === 'cancelled' && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,color:"var(--red)",fontSize:13,fontWeight:600}}>This order has been cancelled and refunded.</div>}
-                <div style={{marginBottom:16,display:"flex",gap:8,flexWrap:"wrap"}}>
+                {hasReceipt && (
+                  <div style={{marginBottom:20,padding:"16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                    <p style={{fontSize:12,fontWeight:700,color:"var(--gold)",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Purchase Receipt</p>
+                    <table style={{width:"100%",borderCollapse:"collapse"}}>
+                      {(order.order_items||[]).map((i,idx) => <tr key={idx}>
+                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</td>
+                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)",textAlign:"right"}}>{fmtCurrency(i.quantity*Number(i.unit_price))}</td>
+                      </tr>)}
+                      <tr><td colSpan={2} style={{padding:"8px 0 4px",borderTop:"1px solid var(--border)"}}></td></tr>
+                      <tr><td style={{fontSize:12,color:"var(--text3)"}}>Sales Tax (6%)</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.sales_tax)}</td></tr>
+                      <tr><td style={{fontSize:12,color:"var(--text3)"}}>Service Fees</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.service_fees)}</td></tr>
+                      {order.processing_fee > 0 && <tr><td style={{fontSize:12,color:"var(--text3)"}}>Processing Fee</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.processing_fee)}</td></tr>}
+                      <tr><td style={{padding:"8px 0 0",fontWeight:700,fontSize:14,color:"var(--text)"}}>Total Paid</td><td style={{padding:"8px 0 0",fontWeight:700,fontSize:14,color:"var(--gold)",textAlign:"right"}}>{fmtCurrency(order.total_amount)}</td></tr>
+                    </table>
+                  </div>
+                )}
+                {!ticketFilterId && order.status !== 'cancelled' && <div style={{marginBottom:16,display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button className="btn" style={{flex:1}} onClick={() => window.print()}>Print All</button>
+                  <button className="btn" style={{flex:1}} onClick={shareAll}>Share All Tickets</button>
                   {ev && <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>}
                   {ev && <button className="btn" style={{flex:1}} onClick={() => downloadIcs(ev, venue.location)}>Download .ics</button>}
-                </div>
+                </div>}
                 <div style={{marginBottom:24,padding:"20px 16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
                   <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>Want a copy in your inbox?</p>
                   {ticketResendSent
@@ -2302,11 +2347,11 @@ fetch(API_BASE+'/api/send-email', {
                   }
                 </div>
                 <div id="ticket-print-area">
-                  {tickets.map((t, idx) => {
+                  {displayTickets.map((t, idx) => {
                     const shareTicket = async () => {
-                      if (navigator.share) {
-                        try { await navigator.share({ title: `${evTitle} — Ticket ${t.ticket_number}`, url: window.location.href }); } catch {}
-                      } else { window.open(window.location.href, '_blank'); }
+                      const url = `${APP_URL}/t/${ticketOrderId}?ticket=${t.id}`;
+                      if (navigator.share) { try { await navigator.share({ title: `${evTitle} — Ticket ${t.ticket_number}`, url }); } catch {} }
+                      else { navigator.clipboard?.writeText(url); }
                     };
                     return (
                       <div key={t.id} className="tkt-disp" style={{marginBottom:20,pageBreakInside:'avoid'}}>

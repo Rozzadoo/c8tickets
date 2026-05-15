@@ -89,7 +89,7 @@ async function handleResend(req, res) {
   }
 
   const orderRes = await fetch(
-    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=id,total_amount,events(title,event_date),order_items(ticket_type_name,quantity,unit_price)&limit=1`,
+    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=id,total_amount,ticket_subtotal,sales_tax,service_fees,processing_fee,events(title,event_date),order_items(ticket_type_name,quantity,unit_price)&limit=1`,
     { headers: supaHeaders() }
   );
   const rows = await orderRes.json();
@@ -98,21 +98,29 @@ async function handleResend(req, res) {
 
   const title = order.events?.title || 'Event';
   const date = fmtDate(order.events?.event_date);
-  const url = `${APP_URL}/t/${orderId}`;
+  const url = `${APP_URL}/t/${orderId}?receipt=1`;
   const items = Array.isArray(order.order_items) ? order.order_items : [];
   const total = Number(order.total_amount) || 0;
+  const hasFees = order.ticket_subtotal != null;
 
   const itemRows = items.map(i => {
     const subtotal = Number(i.unit_price) * Number(i.quantity);
     return `<tr>
-      <td style="padding:6px 0;color:#b5a78a;font-size:13px">${i.quantity}× ${i.ticket_type_name}</td>
-      <td style="padding:6px 0;color:#f0e9da;font-size:13px;text-align:right">$${subtotal.toFixed(2)}</td>
+      <td style="padding:5px 0;color:#b5a78a;font-size:13px">${i.quantity}× ${i.ticket_type_name}</td>
+      <td style="padding:5px 0;color:#b5a78a;font-size:13px;text-align:right">$${subtotal.toFixed(2)}</td>
     </tr>`;
   }).join('');
+
+  const feeRows = hasFees ? `
+    <tr><td colspan="2" style="padding:6px 0;border-top:1px solid rgba(200,146,42,.15)"></td></tr>
+    <tr><td style="padding:3px 0;color:#7a6c54;font-size:12px">Sales Tax (6%)</td><td style="padding:3px 0;color:#7a6c54;font-size:12px;text-align:right">$${Number(order.sales_tax).toFixed(2)}</td></tr>
+    <tr><td style="padding:3px 0;color:#7a6c54;font-size:12px">Service Fees</td><td style="padding:3px 0;color:#7a6c54;font-size:12px;text-align:right">$${Number(order.service_fees).toFixed(2)}</td></tr>
+    ${Number(order.processing_fee) > 0 ? `<tr><td style="padding:3px 0;color:#7a6c54;font-size:12px">Processing Fee</td><td style="padding:3px 0;color:#7a6c54;font-size:12px;text-align:right">$${Number(order.processing_fee).toFixed(2)}</td></tr>` : ''}` : '';
 
   const receiptHtml = items.length > 0 ? `
     <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
       ${itemRows}
+      ${feeRows}
       <tr><td colspan="2" style="padding:6px 0;border-top:1px solid rgba(200,146,42,.2)"></td></tr>
       <tr>
         <td style="padding:4px 0;color:#f0e9da;font-size:14px;font-weight:700">Total Paid</td>
