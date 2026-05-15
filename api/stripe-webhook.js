@@ -5,19 +5,44 @@ import QRCode from 'qrcode';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+export const config = { api: { bodyParser: false } };
+
 function escHtml(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { id: eventId } = req.body || {};
-    if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+    const rawBody = await getRawBody(req);
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-    // Retrieve event directly from Stripe — authenticates the request without needing raw body access
-    const event = await stripe.events.retrieve(eventId);
+    let event;
+    if (webhookSecret && sig) {
+      // Verify signature — preferred: prevents replay and forgery without an API round-trip
+      try {
+        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+      } catch (err) {
+        console.error('Webhook signature verification failed:', err.message);
+        return res.status(400).json({ error: `Webhook signature error: ${err.message}` });
+      }
+    } else {
+      // Fallback: retrieve event from Stripe API to confirm it's real (used when STRIPE_WEBHOOK_SECRET not yet set)
+      const { id: eventId } = JSON.parse(rawBody || '{}');
+      if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
+      event = await stripe.events.retrieve(eventId);
+    }
 
     if (event.type !== 'payment_intent.succeeded') {
       return res.status(200).json({ received: true });
@@ -53,6 +78,10 @@ export default async function handler(req, res) {
     try { items = JSON.parse(m.items_json || '[]'); } catch {}
 
     // Create the order
+    const salesTax = Number(m.sales_tax || 0);
+    const serviceFees = Number(m.service_fees || 0);
+    const processingFee = Number(m.processing_fee || 0);
+    const ticketSubtotal = pi.amount / 100 - salesTax - serviceFees - processingFee;
     const orderRes = await fetch(`${supaUrl}/rest/v1/orders`, {
       method: 'POST',
       headers: { ...headers, Prefer: 'return=representation' },
@@ -64,6 +93,10 @@ export default async function handler(req, res) {
         buyer_phone: m.buyer_phone || '',
         status: 'confirmed',
         total_amount: pi.amount / 100,
+        ticket_subtotal: ticketSubtotal,
+        sales_tax: salesTax,
+        service_fees: serviceFees,
+        processing_fee: processingFee,
         stripe_payment_intent_id: pi.id,
         source: 'online',
       }),

@@ -52,17 +52,18 @@ async function handleRedeem(req, res) {
 
   const normalized = code.trim().toUpperCase();
   const r = await fetch(
-    `${supaUrl()}/rest/v1/promo_codes?code=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&active=eq.true&select=id,uses_count&limit=1`,
+    `${supaUrl()}/rest/v1/promo_codes?code=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&active=eq.true&select=id&limit=1`,
     { headers: supaHeaders() }
   );
   const rows = await r.json();
   const promo = Array.isArray(rows) ? rows[0] : null;
   if (!promo) return res.status(200).json({ ok: true });
 
-  await fetch(`${supaUrl()}/rest/v1/promo_codes?id=eq.${promo.id}`, {
-    method: 'PATCH',
-    headers: { ...supaHeaders(), Prefer: 'return=minimal' },
-    body: JSON.stringify({ uses_count: promo.uses_count + 1 }),
+  // Atomic increment via RPC — avoids read-modify-write race condition
+  await fetch(`${supaUrl()}/rest/v1/rpc/increment_promo_uses`, {
+    method: 'POST',
+    headers: supaHeaders(),
+    body: JSON.stringify({ pid: promo.id }),
   });
 
   return res.status(200).json({ ok: true });
