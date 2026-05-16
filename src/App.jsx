@@ -3102,6 +3102,41 @@ fetch(API_BASE+'/api/send-email', {
                 URL.revokeObjectURL(url);
               };
 
+              // ── Week-over-week trend ──
+              const wowWeekStart = new Date(now);
+              wowWeekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+              wowWeekStart.setHours(0,0,0,0);
+              const wowLastStart = new Date(wowWeekStart); wowLastStart.setDate(wowWeekStart.getDate()-7);
+
+              const allActive = orders.filter(o => o.venueId===venue.id && o.status!=='cancelled');
+              const wowThis = allActive.filter(o => new Date(o.date) >= wowWeekStart);
+              const wowLast = allActive.filter(o => { const d=new Date(o.date); return d>=wowLastStart && d<wowWeekStart; });
+
+              const wowRev  = arr => arr.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
+              const wowTix  = arr => arr.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);
+              const thisRev=wowRev(wowThis), lastRev=wowRev(wowLast);
+              const thisOrd=wowThis.length,   lastOrd=wowLast.length;
+              const thisTix=wowTix(wowThis),  lastTix=wowTix(wowLast);
+
+              const wowPct = (curr,prev) => prev===0&&curr===0 ? null : prev===0 ? 100 : Math.round((curr-prev)/prev*100);
+              const TrendBadge = ({curr,prev}) => {
+                const p=wowPct(curr,prev);
+                if(p===null) return <span style={{color:'var(--text3)',fontSize:11}}>No data</span>;
+                const up=p>=0;
+                return <span style={{color:up?'var(--green)':'var(--red)',fontWeight:700,fontSize:13,display:'inline-flex',alignItems:'center',gap:2}}>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d={up?'M5 1 L9 8 L1 8 Z':'M5 9 L9 2 L1 2 Z'}/></svg>
+                  {Math.abs(p)}%
+                </span>;
+              };
+
+              const dayRevThis=Array(7).fill(0), dayRevLast=Array(7).fill(0);
+              const dayTixThis=Array(7).fill(0), dayTixLast=Array(7).fill(0);
+              for(const o of wowThis){const idx=(new Date(o.date).getDay()+6)%7; dayRevThis[idx]+=o.items.reduce((a,i)=>a+i.qty*i.price,0); dayTixThis[idx]+=o.items.reduce((a,i)=>a+i.qty,0);}
+              for(const o of wowLast){const idx=(new Date(o.date).getDay()+6)%7; dayRevLast[idx]+=o.items.reduce((a,i)=>a+i.qty*i.price,0); dayTixLast[idx]+=o.items.reduce((a,i)=>a+i.qty,0);}
+              const barMax=Math.max(...dayRevThis,...dayRevLast,1);
+              const todayIdx=(now.getDay()+6)%7;
+              const DAY_LABELS=['M','T','W','T','F','S','S'];
+
               return <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                   <h2 className="dsp" style={{fontSize:26}}>Reports</h2>
@@ -3113,6 +3148,44 @@ fetch(API_BASE+'/api/send-email', {
                   <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>From</label><input className="fi" type="date" value={reportCustomStart} onChange={e=>setReportCustomStart(e.target.value)} style={{width:160,margin:0}} /></div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>To</label><input className="fi" type="date" value={reportCustomEnd} onChange={e=>setReportCustomEnd(e.target.value)} style={{width:160,margin:0}} /></div>
                 </div>}
+
+                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>This Week vs Last Week</h3>
+                <div className="tkt-sec" style={{marginBottom:32,padding:'20px 20px 16px'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+                    {[['Revenue','$'+thisRev.toFixed(2),'$'+lastRev.toFixed(2),thisRev,lastRev],['Orders',thisOrd,lastOrd,thisOrd,lastOrd],['Tickets',thisTix,lastTix,thisTix,lastTix]].map(([label,curr,prev,c,p])=>(
+                      <div key={label} style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'12px 14px'}}>
+                        <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:4}}>{label}</div>
+                        <div style={{fontSize:20,fontWeight:700,color:'var(--text)',marginBottom:2}}>{curr}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          <TrendBadge curr={c} prev={p}/>
+                          <span style={{fontSize:11,color:'var(--text3)'}}>vs {prev}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <div style={{display:'flex',gap:3,alignItems:'flex-end',height:64}}>
+                      {DAY_LABELS.map((d,i)=>{
+                        const hThis=barMax>0?Math.round((dayRevThis[i]/barMax)*60):0;
+                        const hLast=barMax>0?Math.round((dayRevLast[i]/barMax)*60):0;
+                        const isFuture=i>todayIdx;
+                        return(
+                          <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                            <div style={{width:'100%',display:'flex',gap:1,alignItems:'flex-end',height:60}}>
+                              <div title={`Last week: $${dayRevLast[i].toFixed(2)}`} style={{flex:1,height:hLast||1,background:'rgba(200,146,42,0.25)',borderRadius:'2px 2px 0 0',transition:'height .3s'}}/>
+                              <div title={`This week: $${dayRevThis[i].toFixed(2)}`} style={{flex:1,height:hThis||1,background:isFuture?'rgba(200,146,42,0.15)':'var(--gold)',borderRadius:'2px 2px 0 0',transition:'height .3s'}}/>
+                            </div>
+                            <div style={{fontSize:10,color:i===todayIdx?'var(--gold)':'var(--text3)',fontWeight:i===todayIdx?700:400}}>{d}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:'flex',gap:14,marginTop:8,justifyContent:'flex-end'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--text3)'}}><div style={{width:10,height:10,background:'rgba(200,146,42,0.25)',borderRadius:2}}/> Last week</div>
+                      <div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--text3)'}}><div style={{width:10,height:10,background:'var(--gold)',borderRadius:2}}/> This week</div>
+                    </div>
+                  </div>
+                </div>
 
                 <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Performance Snapshot</h3>
                 <div className="sg" style={{marginBottom:32}}>
