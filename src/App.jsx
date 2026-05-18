@@ -243,10 +243,10 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .dsp{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
 
 .skip-link{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}.skip-link:focus{position:fixed;top:0;left:0;width:auto;height:auto;padding:10px 16px;background:var(--gold);color:var(--bg);font-weight:700;z-index:9999;text-decoration:none;border-radius:0 0 6px 0}
-.nav{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);overflow:hidden}
+.nav{display:flex;align-items:center;justify-content:flex-start;gap:16px;padding:10px 20px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);overflow:hidden}
 .nav-logo{cursor:pointer;display:flex;align-items:center;gap:10px;flex-shrink:0}
 .nav-logo img{height:40px;filter:invert(1);opacity:.92}
-.nav-links{display:flex;gap:4px;overflow-x:auto;flex-shrink:1;min-width:0;-webkit-overflow-scrolling:touch}
+.nav-links{display:flex;gap:4px;overflow-x:auto;flex-shrink:1;min-width:0;-webkit-overflow-scrolling:touch;margin-left:auto}
 .nav-links::-webkit-scrollbar{display:none}
 @media(max-width:600px){.nav{padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top))}.nav-logo img{height:34px}.nav-links{gap:2px}.nav-links .btn{padding:5px 9px;font-size:11px;letter-spacing:0}}
 .btn{background:none;border:1px solid transparent;color:var(--text2);padding:7px 14px;border-radius:99px;cursor:pointer;font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;transition:all .2s;text-transform:uppercase;letter-spacing:.5px}
@@ -2059,8 +2059,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <div className="nav-links">
             <button className={`btn ${["home","detail"].includes(view) ? "on" : ""}`} onClick={goHome}>Events</button>
             <button className={`btn ${view === "lookup" || view === "mytickets" ? "on" : ""}`} onClick={() => { setLookupEmail(''); setLookupStep('email'); setLookupError(''); setView("lookup"); }}>My Tickets</button>
-            <button className={`btn ${view === "about" ? "on" : ""}`} onClick={() => setView("about")}>About</button>
-            <button className={`btn ${view === "sell" ? "on" : ""}`} onClick={() => { setSellForm({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' }); setSellStatus('idle'); setView("sell"); }}>Sell Tickets</button>
+            {!session && <button className={`btn ${view === "about" ? "on" : ""}`} onClick={() => setView("about")}>About</button>}
+            {!session && <button className={`btn ${view === "sell" ? "on" : ""}`} onClick={() => { setSellForm({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' }); setSellStatus('idle'); setView("sell"); }}>Sell Tickets</button>}
             {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
             {session && <button className="btn" onClick={logout}>Logout</button>}
           </div>
