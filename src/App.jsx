@@ -66,6 +66,10 @@ const mapVenue = (v) => ({
   phone: v.contact_phone || '',
   email: v.contact_email || '',
   website: v.website || '',
+  ownerName: v.owner_name || '',
+  ownerPhone: v.owner_phone || '',
+  notes: v.notes || '',
+  active: v.active !== false,
 });
 
 const useStorage = () => {
@@ -92,8 +96,9 @@ const useStorage = () => {
   }, []);
 
   const updateEvents = useCallback((d) => setEvents(d), []);
+  const updateVenues = useCallback((d) => setVenues(d), []);
 
-  return { venues, events, loaded, updateEvents };
+  return { venues, events, loaded, updateEvents, updateVenues };
 };
 
 const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -1222,7 +1227,7 @@ const LiveDash = ({ events, orders }) => {
 };
 
 export default function App() {
-  const { venues, events, loaded, updateEvents } = useStorage();
+  const { venues, events, loaded, updateEvents, updateVenues } = useStorage();
   const [orders, setOrders] = useState([]);
   const updateOrders = useCallback((d) => setOrders(d), []);
   const [view, setView] = useState("home");
@@ -1307,6 +1312,12 @@ const [resetError, setResetError] = useState('');
   const [venueUserSaving, setVenueUserSaving] = useState(false);
   const [venueUserError, setVenueUserError] = useState('');
   const [venueUserSuccess, setVenueUserSuccess] = useState('');
+  const [venueFormOpen, setVenueFormOpen] = useState(false);
+  const [editingVenueId, setEditingVenueId] = useState(null);
+  const [venueForm, setVenueForm] = useState({ name:'', address:'', contactPhone:'', contactEmail:'', website:'', ownerName:'', ownerPhone:'', notes:'' });
+  const [venueSaving, setVenueSaving] = useState(false);
+  const [venueError, setVenueError] = useState('');
+  const [venueSuccess, setVenueSuccess] = useState('');
 
   const venue = venues.find(v => v.id === TENANT_ID) || venues[0] || DEFAULT_VENUE;
   const sel = events.find(e => e.id === selId) || null;
@@ -1919,6 +1930,40 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     if (!window.confirm(`Delete account for ${email}? They will no longer be able to log in.`)) return;
     await promoApiCall('delete_venue_user', { userId });
     setVenueUsers(prev => prev.filter(u => u.id !== userId));
+  };
+
+  const loadVenues = async () => {
+    const r = await promoApiCall('list_venues');
+    const data = await r.json();
+    if (data.venues) updateVenues(data.venues.map(mapVenue));
+  };
+
+  const saveVenue = async () => {
+    if (!venueForm.name.trim()) return;
+    setVenueSaving(true); setVenueError(''); setVenueSuccess('');
+    const action = editingVenueId ? 'update_venue' : 'create_venue';
+    const body = { ...venueForm, ...(editingVenueId ? { id: editingVenueId } : {}) };
+    const r = await promoApiCall(action, body);
+    const data = await r.json();
+    setVenueSaving(false);
+    if (!r.ok) { setVenueError(data.error || 'Failed to save venue'); return; }
+    setVenueSuccess(editingVenueId ? 'Venue updated.' : 'Venue created.');
+    setVenueFormOpen(false);
+    setEditingVenueId(null);
+    setVenueForm({ name:'', address:'', contactPhone:'', contactEmail:'', website:'', ownerName:'', ownerPhone:'', notes:'' });
+    await loadVenues();
+  };
+
+  const toggleVenue = async (id, active) => {
+    await promoApiCall('toggle_venue', { id, active });
+    updateVenues(venues.map(v => v.id === id ? { ...v, active } : v));
+  };
+
+  const startEditVenue = (v) => {
+    setEditingVenueId(v.id);
+    setVenueForm({ name: v.name, address: v.location, contactPhone: v.phone, contactEmail: v.email, website: v.website, ownerName: v.ownerName, ownerPhone: v.ownerPhone, notes: v.notes });
+    setVenueFormOpen(true);
+    setVenueError(''); setVenueSuccess('');
   };
 
   const checkin = async (oid) => {
@@ -3416,10 +3461,63 @@ fetch(API_BASE+'/api/send-email', {
             </div>}
 
             {aTab === 'accounts' && !isVenueUser && <div>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:10}}>
-                <h2 className="dsp" style={{fontSize:26}}>Venue Accounts</h2>
+
+              {/* ── Venues ── */}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
+                <h2 className="dsp" style={{fontSize:26}}>Venues</h2>
+                <button className="btn gold" style={{fontSize:12,padding:'6px 16px'}} onClick={()=>{ setEditingVenueId(null); setVenueForm({name:'',address:'',contactPhone:'',contactEmail:'',website:'',ownerName:'',ownerPhone:'',notes:''}); setVenueError(''); setVenueSuccess(''); setVenueFormOpen(v=>!v); }}>
+                  {venueFormOpen && !editingVenueId ? 'Cancel' : '+ Add Venue'}
+                </button>
               </div>
-              <p style={{color:'var(--text2)',fontSize:13,marginBottom:24,maxWidth:560}}>Create login credentials for venue operators. Venue accounts can view their own events, orders, and check-in data but cannot see C8Tickets service revenue or manage other venues.</p>
+
+              {venueFormOpen && <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:24,marginBottom:24,maxWidth:560}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,marginBottom:16}}>{editingVenueId ? 'Edit Venue' : 'New Venue'}</div>
+                <div className="fr">
+                  <div className="fg"><label className="fl">Venue Name *</label><input className="fi" value={venueForm.name} onChange={e=>setVenueForm(p=>({...p,name:e.target.value}))} placeholder="e.g. The Rusty Nail" /></div>
+                  <div className="fg"><label className="fl">Address</label><input className="fi" value={venueForm.address} onChange={e=>setVenueForm(p=>({...p,address:e.target.value}))} placeholder="123 Main St, City, ID" /></div>
+                </div>
+                <div className="fr">
+                  <div className="fg"><label className="fl">Venue Phone</label><input className="fi" type="tel" value={venueForm.contactPhone} onChange={e=>setVenueForm(p=>({...p,contactPhone:e.target.value}))} placeholder="(208) 555-0100" /></div>
+                  <div className="fg"><label className="fl">Venue Email</label><input className="fi" type="email" value={venueForm.contactEmail} onChange={e=>setVenueForm(p=>({...p,contactEmail:e.target.value}))} placeholder="info@venue.com" /></div>
+                </div>
+                <div className="fg"><label className="fl">Website</label><input className="fi" type="url" value={venueForm.website} onChange={e=>setVenueForm(p=>({...p,website:e.target.value}))} placeholder="https://venue.com" /></div>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,margin:'16px 0 10px'}}>Owner / Contact</div>
+                <div className="fr">
+                  <div className="fg"><label className="fl">Owner Name</label><input className="fi" value={venueForm.ownerName} onChange={e=>setVenueForm(p=>({...p,ownerName:e.target.value}))} placeholder="Full name" /></div>
+                  <div className="fg"><label className="fl">Owner Phone</label><input className="fi" type="tel" value={venueForm.ownerPhone} onChange={e=>setVenueForm(p=>({...p,ownerPhone:e.target.value}))} placeholder="(208) 555-0101" /></div>
+                </div>
+                <div className="fg"><label className="fl">Notes</label><input className="fi" value={venueForm.notes} onChange={e=>setVenueForm(p=>({...p,notes:e.target.value}))} placeholder="Internal notes (not visible to venue)" /></div>
+                {venueError && <p style={{fontSize:12,color:'var(--red)',marginBottom:10}}>{venueError}</p>}
+                {venueSuccess && <p style={{fontSize:12,color:'var(--green)',marginBottom:10}}>{venueSuccess}</p>}
+                <div style={{display:'flex',gap:10,marginTop:4}}>
+                  <button className="btn gold" disabled={!venueForm.name.trim()||venueSaving} onClick={saveVenue}>{venueSaving?'Saving…':editingVenueId?'Save Changes':'Create Venue'}</button>
+                  {editingVenueId && <button className="btn" onClick={()=>{ setVenueFormOpen(false); setEditingVenueId(null); }}>Cancel</button>}
+                </div>
+              </div>}
+
+              <div style={{overflowX:'auto',marginBottom:40}}>
+                <table className="dt"><thead><tr><th>Name</th><th>Location</th><th>Owner</th><th>Contact</th><th>Status</th><th></th></tr></thead>
+                  <tbody>{venues.map(v=>(
+                    <tr key={v.id} style={{opacity: v.active===false ? 0.5 : 1}}>
+                      <td style={{fontWeight:600}}>{v.name}</td>
+                      <td style={{fontSize:12}}>{v.location||'—'}</td>
+                      <td style={{fontSize:12}}>{v.ownerName||'—'}</td>
+                      <td style={{fontSize:11}}>{v.phone||v.email||'—'}</td>
+                      <td><span className={`badge ${v.active===false?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{v.active===false?'Inactive':'Active'}</span></td>
+                      <td style={{display:'flex',gap:6}}>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>startEditVenue(v)}>Edit</button>
+                        <button className="btn" style={{fontSize:11,padding:'4px 10px',color:v.active===false?'var(--gold)':'var(--red)'}} onClick={()=>toggleVenue(v.id, v.active===false)}>{v.active===false?'Activate':'Deactivate'}</button>
+                      </td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+
+              {/* ── Venue Accounts ── */}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:10}}>
+                <h2 className="dsp" style={{fontSize:22}}>Venue Accounts</h2>
+              </div>
+              <p style={{color:'var(--text2)',fontSize:13,marginBottom:20,maxWidth:560}}>Create login credentials for venue operators. Venue accounts can view their own events, orders, and check-in data but cannot see C8Tickets service revenue or manage other venues.</p>
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:24,marginBottom:32,maxWidth:480}}>
                 <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,marginBottom:16}}>Create Venue Account</div>
                 <div className="fg"><label className="fl" htmlFor="vu-email">Email Address</label><input id="vu-email" className="fi" type="email" value={venueUserForm.email} onChange={e=>setVenueUserForm(p=>({...p,email:e.target.value}))} placeholder="owner@venuename.com" /></div>

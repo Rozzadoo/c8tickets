@@ -199,6 +199,76 @@ async function handleDeleteVenueUser(req, res) {
   return res.status(200).json({ success: true });
 }
 
+async function handleListVenues(req, res) {
+  const r = await fetch(`${supaUrl()}/rest/v1/tenants?order=name.asc&select=*`, { headers: supaHeaders() });
+  const rows = await r.json();
+  return res.status(200).json({ venues: Array.isArray(rows) ? rows : [] });
+}
+
+async function handleCreateVenue(req, res) {
+  const { name, address, contactPhone, contactEmail, website, ownerName, ownerPhone, notes } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Venue name is required' });
+
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const payload = {
+    name: name.trim(),
+    slug,
+    address: address || null,
+    contact_phone: contactPhone || null,
+    contact_email: contactEmail || null,
+    website: website || null,
+    owner_name: ownerName || null,
+    owner_phone: ownerPhone || null,
+    notes: notes || null,
+    active: true,
+  };
+
+  const r = await fetch(`${supaUrl()}/rest/v1/tenants`, {
+    method: 'POST',
+    headers: { ...supaHeaders(), Prefer: 'return=representation' },
+    body: JSON.stringify(payload),
+  });
+  const result = await r.json();
+  if (!r.ok) {
+    const msg = result?.message || result?.[0]?.message || 'Failed to create venue';
+    return res.status(400).json({ error: msg });
+  }
+  return res.status(200).json({ venue: Array.isArray(result) ? result[0] : result });
+}
+
+async function handleUpdateVenue(req, res) {
+  const { id, name, address, contactPhone, contactEmail, website, ownerName, ownerPhone, notes } = req.body;
+  if (!id) return res.status(400).json({ error: 'Missing id' });
+
+  const payload = {};
+  if (name !== undefined) { payload.name = name.trim(); payload.slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+  if (address !== undefined) payload.address = address || null;
+  if (contactPhone !== undefined) payload.contact_phone = contactPhone || null;
+  if (contactEmail !== undefined) payload.contact_email = contactEmail || null;
+  if (website !== undefined) payload.website = website || null;
+  if (ownerName !== undefined) payload.owner_name = ownerName || null;
+  if (ownerPhone !== undefined) payload.owner_phone = ownerPhone || null;
+  if (notes !== undefined) payload.notes = notes || null;
+
+  await fetch(`${supaUrl()}/rest/v1/tenants?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...supaHeaders(), Prefer: 'return=minimal' },
+    body: JSON.stringify(payload),
+  });
+  return res.status(200).json({ ok: true });
+}
+
+async function handleToggleVenue(req, res) {
+  const { id, active } = req.body;
+  if (!id) return res.status(400).json({ error: 'Missing id' });
+  await fetch(`${supaUrl()}/rest/v1/tenants?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...supaHeaders(), Prefer: 'return=minimal' },
+    body: JSON.stringify({ active: !!active }),
+  });
+  return res.status(200).json({ ok: true });
+}
+
 async function handleUsage(req, res) {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: 'Missing id' });
@@ -235,6 +305,10 @@ export default async function handler(req, res) {
   if (action === 'create_venue_user') return handleCreateVenueUser(req, res);
   if (action === 'list_venue_users') return handleListVenueUsers(req, res);
   if (action === 'delete_venue_user') return handleDeleteVenueUser(req, res);
+  if (action === 'list_venues') return handleListVenues(req, res);
+  if (action === 'create_venue') return handleCreateVenue(req, res);
+  if (action === 'update_venue') return handleUpdateVenue(req, res);
+  if (action === 'toggle_venue') return handleToggleVenue(req, res);
 
   return res.status(400).json({ error: 'Invalid action' });
 }
