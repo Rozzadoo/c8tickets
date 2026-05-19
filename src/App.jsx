@@ -3086,13 +3086,16 @@ fetch(API_BASE+'/api/send-email', {
                 rows.push(['Total C8Tickets Revenue',fmt(c8Rev)]);
                 rows.push([]);
                 rows.push(['WEEKLY VENUE PAYOUT']);
-                rows.push(['Week Starting','Orders','Tickets','Ticket Revenue','Service Fees ($2/tkt)',`Platform Fee (${platformFeePct}%)`,'Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue','Your Revenue (Svc + Platform)']);
+                rows.push(['Week','Orders','Tickets','Ticket Revenue','Service Fees ($2/tkt)',`Platform Fee (${platformFeePct}%)`,'Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue','Your Revenue (Svc + Platform)']);
                 for(const r of weekRows){
+                  const ws=new Date(r.week+'T12:00:00'); const we=new Date(ws); we.setDate(ws.getDate()+6);
                   rows.push([
-                    new Date(r.week+'T12:00:00').toLocaleDateString('en-US'),
+                    `${ws.toLocaleDateString('en-US')} – ${we.toLocaleDateString('en-US')}`,
                     r.orders, r.tickets, fmt(r.ticketRev), fmt(r.svcFees), fmt(r.platformFee), fmt(r.venueGross), fmt(r.holdback), fmt(r.payNow), fmt(r.c8Total),
                   ]);
                 }
+                const csvTotals=[weekRows.reduce((s,r)=>s+r.orders,0),weekRows.reduce((s,r)=>s+r.tickets,0),fmt(weekRows.reduce((s,r)=>s+r.ticketRev,0)),fmt(weekRows.reduce((s,r)=>s+r.svcFees,0)),fmt(weekRows.reduce((s,r)=>s+r.platformFee,0)),fmt(weekRows.reduce((s,r)=>s+r.venueGross,0)),fmt(weekRows.reduce((s,r)=>s+r.holdback,0)),fmt(weekRows.reduce((s,r)=>s+r.payNow,0)),fmt(weekRows.reduce((s,r)=>s+r.c8Total,0))];
+                rows.push(['TOTAL',...csvTotals]);
                 const csv=rows.map(r=>r.map(c=>typeof c==='string'&&(c.includes(',')||c.includes('"'))?q(c):c).join(',')).join('\n');
                 const blob=new Blob([csv],{type:'text/csv'});
                 const url=URL.createObjectURL(blob);
@@ -3276,29 +3279,61 @@ fetch(API_BASE+'/api/send-email', {
                         </table>
                       </div>
 
-                      {weekRows.length>0&&<>
-                        <h4 className="dsp" style={{fontSize:15,marginBottom:10}}>Weekly Venue Payout Schedule</h4>
-                        <div style={{overflowX:'auto',marginBottom:20}}>
-                          <table className="dt">
-                            <thead><tr><th>Week of</th><th>Orders</th><th>Tickets</th><th>Ticket Rev</th><th>Service Fees</th><th>Platform Fee</th><th>Venue Gross</th><th>Holdback</th><th style={{color:'var(--gold)'}}>Pay Venue</th><th style={{color:'var(--green)'}}>Your Revenue</th></tr></thead>
-                            <tbody>
-                              {weekRows.map(r=>(
-                                <tr key={r.week}>
-                                  <td style={{fontWeight:600}}>{new Date(r.week+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</td>
-                                  <td>{r.orders}</td><td>{r.tickets}</td>
-                                  <td>{fmtCurrency(r.ticketRev)}</td>
-                                  <td style={{color:'var(--green)',fontWeight:600}}>{fmtCurrency(r.svcFees)}</td>
-                                  <td style={{color:'var(--green)',fontWeight:600}}>{fmtCurrency(r.platformFee)}</td>
-                                  <td>{fmtCurrency(r.venueGross)}</td>
-                                  <td style={{color:'var(--text3)'}}>−{fmtCurrency(r.holdback)}</td>
-                                  <td style={{fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(r.payNow)}</td>
-                                  <td style={{fontWeight:700,color:'var(--green)'}}>{fmtCurrency(r.c8Total)}</td>
+                      {weekRows.length>0&&(()=>{
+                        const fmtWeekRange = (wk) => {
+                          const s=new Date(wk+'T12:00:00');
+                          const e=new Date(s); e.setDate(s.getDate()+6);
+                          const so=s.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+                          const eo=e.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+                          return `${so} – ${eo}`;
+                        };
+                        const totOrders=weekRows.reduce((s,r)=>s+r.orders,0);
+                        const totTickets=weekRows.reduce((s,r)=>s+r.tickets,0);
+                        const totTicketRev=weekRows.reduce((s,r)=>s+r.ticketRev,0);
+                        const totSvcFees=weekRows.reduce((s,r)=>s+r.svcFees,0);
+                        const totPlatformFee=weekRows.reduce((s,r)=>s+r.platformFee,0);
+                        const totVenueGross=weekRows.reduce((s,r)=>s+r.venueGross,0);
+                        const totHoldback=weekRows.reduce((s,r)=>s+r.holdback,0);
+                        const totPayNow=weekRows.reduce((s,r)=>s+r.payNow,0);
+                        const totC8=weekRows.reduce((s,r)=>s+r.c8Total,0);
+                        return <>
+                          <h4 className="dsp" style={{fontSize:15,marginBottom:10}}>Weekly Venue Payout Schedule</h4>
+                          <div style={{overflowX:'auto',marginBottom:20}}>
+                            <table className="dt">
+                              <thead><tr><th>Week</th><th>Orders</th><th>Tickets</th><th>Ticket Rev</th><th>Service Fees</th><th>Platform Fee</th><th>Venue Gross</th><th>Holdback</th><th style={{color:'var(--gold)'}}>Pay Venue</th><th style={{color:'var(--green)'}}>Your Revenue</th></tr></thead>
+                              <tbody>
+                                {weekRows.map(r=>(
+                                  <tr key={r.week}>
+                                    <td style={{fontWeight:600,whiteSpace:'nowrap'}}>{fmtWeekRange(r.week)}</td>
+                                    <td>{r.orders}</td><td>{r.tickets}</td>
+                                    <td>{fmtCurrency(r.ticketRev)}</td>
+                                    <td style={{color:'var(--green)',fontWeight:600}}>{fmtCurrency(r.svcFees)}</td>
+                                    <td style={{color:'var(--green)',fontWeight:600}}>{fmtCurrency(r.platformFee)}</td>
+                                    <td>{fmtCurrency(r.venueGross)}</td>
+                                    <td style={{color:'var(--text3)'}}>−{fmtCurrency(r.holdback)}</td>
+                                    <td style={{fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(r.payNow)}</td>
+                                    <td style={{fontWeight:700,color:'var(--green)'}}>{fmtCurrency(r.c8Total)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr style={{borderTop:'2px solid var(--border)'}}>
+                                  <td style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:.5,color:'var(--text2)'}}>Total</td>
+                                  <td style={{fontWeight:700}}>{totOrders}</td>
+                                  <td style={{fontWeight:700}}>{totTickets}</td>
+                                  <td style={{fontWeight:700}}>{fmtCurrency(totTicketRev)}</td>
+                                  <td style={{fontWeight:700,color:'var(--green)'}}>{fmtCurrency(totSvcFees)}</td>
+                                  <td style={{fontWeight:700,color:'var(--green)'}}>{fmtCurrency(totPlatformFee)}</td>
+                                  <td style={{fontWeight:700}}>{fmtCurrency(totVenueGross)}</td>
+                                  <td style={{fontWeight:700,color:'var(--text3)'}}>−{fmtCurrency(totHoldback)}</td>
+                                  <td style={{fontWeight:700,color:'var(--gold)',fontSize:15}}>{fmtCurrency(totPayNow)}</td>
+                                  <td style={{fontWeight:700,color:'var(--green)',fontSize:15}}>{fmtCurrency(totC8)}</td>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>}
+                              </tfoot>
+                            </table>
+                          </div>
+                        </>;
+                      })()}
 
                       <button className="btn gold" onClick={downloadBookkeepingCSV}>Download CSV for QuickBooks</button>
                       <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Exports transaction detail, financial summary, and weekly payout schedule for the selected period.</p>
