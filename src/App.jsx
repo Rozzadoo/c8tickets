@@ -3069,7 +3069,7 @@ fetch(API_BASE+'/api/send-email', {
               const c8Rev = Math.round((bk.svc+platformFees)*100)/100;
 
               // Weekly venue payout grouping (Mon–Sun weeks)
-              const weekStart = (d) => { const dt=new Date(d); const day=dt.getDay(); dt.setDate(dt.getDate()-((day+6)%7)); return dt.toISOString().slice(0,10); };
+              const weekStart = (d) => { const dt=new Date(d); const day=dt.getDay(); dt.setDate(dt.getDate()-((day+6)%7)); const y=dt.getFullYear(),mo=String(dt.getMonth()+1).padStart(2,'0'),dd=String(dt.getDate()).padStart(2,'0'); return `${y}-${mo}-${dd}`; };
               const weekMap={};
               for(const o of bkOrders){
                 const k=weekStart(o.date);
