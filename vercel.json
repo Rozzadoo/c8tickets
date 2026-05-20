@@ -5,7 +5,8 @@
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap-xml" },
     { "source": "/e/:id", "destination": "/api/event-preview?id=:id" },
-    { "source": "/t/:id", "destination": "/index.html" }
+    { "source": "/t/:id", "destination": "/index.html" },
+    { "source": "/sell", "destination": "/index.html" }
   ],
   "headers": [
     {

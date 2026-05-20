@@ -19,6 +19,7 @@ export default async function handler(req, res) {
 
   const urls = [
     url(BASE + '/', 'daily', '1.0'),
+    url(BASE + '/sell', 'monthly', '0.9'),
     ...events.map(e => url(`${BASE}/e/${e.id}`, 'weekly', '0.8', e.updated_at?.slice(0, 10))),
   ];
 

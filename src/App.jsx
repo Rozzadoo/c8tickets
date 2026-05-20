@@ -1230,7 +1230,7 @@ export default function App() {
   const { venues, events, loaded, updateEvents, updateVenues } = useStorage();
   const [orders, setOrders] = useState([]);
   const updateOrders = useCallback((d) => setOrders(d), []);
-  const [view, setView] = useState("home");
+  const [view, setView] = useState(() => window.location.pathname === '/sell' ? 'sell' : 'home');
   const [selId, setSelId] = useState(null);
   const [cart, setCart] = useState({});
   const [buyer, setBuyer] = useState({ name: "", email: "", phone: "" });
@@ -1416,14 +1416,29 @@ const [resetError, setResetError] = useState('');
   useEffect(() => {
     const base = 'C8Tickets';
     const selTitle = events.find(e => e.id === selId)?.title;
-    if (view === 'detail' && selTitle) document.title = `${selTitle} — ${base}`;
-    else if (view === 'checkout') document.title = `Checkout — ${base}`;
-    else if (view === 'ticket' || view === 'mytickets') document.title = `Your Tickets — ${base}`;
-    else if (view === 'admin') document.title = `Admin — ${base}`;
-    else if (view === 'lookup') document.title = `Find My Tickets — ${base}`;
-    else if (view === 'venue') { const vp = venues.find(v => v.id === venueProfileId); if (vp) document.title = `${vp.name} — ${base}`; }
-    else if (view === 'sell') document.title = `Sell Tickets with C8 — ${base}`;
-    else document.title = base;
+    let title = base;
+    let desc = 'Buy tickets to live events at Crooked 8 in Kuna, Idaho. Concerts, rodeos, and more — get your tickets online in minutes.';
+    let path = '/';
+
+    if (view === 'detail' && selTitle) { title = `${selTitle} — ${base}`; }
+    else if (view === 'checkout') { title = `Checkout — ${base}`; }
+    else if (view === 'ticket' || view === 'mytickets') { title = `Your Tickets — ${base}`; }
+    else if (view === 'admin') { title = `Admin — ${base}`; }
+    else if (view === 'lookup') { title = `Find My Tickets — ${base}`; }
+    else if (view === 'venue') { const vp = venues.find(v => v.id === venueProfileId); if (vp) title = `${vp.name} — ${base}`; }
+    else if (view === 'sell') {
+      title = 'Sell Event Tickets Online — Treasure Valley & Idaho | C8Tickets';
+      desc = 'C8Tickets is the local ticketing platform built for bars, venues, and event organizers in Boise, Nampa, Meridian, Kuna, and across the Treasure Valley. Online sales, door sales, QR check-in, and real-time dashboards — no setup fees.';
+      path = '/sell';
+    }
+
+    document.title = title;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', desc);
+
+    if (window.location.pathname !== path) {
+      window.history.replaceState(null, '', path);
+    }
   }, [view, selId, events, venue]);
 
 const login = async () => {
@@ -2677,21 +2692,21 @@ fetch(API_BASE+'/api/send-email', {
         {view === "sell" && <div className="fade">
           <div className="back" onClick={() => setView("home")}>← Back</div>
           <div className="about-hero">
-            <h1 className="dsp">Sell Tickets<br/>with C8</h1>
-            <p>Local ticketing built for small events. Fill out the form below and we'll be in touch soon.</p>
+            <h1 className="dsp">Sell Event Tickets<br/>in the Treasure Valley</h1>
+            <p>The local ticketing platform built for bars, venues, and event organizers in Boise, Nampa, Meridian, Kuna, and across Idaho. Get your event live in minutes.</p>
           </div>
           <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',borderBottom:'1px solid var(--border)',padding:'56px 20px'}}>
             <div style={{maxWidth:820,margin:'0 auto'}}>
-              <h2 className="dsp" style={{fontSize:'clamp(20px,3.5vw,30px)',marginBottom:8,textAlign:'center'}}>What You Get</h2>
+              <h2 className="dsp" style={{fontSize:'clamp(20px,3.5vw,30px)',marginBottom:8,textAlign:'center'}}>Everything You Need to Sell Tickets</h2>
               <div className="about-divider" style={{marginBottom:28}}></div>
               <div className="about-grid">
                 {[
-                  ['Fast Setup','Create and configure your own events directly — set ticket tiers, pricing, and event details yourself. Your event can be live and ready to sell tickets in minutes.'],
+                  ['Fast Setup','Create your event, set ticket tiers and pricing, and go live — all in minutes. No waiting on approvals or account reps.'],
                   ['Online & Door Sales','Customers buy in advance from any device. Staff sell at the door using a card reader or manual entry, all through the same system.'],
                   ['Automatic QR Tickets','Every buyer gets an instant confirmation email with their QR code the moment their payment clears. No manual follow-up needed.'],
-                  ['Gate Check-In','Staff scan QR codes at the entrance from any phone or tablet. No paper lists, no spreadsheets.'],
-                  ['Real-Time Dashboard','Track ticket sales and revenue as they come in, from any device, at any time.'],
-                  ['No Setup Fees','You pay nothing to get started. Fees are transparently itemized at buyer checkout — no surprise deductions from your revenue.'],
+                  ['Gate Check-In','Scan QR codes at the entrance from any phone or tablet. No paper lists, no spreadsheets — works for groups too.'],
+                  ['Real-Time Sales Dashboard','Track ticket sales, revenue, and check-in counts as they come in, from any device, at any time.'],
+                  ['No Setup Fees','You pay nothing to get started. Fees are transparently shown to buyers at checkout — no surprise deductions from your payout.'],
                 ].map(([title,desc])=>(
                   <div className="about-card" key={title}><h3>{title}</h3><p>{desc}</p></div>
                 ))}
@@ -2699,9 +2714,9 @@ fetch(API_BASE+'/api/send-email', {
             </div>
           </div>
           <div className="about-sec" style={{maxWidth:580}}>
-            <h2 className="dsp" style={{textAlign:'center'}}>Get Started</h2>
+            <h2 className="dsp" style={{textAlign:'center'}}>Built for Treasure Valley Venues</h2>
             <div className="about-divider" style={{marginBottom:20}}></div>
-            <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,marginBottom:28,textAlign:'center'}}>Tell us about your event and how to reach you. We'll follow up to get everything configured.</p>
+            <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,marginBottom:28,textAlign:'center'}}>Whether you're running a concert at a Boise bar, a rodeo in Nampa, a community event in Meridian, or anything in between — C8Tickets was built for exactly this. Fill out the form and we'll have you set up fast.</p>
             {sellStatus === 'sent' ? (
               <div style={{textAlign:'center',padding:'40px 20px',background:'var(--bg2)',border:'1px solid rgba(200,146,42,.2)',borderRadius:'var(--r)'}}>
                 <div style={{fontSize:17,fontWeight:700,color:'var(--text)',marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Inquiry Received</div>
