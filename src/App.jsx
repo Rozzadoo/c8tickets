@@ -251,16 +251,16 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .skip-link{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}.skip-link:focus{position:fixed;top:0;left:0;width:auto;height:auto;padding:10px 16px;background:var(--gold);color:var(--bg);font-weight:700;z-index:9999;text-decoration:none;border-radius:0 0 6px 0}
 .nav{display:flex;align-items:center;justify-content:flex-start;gap:16px;padding:10px 20px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);overflow:hidden}
 .nav-logo{cursor:pointer;display:flex;align-items:center;gap:10px;flex-shrink:0}
-.nav-logo img{height:48px;opacity:.95}
+.nav-logo img{height:64px;opacity:.95}
 .nav-links{display:flex;gap:4px;overflow-x:auto;flex-shrink:1;min-width:0;-webkit-overflow-scrolling:touch;margin-left:auto}
 .nav-links::-webkit-scrollbar{display:none}
-@media(max-width:600px){.nav{padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top))}.nav-logo img{height:40px}.nav-links{gap:2px}.nav-links .btn{padding:5px 9px;font-size:11px;letter-spacing:0}}
+@media(max-width:600px){.nav{padding:6px 12px;padding-top:calc(6px + env(safe-area-inset-top))}.nav-logo img{height:50px}.nav-links{gap:2px}.nav-links .btn{padding:5px 9px;font-size:11px;letter-spacing:0}}
 .btn{background:none;border:1px solid transparent;color:var(--text2);padding:7px 14px;border-radius:99px;cursor:pointer;font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;transition:all .2s;text-transform:uppercase;letter-spacing:.5px}
 .btn:hover,.btn.on{background:var(--bg3);color:var(--text);border-color:var(--border)}
 .btn.gold{background:linear-gradient(135deg,var(--gold),var(--gold-d));color:var(--bg);border-color:var(--gold)}
 .btn.gold:hover{filter:brightness(1.15)}
 
-.hero{padding:32px 20px 36px;text-align:center;position:relative;overflow:hidden}
+.hero{padding:32px 20px 20px;text-align:center;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.2) 0%,transparent 60%),radial-gradient(ellipse at 50% 120%,rgba(200,146,42,.07) 0%,transparent 55%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
 .hero-logo{height:clamp(180px,30vw,280px);opacity:.97;margin-bottom:16px}
