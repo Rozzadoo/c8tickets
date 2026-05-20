@@ -260,7 +260,7 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .btn.gold{background:linear-gradient(135deg,var(--gold),var(--gold-d));color:var(--bg);border-color:var(--gold)}
 .btn.gold:hover{filter:brightness(1.15)}
 
-.hero{padding:72px 20px 60px;text-align:center;position:relative;overflow:hidden}
+.hero{padding:32px 20px 36px;text-align:center;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.2) 0%,transparent 60%),radial-gradient(ellipse at 50% 120%,rgba(200,146,42,.07) 0%,transparent 55%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
 .hero-logo{height:clamp(180px,30vw,280px);opacity:.97;margin-bottom:16px}
@@ -395,7 +395,7 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .footer-links a{color:var(--text3);font-size:12px;text-decoration:none;transition:color .2s}
 .footer-links a:hover{color:var(--gold)}
 .footer-copy{font-size:11px;color:var(--text3)}
-.about-hero{text-align:center;padding:72px 20px 56px;border-bottom:1px solid var(--border)}
+.about-hero{text-align:center;padding:32px 20px 40px;border-bottom:1px solid var(--border)}
 .about-hero h1{font-size:clamp(36px,7vw,64px);color:var(--gold);margin-bottom:12px;line-height:1}
 .about-hero p{font-size:clamp(15px,2.5vw,19px);color:var(--text2);max-width:580px;margin:0 auto;line-height:1.7}
 .about-sec{max-width:820px;margin:0 auto;padding:56px 20px}
