@@ -395,7 +395,7 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .footer-links a{color:var(--text3);font-size:12px;text-decoration:none;transition:color .2s}
 .footer-links a:hover{color:var(--gold)}
 .footer-copy{font-size:11px;color:var(--text3)}
-.about-hero{text-align:center;padding:32px 20px 40px;border-bottom:1px solid var(--border)}
+.about-hero{text-align:center;padding:32px 20px 20px;border-bottom:1px solid var(--border)}
 .about-hero h1{font-size:clamp(36px,7vw,64px);color:var(--gold);margin-bottom:12px;line-height:1}
 .about-hero p{font-size:clamp(15px,2.5vw,19px);color:var(--text2);max-width:580px;margin:0 auto;line-height:1.7}
 .about-sec{max-width:820px;margin:0 auto;padding:56px 20px}
@@ -2633,7 +2633,7 @@ fetch(API_BASE+'/api/send-email', {
 
         {view === "about" && <div className="fade">
           <div className="about-hero">
-            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(140px,22vw,220px)',opacity:.97,marginBottom:20}} />
+            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(180px,30vw,280px)',opacity:.97,marginBottom:16}} />
             <h1 className="dsp">Local Events,<br/>Easy Tickets.</h1>
             <p>A ticketing platform built from the ground up for the venues, organizers, and communities that make local events worth attending.</p>
           </div>
@@ -2690,7 +2690,7 @@ fetch(API_BASE+'/api/send-email', {
         {view === "sell" && <div className="fade">
           <div className="back" onClick={() => setView("home")}>← Back</div>
           <div className="about-hero">
-            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(140px,22vw,220px)',opacity:.97,marginBottom:20}} />
+            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(180px,30vw,280px)',opacity:.97,marginBottom:16}} />
             <h1 className="dsp">Sell Event Tickets<br/>in the Treasure Valley</h1>
             <p>The local ticketing platform built for bars, venues, and event organizers in Boise, Nampa, Meridian, Kuna, and across Idaho. Get your event live in minutes.</p>
           </div>
