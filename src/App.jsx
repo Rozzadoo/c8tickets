@@ -2106,7 +2106,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   setTogglingPublish(prev => { const s = new Set(prev); s.delete(ev.id); return s; });
 };
 
-  if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0c0a07" }}><img src={LOGO_SRC} alt="Crooked 8" style={{ height: 80, filter: "invert(1)", opacity: .7, animation: "fi .6s ease" }} /></div>;
+  if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0c0a07" }}><img src={LOGO_FULL} alt="C8 Tickets" style={{ height: 220, opacity: .95, animation: "fi .6s ease" }} /></div>;
 
   return (
     <><style>{CSS}</style>
