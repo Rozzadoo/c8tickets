@@ -260,10 +260,10 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .btn.gold{background:linear-gradient(135deg,var(--gold),var(--gold-d));color:var(--bg);border-color:var(--gold)}
 .btn.gold:hover{filter:brightness(1.15)}
 
-.hero{padding:32px 20px 20px;text-align:center;position:relative;overflow:hidden}
+.hero{padding:16px 20px 16px;text-align:center;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.2) 0%,transparent 60%),radial-gradient(ellipse at 50% 120%,rgba(200,146,42,.07) 0%,transparent 55%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
-.hero-logo{height:clamp(180px,30vw,280px);opacity:.97;margin-bottom:16px}
+.hero-logo{height:clamp(260px,65vw,420px);opacity:.97;margin-bottom:12px}
 .hero p{color:var(--text2);font-size:clamp(13px,1.8vw,16px);font-weight:400;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:28px}
 .hero-cta{display:inline-flex;align-items:center;gap:8px;padding:12px 32px;border:1px solid rgba(200,146,42,.5);border-radius:99px;color:var(--gold);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;background:rgba(200,146,42,.06);transition:all .25s;margin-bottom:28px}
 .hero-cta:hover{background:rgba(200,146,42,.14);border-color:var(--gold)}
@@ -395,7 +395,7 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .footer-links a{color:var(--text3);font-size:12px;text-decoration:none;transition:color .2s}
 .footer-links a:hover{color:var(--gold)}
 .footer-copy{font-size:11px;color:var(--text3)}
-.about-hero{text-align:center;padding:32px 20px 20px;border-bottom:1px solid var(--border)}
+.about-hero{text-align:center;padding:16px 20px 16px;border-bottom:1px solid var(--border)}
 .about-hero h1{font-size:clamp(36px,7vw,64px);color:var(--gold);margin-bottom:12px;line-height:1}
 .about-hero p{font-size:clamp(15px,2.5vw,19px);color:var(--text2);max-width:580px;margin:0 auto;line-height:1.7}
 .about-sec{max-width:820px;margin:0 auto;padding:56px 20px}
@@ -2633,7 +2633,7 @@ fetch(API_BASE+'/api/send-email', {
 
         {view === "about" && <div className="fade">
           <div className="about-hero">
-            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(180px,30vw,280px)',opacity:.97,marginBottom:16}} />
+            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(260px,65vw,420px)',opacity:.97,marginBottom:12}} />
             <h1 className="dsp">Local Events,<br/>Easy Tickets.</h1>
             <p>A ticketing platform built from the ground up for the venues, organizers, and communities that make local events worth attending.</p>
           </div>
@@ -2690,7 +2690,7 @@ fetch(API_BASE+'/api/send-email', {
         {view === "sell" && <div className="fade">
           <div className="back" onClick={() => setView("home")}>← Back</div>
           <div className="about-hero">
-            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(180px,30vw,280px)',opacity:.97,marginBottom:16}} />
+            <img src={LOGO_FULL} alt="C8 Tickets" style={{height:'clamp(260px,65vw,420px)',opacity:.97,marginBottom:12}} />
             <h1 className="dsp">Sell Event Tickets<br/>in the Treasure Valley</h1>
             <p>The local ticketing platform built for bars, venues, and event organizers in Boise, Nampa, Meridian, Kuna, and across Idaho. Get your event live in minutes.</p>
           </div>
