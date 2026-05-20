@@ -264,8 +264,8 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(200,146,42,.2) 0%,transparent 60%),radial-gradient(ellipse at 50% 120%,rgba(200,146,42,.07) 0%,transparent 55%);pointer-events:none}
 .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
 .hero-logo{height:clamp(260px,65vw,420px);opacity:.97;margin-bottom:12px}
-.hero p{color:var(--text2);font-size:clamp(13px,1.8vw,16px);font-weight:400;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:28px}
-.hero-cta{display:inline-flex;align-items:center;gap:8px;padding:12px 32px;border:1px solid rgba(200,146,42,.5);border-radius:99px;color:var(--gold);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;background:rgba(200,146,42,.06);transition:all .25s;margin-bottom:28px}
+.hero p{color:var(--text2);font-size:clamp(13px,1.8vw,16px);font-weight:400;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:14px}
+.hero-cta{display:inline-flex;align-items:center;gap:8px;padding:12px 32px;border:1px solid rgba(200,146,42,.5);border-radius:99px;color:var(--gold);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;background:rgba(200,146,42,.06);transition:all .25s;margin-bottom:14px}
 .hero-cta:hover{background:rgba(200,146,42,.14);border-color:var(--gold)}
 .hero-sub{display:flex;justify-content:center;gap:16px;font-size:11px;color:var(--text3);flex-wrap:wrap}
 
