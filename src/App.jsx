@@ -2098,7 +2098,12 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   if (!window.confirm(msg)) return;
   await supabase.from('tickets').delete().eq('event_id', id);
   await supabase.from('ticket_types').delete().eq('event_id', id);
-  await supabase.from('events').delete().eq('id', id);
+  // Null out event_id on orders so the FK constraint doesn't block deletion
+  if (orderCount > 0) {
+    await supabase.from('orders').update({ event_id: null }).eq('event_id', id);
+  }
+  const { error } = await supabase.from('events').delete().eq('id', id);
+  if (error) { alert(`Failed to delete event: ${error.message}`); return; }
   updateEvents(events.filter(e => e.id !== id));
 };
   const togglePublish = async (ev) => {
