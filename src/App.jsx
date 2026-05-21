@@ -94,6 +94,10 @@ const useStorage = () => {
       setLoaded(true);
     };
     load();
+
+    const handleVisibility = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
   const updateEvents = useCallback((d) => setEvents(d), []);
