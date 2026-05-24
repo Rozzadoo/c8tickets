@@ -721,6 +721,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [cashAmounts, setCashAmounts] = useState(null);
   const [tendered, setTendered] = useState('');
   const [lastSale, setLastSale] = useState(null);
+  const [isPreSale, setIsPreSale] = useState(false);
   const [loadingIntent, setLoadingIntent] = useState(false);
   // Terminal reader state
   const [terminal, setTerminal] = useState(null);
@@ -864,7 +865,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       tenant_id: TENANT_ID, event_id: selEventId,
       buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
-      status: 'checked_in', total_amount: eff.grandTotal,
+      status: isPreSale ? 'valid' : 'checked_in', total_amount: eff.grandTotal,
       ticket_subtotal: eff.ticketTotal, sales_tax: eff.salesTax,
       service_fees: eff.serviceFees, processing_fee: eff.processingFee,
       stripe_payment_intent_id: paymentIntentId, source: 'door',
@@ -915,7 +916,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId })),
       ticketTotal: eff.ticketTotal, salesTax: eff.salesTax,
       serviceFees: eff.serviceFees, processingFee: eff.processingFee,
-      total: eff.grandTotal, date: new Date().toISOString(), checkedIn: true, source: 'door',
+      total: eff.grandTotal, date: new Date().toISOString(), checkedIn: !isPreSale, source: 'door',
       stripePaymentIntentId: paymentIntentId || null,
     };
     updateOrders(prev => [...prev, localOrder]);
@@ -937,10 +938,11 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const handleCashSale = async () => {
     const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
     const ref = 'CASH-' + Date.now();
+    const { data: { session: cashSession } } = await supabase.auth.getSession();
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       tenant_id: TENANT_ID, event_id: selEventId,
-      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: '', buyer_phone: '',
-      status: 'checked_in', total_amount: cashAmounts.grandTotal,
+      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
+      status: isPreSale ? 'valid' : 'checked_in', total_amount: cashAmounts.grandTotal,
       ticket_subtotal: cashAmounts.ticketTotal, sales_tax: cashAmounts.salesTax,
       service_fees: cashAmounts.serviceFees, processing_fee: 0,
       stripe_payment_intent_id: ref, source: 'door_cash',
@@ -951,13 +953,37 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       ticket_type_name: i.type, quantity: i.qty, unit_price: i.price,
     })));
     for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
+    if (buyerEmail.trim()) {
+      fetch(API_BASE + '/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cashSession?.access_token || ''}` },
+        body: JSON.stringify({
+          order: {
+            id: order.id,
+            items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
+            salesTax: cashAmounts.salesTax,
+            serviceFees: cashAmounts.serviceFees,
+            processingFee: 0,
+            total: cashAmounts.grandTotal,
+          },
+          event: {
+            title: ev?.title || '',
+            category: ev?.category || '',
+            date: fmtDate(ev?.date || ''),
+            time: fmtTime(ev?.time || ''),
+            doors: fmtTime(ev?.doors || ''),
+          },
+          venue: { name: venue.name, location: venue.location },
+        }),
+      }).catch(() => {});
+    }
     const localOrder = {
       id: order.id, eventId: selEventId, venueId: venue.id,
-      buyer: { name: buyerName.trim() || 'Walk-In', email: '', phone: '' },
+      buyer: { name: buyerName.trim() || 'Walk-In', email: buyerEmail.trim(), phone: '' },
       items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
       ticketTotal: cashAmounts.ticketTotal, salesTax: cashAmounts.salesTax,
       serviceFees: cashAmounts.serviceFees, processingFee: 0,
-      total: cashAmounts.grandTotal, date: new Date().toISOString(), checkedIn: true, source: 'door_cash',
+      total: cashAmounts.grandTotal, date: new Date().toISOString(), checkedIn: !isPreSale, source: 'door_cash',
     };
     updateOrders(prev => [...prev, localOrder]);
     updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
@@ -967,7 +993,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     setStep('confirm');
   };
 
-  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); };
+  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); setIsPreSale(false); };
 
   return (
     <div>
@@ -1012,14 +1038,18 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
             <input className="fi" value={buyerName} onChange={e=>setBuyerName(e.target.value)} placeholder="Walk-In" />
           </div>
           <div className="fg" style={{marginBottom:16}}>
-            <label className="fl">Email for Receipt <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
-            <input className="fi" type="email" value={buyerEmail} onChange={e=>setBuyerEmail(e.target.value)} placeholder="Leave blank to skip" />
+            <label className="fl">Email for Receipt <span style={{fontWeight:400,color:'var(--text3)'}}>{isPreSale ? '(required for pre sale)' : '(optional)'}</span></label>
+            <input className="fi" type="email" value={buyerEmail} onChange={e=>setBuyerEmail(e.target.value)} placeholder={isPreSale ? 'customer@email.com' : 'Leave blank to skip'} />
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,padding:'10px 14px',background:'var(--surface2)',borderRadius:'var(--rs)',cursor:'pointer'}} onClick={()=>setIsPreSale(p=>!p)}>
+            <input type="checkbox" id="presale-cb" checked={isPreSale} onChange={()=>{}} style={{width:17,height:17,accentColor:'var(--gold)',cursor:'pointer',flexShrink:0}} />
+            <label htmlFor="presale-cb" style={{cursor:'pointer',fontWeight:600,fontSize:14,userSelect:'none'}}>Pre Sale — sell without checking in</label>
           </div>
           <div style={{display:'flex',gap:10}}>
-            <button className="buy" style={{flex:1}} disabled={cartN===0||loadingIntent} onClick={connectedReader ? startTerminalPayment : startPayment}>
+            <button className="buy" style={{flex:1}} disabled={cartN===0||loadingIntent||(isPreSale&&!buyerEmail.trim())} onClick={connectedReader ? startTerminalPayment : startPayment}>
               {loadingIntent ? 'Preparing…' : connectedReader ? '💳 Charge Card (Reader)' : '💳 Charge Card (Online)'}
             </button>
-            <button className="buy" style={{flex:1,background:'var(--green)',borderColor:'var(--green)'}} disabled={cartN===0} onClick={startCash}>
+            <button className="buy" style={{flex:1,background:'var(--green)',borderColor:'var(--green)'}} disabled={cartN===0||(isPreSale&&!buyerEmail.trim())} onClick={startCash}>
               💵 Cash Sale
             </button>
           </div>
@@ -1128,7 +1158,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:16}}>
             <QRImg value={`${APP_URL}/t/${lastSale.id}?receipt=1`} size={180} />
           </div>
-          <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>CHECKED IN {lastSale.source==='door_cash'?'· CASH':''}</p>
+          <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>{lastSale.checkedIn ? `CHECKED IN${lastSale.source==='door_cash'?' · CASH':''}` : `PRE SALE${lastSale.source==='door_cash'?' · CASH':''} · TICKET EMAILED`}</p>
           <p style={{fontFamily:'monospace',fontSize:10,color:'var(--text3)',marginBottom:28,letterSpacing:.5}}>{lastSale.id.toUpperCase()}</p>
           <button className="buy" style={{maxWidth:260,margin:'0 auto',display:'block'}} onClick={reset}>+ New Sale</button>
         </div>
@@ -2959,7 +2989,7 @@ fetch(API_BASE+'/api/send-email', {
                   <span style={{fontSize:12,color:"var(--text3)",alignSelf:"center",marginLeft:4}}>{fo.length} order{fo.length!==1?'s':''}</span>
                   {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().reverse().flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
               </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'); return <>

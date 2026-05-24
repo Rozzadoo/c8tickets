@@ -83,7 +83,7 @@ async function sendConfirmation(res, { order, event, venue }) {
       ${discountRow}
       <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Sales Tax (6%)</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(order.salesTax).toFixed(2)}</td></tr>
       <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Service Fees</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(order.serviceFees).toFixed(2)}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Processing Fee</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(order.processingFee).toFixed(2)}</td></tr>
+      ${Number(order.processingFee) > 0 ? `<tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Processing Fee</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(order.processingFee).toFixed(2)}</td></tr>` : ''}
       <tr><td style="padding:10px 0;font-weight:700;color:#f0e9da;font-size:15px">Total</td><td style="padding:10px 0;font-weight:700;color:#c8922a;font-size:15px;text-align:right">$${Number(order.total).toFixed(2)}</td></tr>
     </table>
     <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${escHtml(order.id)}</div>
