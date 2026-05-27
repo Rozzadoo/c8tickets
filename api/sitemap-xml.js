@@ -4,6 +4,8 @@ const BASE = 'https://c8tickets.com';
 export default async function handler(req, res) {
   let events = [];
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const resp = await fetch(
       `${process.env.VITE_SUPABASE_URL}/rest/v1/events?tenant_id=eq.${TENANT_ID}&is_published=eq.true&select=id,updated_at&order=event_date.asc`,
       {
@@ -11,8 +13,10 @@ export default async function handler(req, res) {
           apikey: process.env.VITE_SUPABASE_ANON_KEY,
           Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
         },
+        signal: controller.signal,
       }
     );
+    clearTimeout(timeout);
     const data = await resp.json();
     if (Array.isArray(data)) events = data;
   } catch (_) {}

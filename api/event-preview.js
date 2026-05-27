@@ -8,18 +8,34 @@ export default async function handler(req, res) {
 
   let event = null;
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=title,description,category,event_date,image_url,ticket_types(name,price,quantity_total,quantity_sold)&limit=1`;
     const resp = await fetch(url, {
       headers: {
         apikey: process.env.VITE_SUPABASE_ANON_KEY,
         Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
       },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     const rows = await resp.json();
     event = rows?.[0] ?? null;
   } catch (_) {}
 
-  if (!event) return res.redirect(302, '/');
+  if (!event) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(404).send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Event Not Found — C8Tickets</title>
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="3;url=/">
+<script>setTimeout(()=>window.location.replace('/'),3000);</script>
+</head>
+<body style="margin:0;background:#0c0a07;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;color:#f0e9da;text-align:center">
+<div><p style="color:#c8922a;font-size:18px">Event not found</p><p><a href="/" style="color:#c8922a">Browse all events →</a></p></div>
+</body></html>`);
+  }
 
   const isBot = BOT_RE.test(req.headers['user-agent'] || '');
   const title = event.title ?? 'Event';
