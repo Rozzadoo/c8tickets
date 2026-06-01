@@ -1541,7 +1541,7 @@ const [resetError, setResetError] = useState('');
     const base = 'C8Tickets';
     const selTitle = events.find(e => e.id === selId)?.title;
     let title = base;
-    let desc = 'Buy tickets to live events at Crooked 8 in Kuna, Idaho. Concerts, rodeos, and more — get your tickets online in minutes.';
+    let desc = 'Buy tickets for concerts, shows, and local events across the Treasure Valley — Boise, Meridian, Nampa, Kuna, and beyond. C8Tickets makes it easy to buy online or at the door.';
     let path = '/';
 
     if (view === 'detail' && selTitle) { title = `${selTitle} — ${base}`; }
@@ -2976,7 +2976,7 @@ fetch(API_BASE+'/api/send-email', {
   <div className="tkt-sec">
     <div className="fg">
       <label className="fl" htmlFor="auth-email">Email</label>
-      <input id="auth-email" className="fi" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && login()} placeholder="admin@crooked8.com" />
+      <input id="auth-email" className="fi" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && login()} placeholder="admin@yourdomain.com" />
     </div>
     <div className="fg">
       <label className="fl" htmlFor="auth-password">Password</label>

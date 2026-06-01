@@ -11,7 +11,7 @@ export default async function handler(req) {
   let event = null;
   if (id && /^[0-9a-f-]{36}$/i.test(id)) {
     try {
-      const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=title,event_date,image_url&limit=1`;
+      const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=title,event_date,image_url,venue_name&limit=1`;
       const resp = await fetch(url, {
         headers: {
           apikey: process.env.VITE_SUPABASE_ANON_KEY,
@@ -55,16 +55,16 @@ export default async function handler(req) {
         },
           // Brand
           e('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
-            e('div', { style: { fontSize: 20, fontWeight: 900, color: '#c8922a', letterSpacing: 3, textTransform: 'uppercase', fontFamily: 'sans-serif' } }, 'Crooked 8'),
+            e('div', { style: { fontSize: 20, fontWeight: 900, color: '#c8922a', letterSpacing: 3, textTransform: 'uppercase', fontFamily: 'sans-serif' } }, event.venue_name || 'C8Tickets'),
             e('div', { style: { width: 1, height: 16, background: '#c8922a', opacity: 0.5 } }),
-            e('div', { style: { fontSize: 14, color: '#7a6c54', letterSpacing: 2, textTransform: 'uppercase', fontFamily: 'sans-serif' } }, 'Kuna, Idaho'),
+            e('div', { style: { fontSize: 14, color: '#7a6c54', letterSpacing: 2, textTransform: 'uppercase', fontFamily: 'sans-serif' } }, 'C8Tickets'),
           ),
           // Event title + date
           e('div', { style: { display: 'flex', flexDirection: 'column' } },
             e('div', { style: { width: 40, height: 3, background: '#c8922a', marginBottom: 20 } }),
             e('div', { style: { fontSize: titleFontSize, fontWeight: 900, color: '#f0e9da', lineHeight: 1.08, letterSpacing: -1, fontFamily: 'sans-serif', textTransform: 'uppercase' } }, title),
             date && e('div', { style: { marginTop: 18, fontSize: 22, color: '#c8922a', fontFamily: 'sans-serif', fontWeight: 600, letterSpacing: 0.5 } }, date),
-            e('div', { style: { marginTop: 8, fontSize: 16, color: '#7a6c54', fontFamily: 'sans-serif', letterSpacing: 0.5 } }, 'Crooked 8 · Kuna, ID'),
+            e('div', { style: { marginTop: 8, fontSize: 16, color: '#7a6c54', fontFamily: 'sans-serif', letterSpacing: 0.5 } }, event.venue_name ? `${event.venue_name} · c8tickets.com` : 'c8tickets.com'),
           ),
           // CTA
           e('div', { style: { display: 'flex', alignItems: 'center', gap: 20 } },

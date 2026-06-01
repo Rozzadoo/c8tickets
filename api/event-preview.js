@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-    const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=title,description,category,event_date,image_url,ticket_types(name,price,quantity_total,quantity_sold)&limit=1`;
+    const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/events?id=eq.${id}&select=title,description,category,event_date,image_url,venue_name,ticket_types(name,price,quantity_total,quantity_sold)&limit=1`;
     const resp = await fetch(url, {
       headers: {
         apikey: process.env.VITE_SUPABASE_ANON_KEY,
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     url: canonical,
     location: {
       '@type': 'Place',
-      name: 'Crooked 8',
+      name: event.venue_name || '',
       address: {
         '@type': 'PostalAddress',
         streetAddress: '1882 E King Rd',

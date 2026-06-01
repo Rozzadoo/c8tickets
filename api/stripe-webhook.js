@@ -161,7 +161,7 @@ export default async function handler(req, res) {
 <body style="margin:0;padding:0;background:#0c0a07;font-family:'Helvetica Neue',Arial,sans-serif">
 <div style="max-width:520px;margin:0 auto;padding:40px 20px">
   <div style="text-align:center;margin-bottom:32px">
-    <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${escHtml(m.venue_name || 'Crooked 8')}</div>
+    <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${escHtml(m.venue_name || '')}</div>
     <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">${escHtml(m.venue_address || '')}</div>
   </div>
   <div style="text-align:center;margin-bottom:28px">

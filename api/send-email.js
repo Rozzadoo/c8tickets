@@ -32,8 +32,8 @@ async function sendConfirmation(res, { order, event, venue }) {
   const toEmail = rows[0].buyer_email;
   if (!toEmail) return res.status(200).json({ success: true });
 
-  const venueName = venue?.name || 'Crooked 8';
-  const venueAddress = venue?.location || '1882 E King Rd, Kuna, ID 83634';
+  const venueName = venue?.name || '';
+  const venueAddress = venue?.location || '';
 
   const itemsHtml = (order.items || []).map(i => `
     <tr>
@@ -119,7 +119,7 @@ async function sendConfirmation(res, { order, event, venue }) {
 
 async function sendCancellation(res, { order, event, venue }) {
   if (!order?.buyer?.email) return res.status(400).json({ error: 'Missing buyer email' });
-  const venueName = venue?.name || 'Crooked 8';
+  const venueName = venue?.name || '';
   const venueAddress = venue?.location || '';
   const itemsHtml = (order.items || []).map(i => `
     <tr>
@@ -248,8 +248,8 @@ async function sendReminder(res, { eventId }) {
 <body style="margin:0;padding:0;background:#0c0a07;font-family:'Helvetica Neue',Arial,sans-serif">
 <div style="max-width:520px;margin:0 auto;padding:40px 20px">
   <div style="text-align:center;margin-bottom:32px">
-    <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">Crooked 8</div>
-    <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">1882 E King Rd, Kuna, ID 83634</div>
+    <div style="font-size:28px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:3px">${escHtml(ev.venue_name || '')}</div>
+    <div style="font-size:12px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:4px">C8Tickets</div>
   </div>
   <div style="text-align:center;margin-bottom:28px">
     <div style="font-size:24px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:2px">Your Event is Coming Up</div>
@@ -262,7 +262,7 @@ async function sendReminder(res, { eventId }) {
       📅 <strong style="color:#f0e9da">${escHtml(dateStr)}</strong><br>
       🕐 <strong style="color:#f0e9da">${escHtml(timeStr)}</strong><br>
       ${doorsStr ? `🚪 Doors <strong style="color:#f0e9da">${escHtml(doorsStr)}</strong><br>` : ''}
-      📍 <strong style="color:#f0e9da">Crooked 8</strong> — 1882 E King Rd, Kuna, ID 83634
+      📍 <strong style="color:#f0e9da">${escHtml(ev.venue_name || '')}</strong>
     </div>
   </div>
   <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
