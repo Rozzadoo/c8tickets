@@ -518,7 +518,15 @@ const GateView = ({ events, onLogout }) => {
   const doCheckin = async () => {
     const now = new Date().toISOString();
     if (result.ticket) {
-      await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: now }).eq('id', result.ticket.id);
+      const { data: updated } = await supabase.from('tickets')
+        .update({ status: 'checked_in', checked_in_at: now })
+        .eq('id', result.ticket.id)
+        .eq('status', 'valid')
+        .select('id');
+      if (!updated || updated.length === 0) {
+        setResult({ ...result, alreadyIn: true, done: false });
+        return;
+      }
     } else {
       // Legacy order-level (no individual ticket rows)
       await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
@@ -529,14 +537,20 @@ const GateView = ({ events, onLogout }) => {
   const doGroupCheckin = async (count) => {
     const now = new Date().toISOString();
     const toCheckin = result.orderTickets.filter(t => t.status !== 'checked_in' && t.status !== 'cancelled').slice(0, count);
+    let actualCheckedIn = 0;
     for (const t of toCheckin) {
-      await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: now }).eq('id', t.id);
+      const { data: updated } = await supabase.from('tickets')
+        .update({ status: 'checked_in', checked_in_at: now })
+        .eq('id', t.id)
+        .eq('status', 'valid')
+        .select('id');
+      if (updated && updated.length > 0) actualCheckedIn++;
     }
-    if (result.uncheckedCount - count <= 0) {
+    if (result.uncheckedCount - actualCheckedIn <= 0) {
       await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
     }
     setGroupConfirm(false);
-    setResult({ ...result, alreadyIn: false, done: true, checkedInCount: count });
+    setResult({ ...result, alreadyIn: false, done: true, checkedInCount: actualCheckedIn });
   };
 
   const upcomingEvents = events.filter(e => e.isPublished);
@@ -2029,7 +2043,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       const order = orders.find(o => o.id === ticket.order_id);
       if (ticket.status === 'cancelled' || order?.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
       if (ticket.status === 'checked_in') { setScanMsg({ ok: false, text: `Ticket ${ticket.ticket_number} (${ticket.ticket_type_name}) already checked in.` }); return; }
-      await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: new Date().toISOString() }).eq('id', ticket.id);
+      await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: new Date().toISOString() }).eq('id', ticket.id).eq('status', 'valid');
       setExpandedTickets(prev => ({ ...prev, [ticket.order_id]: (prev[ticket.order_id] || []).map(t => t.id === ticket.id ? { ...t, status: 'checked_in' } : t) }));
       setScanMsg({ ok: true, text: `✓ Ticket ${ticket.ticket_number} — ${ticket.ticket_type_name} — checked in!` });
       setTimeout(() => setScanMsg(null), 4000);
@@ -3037,7 +3051,7 @@ fetch(API_BASE+'/api/send-email', {
                       <span style={{fontSize:12,flex:1,color:"var(--text2)"}}>#{t.ticket_number} — {t.ticket_type_name}</span>
                       <span className={`badge ${t.status==='checked_in'?'badge-done':'badge-ok'}`} style={{fontSize:10}}>{t.status==='checked_in'?'In':'Valid'}</span>
                       <button className={`ci-btn ${t.status==='checked_in'?"dn":""}`} style={{fontSize:11,padding:"4px 10px"}} disabled={t.status==='checked_in'} onClick={async()=>{
-                        await supabase.from('tickets').update({status:'checked_in',checked_in_at:new Date().toISOString()}).eq('id',t.id);
+                        await supabase.from('tickets').update({status:'checked_in',checked_in_at:new Date().toISOString()}).eq('id',t.id).eq('status','valid');
                         setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'checked_in'}:x)}));
                       }}>{t.status==='checked_in'?'Done':'Check In'}</button>
                     </div>)}

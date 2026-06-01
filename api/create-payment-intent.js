@@ -7,6 +7,16 @@ const PROCESSING_FEE_RATE = 0.035;
 const PROCESSING_FEE_FLAT = 0.30;
 const SALES_TAX_RATE = 0.06; // Idaho state sales tax - confirm with accountant
 
+const intentLog = new Map();
+function isRateLimited(key, maxPerHour) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const recent = (intentLog.get(key) || []).filter(t => now - t < windowMs);
+  if (recent.length >= maxPerHour) return true;
+  intentLog.set(key, [...recent, now]);
+  return false;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -14,6 +24,15 @@ export default async function handler(req, res) {
 
   try {
     const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta, promoCode } = req.body;
+
+    // Rate limit online purchases — door sales are admin-initiated, no limit needed
+    if (!isDoorSale) {
+      const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 'unknown';
+      const email = (buyer?.email || '').toLowerCase().trim();
+      if (isRateLimited(`ip:${ip}`, 10) || (email && isRateLimited(`email:${email}`, 5))) {
+        return res.status(429).json({ error: 'Too many requests. Please wait a few minutes and try again.' });
+      }
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Invalid items' });
@@ -65,6 +84,20 @@ export default async function handler(req, res) {
       ticketTotal += item.qty * unitPrice;
       totalTickets += item.qty;
       resolvedItems.push({ ticketTypeId: item.ticketTypeId, type: row.name, qty: item.qty, price: unitPrice });
+    }
+
+    // Per-email purchase limit: max 3 orders per email per event in a rolling 24h window (online only)
+    if (!isDoorSale && buyer?.email && eventId) {
+      const email = buyer.email.toLowerCase().trim();
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const chkRes = await fetch(
+        `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?buyer_email=eq.${encodeURIComponent(email)}&event_id=eq.${eventId}&status=neq.cancelled&created_at=gte.${encodeURIComponent(since)}&select=id&limit=4`,
+        { headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` } }
+      );
+      const existing = await chkRes.json();
+      if (Array.isArray(existing) && existing.length >= 3) {
+        return res.status(400).json({ error: 'Maximum of 3 orders per person per event. Contact the venue if you need more tickets.' });
+      }
     }
 
     // Validate and apply promo code if provided

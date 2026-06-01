@@ -6,6 +6,16 @@ const supaHeaders = () => {
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 };
 
+const promoLog = new Map();
+function isRateLimited(key, maxPerHour) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const recent = (promoLog.get(key) || []).filter(t => now - t < windowMs);
+  if (recent.length >= maxPerHour) return true;
+  promoLog.set(key, [...recent, now]);
+  return false;
+}
+
 async function requireAdmin(req, res) {
   const token = (req.headers.authorization || '').startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
   if (!token) { res.status(401).json({ error: 'Unauthorized' }); return false; }
@@ -19,6 +29,10 @@ async function requireAdmin(req, res) {
 async function handleValidate(req, res) {
   const { code, eventId, tenantId } = req.body;
   if (!code || !tenantId) return res.status(400).json({ error: 'Missing fields' });
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || 'unknown';
+  if (isRateLimited(`promo:${ip}`, 20)) {
+    return res.status(400).json({ error: 'Invalid promo code' });
+  }
 
   const normalized = code.trim().toUpperCase();
   const filter = `code=eq.${encodeURIComponent(normalized)}&tenant_id=eq.${tenantId}&active=eq.true&select=*&limit=1`;
