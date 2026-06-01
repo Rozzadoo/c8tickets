@@ -359,6 +359,7 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .badge-done{background:rgba(255,255,255,.05);color:var(--text3);border:1px solid rgba(255,255,255,.08)}
 .badge-sold{background:rgba(179,58,42,.15);color:var(--red);border:1px solid rgba(179,58,42,.3)}
 .badge-cancelled{background:rgba(255,255,255,.04);color:var(--text3);border:1px solid rgba(255,255,255,.08);text-decoration:line-through}
+.badge-warn{background:rgba(200,146,42,.15);color:var(--gold);border:1px solid rgba(200,146,42,.3)}
 .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;background:rgba(200,146,42,.15);color:var(--gold)}
 
 .admin{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 61px)}
@@ -745,6 +746,8 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [cashAmounts, setCashAmounts] = useState(null);
   const [tendered, setTendered] = useState('');
   const [lastSale, setLastSale] = useState(null);
+  const [voidConfirm, setVoidConfirm] = useState(false);
+  const [voiding, setVoiding] = useState(false);
   const [isPreSale, setIsPreSale] = useState(false);
   const [loadingIntent, setLoadingIntent] = useState(false);
   // Terminal reader state
@@ -1024,7 +1027,28 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     setStep('confirm');
   };
 
-  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); setIsPreSale(false); };
+  const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); setIsPreSale(false); setVoidConfirm(false); };
+
+  const handleVoidSale = async () => {
+    if (!lastSale) return;
+    setVoiding(true);
+    try {
+      await supabase.from('orders').update({ status: 'cancelled' }).eq('id', lastSale.id);
+      for (const item of lastSale.items) {
+        if (item.ticketTypeId) await supabase.rpc('decrement_sold', { tid: item.ticketTypeId, qty: item.qty });
+      }
+      updateOrders(prev => prev.map(o => o.id === lastSale.id ? { ...o, status: 'cancelled', checkedIn: false } : o));
+      updateEvents(evts => evts.map(e => e.id !== lastSale.eventId ? e : ({
+        ...e, tickets: e.tickets.map(t => {
+          const item = lastSale.items.find(i => i.ticketTypeId === t.id);
+          return item ? { ...t, available: t.available + item.qty } : t;
+        })
+      })));
+      reset();
+    } finally {
+      setVoiding(false);
+    }
+  };
 
   return (
     <div>
@@ -1087,7 +1111,10 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <div style={{marginTop:18,padding:'12px 16px',background:'var(--surface2)',borderRadius:'var(--rs)',fontSize:13}}>
             {connectedReader ? (
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-                <span style={{color:'var(--green)',fontWeight:600}}>Reader: {connectedReader.label || connectedReader.serial_number}</span>
+                <span style={{color:'var(--green)',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{width:8,height:8,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 0 3px rgba(93,138,60,.25)',flexShrink:0,display:'inline-block'}}/>
+                  {connectedReader.label || connectedReader.serial_number}
+                </span>
                 <button className="btn" style={{padding:'4px 10px',fontSize:12}} onClick={disconnectReader}>Disconnect</button>
               </div>
             ) : (
@@ -1200,6 +1227,25 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <p style={{fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:4}}>📱 Scan to save your tickets</p>
           <p style={{fontSize:12,color:'var(--text3)',marginBottom:24}}>Point your phone camera at this code</p>
           <button className="buy" style={{maxWidth:260,margin:'0 auto',display:'block'}} onClick={reset}>+ New Sale</button>
+          {!voidConfirm && (
+            <button className="btn" style={{maxWidth:260,margin:'8px auto 0',display:'block',color:'var(--text3)',fontSize:12}} onClick={()=>setVoidConfirm(true)}>
+              Void this sale
+            </button>
+          )}
+          {voidConfirm && (
+            <div style={{marginTop:16,padding:'12px 16px',background:'rgba(179,58,42,.12)',border:'1px solid rgba(179,58,42,.3)',borderRadius:'var(--rs)',textAlign:'left'}}>
+              <p style={{fontSize:13,color:'var(--red)',fontWeight:600,marginBottom:8}}>Void this sale?</p>
+              <p style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>
+                {lastSale.stripePaymentIntentId && !lastSale.stripePaymentIntentId.startsWith('CASH-')
+                  ? 'The order will be cancelled and inventory restored. You must process the card refund manually in Stripe.'
+                  : 'The order will be cancelled and inventory restored. No refund is needed for cash sales.'}
+              </p>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn" style={{flex:1,fontSize:12,color:'var(--red)',borderColor:'var(--red)'}} disabled={voiding} onClick={handleVoidSale}>{voiding?'Voiding…':'Yes, Void Sale'}</button>
+                <button className="btn" style={{flex:1,fontSize:12}} onClick={()=>setVoidConfirm(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1316,8 +1362,8 @@ export default function App() {
   const [reportFilter, setReportFilter] = useState('month');
   const [reportCustomStart, setReportCustomStart] = useState('');
   const [reportCustomEnd, setReportCustomEnd] = useState('');
-  const [holdbackPct, setHoldbackPct] = useState(10);
-  const [platformFeePct, setPlatformFeePct] = useState(2.5);
+  const [holdbackPct, setHoldbackPct] = useState(() => Number(localStorage.getItem('c8_holdbackPct') ?? 10) || 10);
+  const [platformFeePct, setPlatformFeePct] = useState(() => Number(localStorage.getItem('c8_platformFeePct') ?? 2.5) || 2.5);
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
   const [filter, setFilter] = useState("All");
   const [venueFilter, setVenueFilter] = useState('All');
@@ -1360,6 +1406,7 @@ const [resetError, setResetError] = useState('');
   const [editEmailSaving, setEditEmailSaving] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [resentOrderId, setResentOrderId] = useState(null);
   const [ticketOrderId, setTicketOrderId] = useState(null);
   const [ticketPageData, setTicketPageData] = useState(null);
   const [ticketPageLoading, setTicketPageLoading] = useState(false);
@@ -1422,32 +1469,35 @@ const [resetError, setResetError] = useState('');
     return () => { evts.forEach(e => window.removeEventListener(e, stamp)); clearInterval(timer); };
   }, [session]);
 
+  useEffect(() => { localStorage.setItem('c8_holdbackPct', String(holdbackPct)); }, [holdbackPct]);
+  useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
+
+  const reloadOrders = useCallback(async () => {
+    const { data, error } = await supabase.from('orders').select('*, order_items(*)');
+    if (error) { console.error(error); return; }
+    setOrders((data || []).map(o => ({
+      id: o.id,
+      eventId: o.event_id,
+      venueId: o.tenant_id,
+      buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
+      items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price), ticketTypeId: i.ticket_type_id })),
+      total: Number(o.total_amount),
+      ticketSubtotal: o.ticket_subtotal != null ? Number(o.ticket_subtotal) : null,
+      salesTax: o.sales_tax != null ? Number(o.sales_tax) : null,
+      serviceFees: o.service_fees != null ? Number(o.service_fees) : null,
+      processingFee: o.processing_fee != null ? Number(o.processing_fee) : null,
+      date: o.created_at,
+      status: o.status,
+      checkedIn: o.status === 'checked_in',
+      stripePaymentIntentId: o.stripe_payment_intent_id || null,
+      source: o.source || 'online',
+    })));
+  }, []);
+
   useEffect(() => {
     if (!session) { setOrders([]); return; }
-    supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .then(({ data, error }) => {
-        if (error) { console.error(error); return; }
-        setOrders((data || []).map(o => ({
-          id: o.id,
-          eventId: o.event_id,
-          venueId: o.tenant_id,
-          buyer: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone || "" },
-          items: (o.order_items || []).map(i => ({ type: i.ticket_type_name, qty: i.quantity, price: Number(i.unit_price), ticketTypeId: i.ticket_type_id })),
-          total: Number(o.total_amount),
-          ticketSubtotal: o.ticket_subtotal != null ? Number(o.ticket_subtotal) : null,
-          salesTax: o.sales_tax != null ? Number(o.sales_tax) : null,
-          serviceFees: o.service_fees != null ? Number(o.service_fees) : null,
-          processingFee: o.processing_fee != null ? Number(o.processing_fee) : null,
-          date: o.created_at,
-          status: o.status,
-          checkedIn: o.status === 'checked_in',
-          stripePaymentIntentId: o.stripe_payment_intent_id || null,
-          source: o.source || 'online',
-        })));
-      });
-  }, [session]);
+    reloadOrders();
+  }, [session, reloadOrders]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -1636,7 +1686,8 @@ const resendEmail = async (o) => {
       venue: { name: venue.name, location: venue.location },
     }),
   });
-  alert(res.ok ? `Confirmation resent to ${o.buyer.email}` : 'Failed to send — check the email address and try again.');
+  if (res.ok) { setResentOrderId(o.id); setTimeout(() => setResentOrderId(id => id === o.id ? null : id), 4000); }
+  else alert('Failed to send — check the email address and try again.');
 };
 
 const updateOrderEmail = async () => {
@@ -2265,7 +2316,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                           :<span style={{fontSize:48}}>🎵</span>}
                         <div className="card-cat">{ev.category}</div>
                         {soldOut&&<div style={{position:'absolute',inset:0,background:'rgba(12,10,7,.6)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(1px)'}}><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:22,letterSpacing:5,textTransform:'uppercase',color:'#f0e9da',border:'2px solid rgba(240,233,218,.6)',padding:'6px 20px',borderRadius:4}}>Sold Out</span></div>}
-                        {lowTickets&&<div style={{position:'absolute',bottom:10,left:10,background:'rgba(179,58,42,.92)',backdropFilter:'blur(4px)',padding:'3px 10px',borderRadius:99,fontSize:9,fontWeight:700,color:'#f0e9da',textTransform:'uppercase',letterSpacing:1.5,border:'1px solid rgba(240,120,100,.3)'}}>Selling Fast</div>}
+                        {lowTickets&&<div style={{position:'absolute',bottom:10,left:10,background:'rgba(200,146,42,.97)',backdropFilter:'blur(4px)',padding:'3px 10px',borderRadius:99,fontSize:9,fontWeight:700,color:'#0c0a07',textTransform:'uppercase',letterSpacing:1.5,border:'1px solid rgba(255,200,80,.4)',boxShadow:'0 1px 4px rgba(0,0,0,.4)'}}>Selling Fast</div>}
                       </div>
                       <div className="card-body">
                         <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
@@ -2312,7 +2363,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <div className="d-meta">
   <span>📅 <strong>{fmtDate(sel.date)}</strong></span>
   <span>🕐 <strong>{fmtTime(sel.time)}</strong></span>
-  <span>🚪 Doors <strong>{fmtTime(sel.doors)}</strong></span>
+  {sel.doors && <span>🚪 Doors <strong>{fmtTime(sel.doors)}</strong></span>}
   <span>📍 <strong><button style={{background:'none',border:'none',padding:0,color:'var(--gold)',cursor:'pointer',fontWeight:700,fontSize:'inherit'}} onClick={()=>{setVenueProfileId(selVenue.id);setView('venue');window.history.pushState({},'',(selVenue.slug&&selVenue.slug!==selVenue.id)?`/v/${selVenue.slug}`:`/v/${selVenue.id}`);}}>{selVenue.name}</button></strong> — {selVenue.location}</span>
   {selVenue.phone && <span>📞 <strong>{selVenue.phone}</strong></span>}
   {selVenue.email && <span>✉️ <a href={`mailto:${selVenue.email}`} style={{color:"var(--gold)"}}>{selVenue.email}</a></span>}
@@ -2342,7 +2393,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <div className="fg"><label className="fl" htmlFor="buyer-name">Full Name *</label><input id="buyer-name" className="fi" autoComplete="name" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
           <div className="fr">
             <div className="fg"><label className="fl" htmlFor="buyer-email">Email *</label><input id="buyer-email" className="fi" type="email" autoComplete="email" value={buyer.email} onChange={e => setBuyer({...buyer,email:e.target.value})} placeholder="jane@email.com" />{buyer.email.length > 0 && !emailValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter a valid email.</p>}</div>
-            <div className="fg"><label className="fl" htmlFor="buyer-phone">Phone</label><input id="buyer-phone" className="fi" type="tel" autoComplete="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
+            <div className="fg"><label className="fl" htmlFor="buyer-phone">Phone <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label><input id="buyer-phone" className="fi" type="tel" autoComplete="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
           </div>
         </div>
         {!buyerReady && (
@@ -2387,7 +2438,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                   </div>
                 )}
               </div>
-              {soldOutError && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"12px 14px",marginTop:12,marginBottom:4,color:"var(--red)",fontSize:13}}>Availability changed: {soldOutError}. Your cart has been cleared — please select new quantities.</div>}
+              {soldOutError && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"12px 14px",marginTop:12,marginBottom:4,color:"var(--red)",fontSize:13}}><strong>Tickets no longer available:</strong> {soldOutError}. Please go back and choose different quantities.</div>}
               <button className="buy" style={{ marginTop: 12 }} onClick={createPaymentIntent} disabled={creatingPayment || !!soldOutError}>
                 {creatingPayment ? "Setting up payment..." : `Continue to Payment — ${fmtCurrency(grand)}`}
               </button>
@@ -2585,7 +2636,11 @@ fetch(API_BASE+'/api/send-email', {
                         </div>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,color:"var(--text2)"}}>
                           <span>{order.buyer_name}</span>
-                          <span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Cancelled':'Valid'}</span>
+                          <span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`}>
+                            {t.status==='checked_in'
+                              ? <>Checked In{t.checked_in_at&&<span style={{fontWeight:400,marginLeft:4,opacity:.75}}>{new Date(t.checked_in_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Boise'})}</span>}</>
+                              : t.status==='cancelled'?'Cancelled':'Valid'}
+                          </span>
                         </div>
                         <button className="btn" style={{width:"100%",marginTop:10,fontSize:12}} onClick={shareTicket}>Save / Share Ticket {t.ticket_number}</button>
                       </div>
@@ -2593,7 +2648,7 @@ fetch(API_BASE+'/api/send-email', {
                   })}
                 </div>
                 <div style={{marginBottom:24,padding:"20px 16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
-                  <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>{hasReceipt ? 'Save a copy to your email' : 'Want a copy in your inbox?'}</p>
+                  <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>{hasReceipt ? 'Save a copy to your email' : 'Want another copy in your inbox?'}</p>
                   {ticketResendSent
                     ? <p style={{fontSize:13,color:"var(--gold)",fontWeight:600}}>Sent! Check your inbox.</p>
                     : <div style={{display:"flex",gap:8}}>
@@ -3018,13 +3073,16 @@ fetch(API_BASE+'/api/send-email', {
                   <span style={{fontSize:12,color:"var(--text3)",alignSelf:"center",marginLeft:4}}>{fo.length} order{fo.length!==1?'s':''}</span>
                   {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
               </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'); const ciq=orderSearch.toLowerCase().trim(); const vof=ciq?vo.filter(o=>o.buyer.name.toLowerCase().includes(ciq)||o.buyer.email.toLowerCase().includes(ciq)):vo; return <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:10}}>
                 <h2 className="dsp" style={{fontSize:26}}>Check-In</h2>
-                {!adminScan && <button className="btn gold" onClick={()=>{setAdminScan(true);setScanMsg(null);}}>📷 Scan Ticket</button>}
+                <div style={{display:"flex",gap:8}}>
+                  <button className="btn" style={{fontSize:12,padding:"4px 10px"}} onClick={()=>{ reloadOrders(); setExpandedTickets({}); }}>↻ Refresh</button>
+                  {!adminScan && <button className="btn gold" onClick={()=>{setAdminScan(true);setScanMsg(null);}}>📷 Scan Ticket</button>}
+                </div>
               </div>
               {adminScan && <div style={{marginBottom:16,maxWidth:400}}>
                 <ScannerWidget scannerId="admin-scanner" onResult={handleAdminScan} />
@@ -3068,10 +3126,16 @@ fetch(API_BASE+'/api/send-email', {
                     :tix.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--bg4)"}}>
                       <span style={{fontSize:12,flex:1,color:"var(--text2)"}}>#{t.ticket_number} — {t.ticket_type_name}</span>
                       <span className={`badge ${t.status==='checked_in'?'badge-done':'badge-ok'}`} style={{fontSize:10}}>{t.status==='checked_in'?'In':'Valid'}</span>
-                      <button className={`ci-btn ${t.status==='checked_in'?"dn":""}`} style={{fontSize:11,padding:"4px 10px"}} disabled={t.status==='checked_in'} onClick={async()=>{
-                        await supabase.from('tickets').update({status:'checked_in',checked_in_at:new Date().toISOString()}).eq('id',t.id).eq('status','valid');
-                        setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'checked_in'}:x)}));
-                      }}>{t.status==='checked_in'?'Done':'Check In'}</button>
+                      {t.status==='checked_in'
+                        ? <button className="btn" style={{fontSize:11,padding:"4px 10px",color:'var(--text3)'}} onClick={async()=>{
+                            await supabase.from('tickets').update({status:'valid',checked_in_at:null}).eq('id',t.id);
+                            setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'valid',checked_in_at:null}:x)}));
+                          }}>Undo</button>
+                        : <button className="ci-btn" style={{fontSize:11,padding:"4px 10px"}} onClick={async()=>{
+                            await supabase.from('tickets').update({status:'checked_in',checked_in_at:new Date().toISOString()}).eq('id',t.id).eq('status','valid');
+                            setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'checked_in'}:x)}));
+                          }}>Check In</button>
+                      }
                     </div>)}
                   </div>}
                 </div>;
@@ -3212,7 +3276,7 @@ fetch(API_BASE+'/api/send-email', {
                 rows.push(['Total C8Tickets Revenue',fmt(c8Rev)]);
                 rows.push([]);
                 rows.push(['WEEKLY VENUE PAYOUT']);
-                rows.push(['Week','Orders','Tickets','Ticket Revenue','Service Fees ($2/tkt)',`Platform Fee (${platformFeePct}%)`,'Venue Gross',`Holdback (${holdbackPct}%)`,'Pay to Venue','Your Revenue (Svc + Platform)']);
+                rows.push(['Week','Orders','Tickets','Ticket Revenue','Service Fees ($2/tkt)',`Platform Fee (${platformFeePct}%)`,'Venue Gross',`Holdback (${holdbackPct}%)`,'Pay Venue','Your Revenue (Svc + Platform)']);
                 for(const r of weekRows){
                   const ws=new Date(r.week+'T12:00:00'); const we=new Date(ws); we.setDate(ws.getDate()+6);
                   rows.push([
@@ -3357,6 +3421,7 @@ fetch(API_BASE+'/api/send-email', {
                   :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td></tr>)}</tbody></table></div>
                 }
 
+                {isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:8,color:'var(--text3)',fontSize:13}}>Bookkeeping & payout details are visible to C8Tickets administrators only.</div>}
                 {!isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6,flexWrap:'wrap',gap:10}}>
                     <h3 className="dsp" style={{fontSize:18}}>Bookkeeping & Payouts</h3>
@@ -3368,7 +3433,13 @@ fetch(API_BASE+'/api/send-email', {
                       </select>
                     </div>
                   </div>
-                  <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Fee structure: 6% Idaho sales tax · $2.00/ticket service fee · {platformFeePct}% platform fee · 3.5% + $0.30 processing fee charged to customers (Stripe's actual cost: 2.9% + $0.30 — the 0.6% spread is additional C8Tickets revenue). Cash sales carry no processing fee. All figures are for the selected period.</p>
+                  <ul style={{color:'var(--text3)',fontSize:12,marginBottom:16,paddingLeft:18,lineHeight:1.9}}>
+                    <li>6% Idaho sales tax (remitted to state)</li>
+                    <li>$2.00/ticket service fee (C8Tickets revenue)</li>
+                    <li>{platformFeePct}% platform fee on ticket subtotal (C8Tickets revenue)</li>
+                    <li>3.5% + $0.30 processing fee — charged to customers; Stripe's actual rate is 2.9% + $0.30, the 0.6% spread is additional C8Tickets revenue</li>
+                    <li>Cash sales carry no processing fee · All figures are for the selected period</li>
+                  </ul>
                   <div style={{display:'flex',alignItems:'center',gap:20,marginBottom:20,flexWrap:'wrap'}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <label style={{fontSize:12,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Platform Fee %</label>
@@ -3395,7 +3466,7 @@ fetch(API_BASE+'/api/send-email', {
 
                             <tr><td colSpan={2} style={{paddingTop:16,paddingBottom:2,fontSize:11,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Allocations from Your Account</td></tr>
                             <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Idaho sales tax — remit to state (6%)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(bk.tax)}</td></tr>
-                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Venue payout (after {platformFeePct}% platform fee)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(venuePayNow)}</td></tr>
+                            <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Pay Venue (after {platformFeePct}% platform fee)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>−{fmtCurrency(venuePayNow)}</td></tr>
                             <tr><td style={{paddingLeft:20,color:'var(--text3)',fontSize:13}}>Holdback retained ({holdbackPct}% of venue gross)</td><td style={{textAlign:'right',color:'var(--text3)',fontSize:13}}>+{fmtCurrency(holdbackAmt)}</td></tr>
 
                             <tr style={{borderTop:'1px solid var(--border)'}}><td style={{fontWeight:700}}>C8Tickets Revenue</td><td style={{textAlign:'right',fontWeight:700,color:'var(--green)'}}>{fmtCurrency(c8Rev)}</td></tr>
@@ -3478,7 +3549,7 @@ fetch(API_BASE+'/api/send-email', {
                 <h3 className="dsp" style={{fontSize:16,marginBottom:14}}>Create New Code</h3>
                 <div className="fr">
                   <div className="fg"><label className="fl">Code</label><input className="fi" style={{textTransform:'uppercase',letterSpacing:1}} value={promoForm.code} onChange={e=>setPromoForm({...promoForm,code:e.target.value.toUpperCase().replace(/\s/g,'')})} placeholder="SUMMER20" /></div>
-                  <div className="fg"><label className="fl">Type</label><select className="fi" value={promoForm.discountType} onChange={e=>setPromoForm({...promoForm,discountType:e.target.value})}><option value="percent">% Off</option><option value="flat">$ Off</option></select></div>
+                  <div className="fg"><label className="fl">Type</label><select className="fi" value={promoForm.discountType} onChange={e=>setPromoForm({...promoForm,discountType:e.target.value,discountValue:''})}><option value="percent">% Off</option><option value="flat">$ Off</option></select></div>
                   <div className="fg"><label className="fl">{promoForm.discountType==='percent'?'Percent':'Amount ($)'}</label><input className="fi" type="number" min="0" step={promoForm.discountType==='percent'?'1':'0.01'} value={promoForm.discountValue} onChange={e=>setPromoForm({...promoForm,discountValue:e.target.value})} placeholder={promoForm.discountType==='percent'?'20':'5.00'} /></div>
                 </div>
                 <div className="fr">
@@ -3509,12 +3580,15 @@ fetch(API_BASE+'/api/send-email', {
                         return [
                           <tr key={p.id}>
                             <td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={togglePromoExp}>{isExp?'▲':'▼'}</button></td>
-                            <td style={{fontFamily:'monospace',fontWeight:700,letterSpacing:1}}>{p.code}</td>
+                            <td style={{fontFamily:'monospace',fontWeight:700,letterSpacing:1}}>
+                              {p.code}
+                              <button style={{marginLeft:6,background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'0 2px'}} title="Copy code" onClick={()=>navigator.clipboard.writeText(p.code)}>⧉</button>
+                            </td>
                             <td>{p.discount_type==='percent'?`${p.discount_value}% off`:`$${Number(p.discount_value).toFixed(2)} off`}</td>
                             <td>{p.uses_count}{p.max_uses!==null?` / ${p.max_uses}`:''}</td>
                             <td style={{fontSize:12}}>{ev?ev.title:'All Events'}</td>
                             <td style={{fontSize:12}}>{p.expires_at?new Date(p.expires_at).toLocaleDateString():'-'}</td>
-                            <td><span className={`badge ${p.active&&!expired&&!maxed?'badge-ok':'badge-cancelled'}`}>{expired?'Expired':maxed?'Maxed':p.active?'Active':'Inactive'}</span></td>
+                            <td><span className={`badge ${p.active&&!expired&&!maxed?'badge-ok':expired||!p.active?'badge-cancelled':maxed?'badge-warn':'badge-cancelled'}`}>{expired?'Expired':maxed?'Maxed Out':p.active?'Active':'Inactive'}</span></td>
                             <td style={{display:'flex',gap:4}}>
                               <button className="btn" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>togglePromo(p.id,!p.active)}>{p.active?'Disable':'Enable'}</button>
                               <button className="btn" style={{fontSize:11,padding:'4px 8px',color:'var(--red)'}} onClick={()=>deletePromo(p.id)}>Delete</button>
@@ -3613,8 +3687,8 @@ fetch(API_BASE+'/api/send-email', {
                 <div className="fg">
                   <label className="fl" htmlFor="vu-role">Role</label>
                   <select id="vu-role" className="fi" value={venueUserForm.role} onChange={e=>setVenueUserForm(p=>({...p,role:e.target.value}))}>
-                    <option value="venue">Venue Admin — full access for their venue</option>
-                    <option value="gate">Gate / Door — check-in scanner only</option>
+                    <option value="venue">Venue Admin — orders, events &amp; reports; no C8Tickets fee data</option>
+                    <option value="gate">Gate / Door — scanner only; no orders, revenue, or event management</option>
                   </select>
                 </div>
                 {venueUserError && <p style={{fontSize:12,color:'var(--red)',marginBottom:12}}>{venueUserError}</p>}
