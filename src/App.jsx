@@ -456,6 +456,14 @@ const GateView = ({ events, onLogout }) => {
   const [groupConfirm, setGroupConfirm] = useState(false);
   const [groupCount, setGroupCount] = useState(1);
 
+  useEffect(() => {
+    if (selGateEventId || events.length === 0) return;
+    const upcoming = [...events].filter(e => e.published !== false)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .find(e => new Date(e.date) >= new Date(Date.now() - 86400000));
+    if (upcoming) setSelGateEventId(upcoming.id);
+  }, [events, selGateEventId]);
+
   const next = () => { setResult(null); setGroupConfirm(false); setGroupCount(1); setScanning(true); };
 
   // Auto-advance to next scan 2 seconds after a successful check-in
@@ -746,6 +754,13 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [readerError, setReaderError] = useState('');
   const [terminalPaymentStatus, setTerminalPaymentStatus] = useState('idle');
   const [terminalAmounts, setTerminalAmounts] = useState(null);
+
+  useEffect(() => {
+    if (selEventId || events.length === 0) return;
+    const upcoming = [...events].sort((a, b) => new Date(a.date) - new Date(b.date))
+      .find(e => new Date(e.date) >= new Date(Date.now() - 86400000));
+    setSelEventId(upcoming?.id || events[0]?.id || '');
+  }, [events, selEventId]);
 
   const ev = events.find(e => e.id === selEventId);
   const cartItems = ev ? ev.tickets.map((t, i) => ({ ...t, qty: doorCart[i] || 0, effectivePrice: t.doorPrice ?? t.price })) : [];
@@ -1120,7 +1135,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
               ? <div style={{padding:'10px 14px',borderRadius:'var(--rs)',background:'rgba(179,58,42,.15)',color:'var(--red)',fontWeight:700,fontSize:14,marginBottom:12}}>Short by {fmtCurrency(Math.abs(change))}</div>
               : <div style={{padding:'10px 14px',borderRadius:'var(--rs)',background:'rgba(93,138,60,.15)',color:'var(--green)',fontWeight:700,fontSize:22,marginBottom:12,textAlign:'center'}}>Change: {fmtCurrency(change)}</div>;
           })()}
-          <button className="buy" style={{background:'var(--green)',borderColor:'var(--green)',marginBottom:8}} disabled={tendered!==''&&parseFloat(tendered)<cashAmounts.grandTotal} onClick={handleCashSale}>
+          <button className="buy" style={{background:'var(--green)',borderColor:'var(--green)',marginBottom:8}} disabled={tendered===''||parseFloat(tendered)<cashAmounts.grandTotal} onClick={handleCashSale}>
             ✓ Cash Collected — Complete Sale
           </button>
           <button className="btn" style={{width:'100%'}} onClick={()=>setStep('select')}>← Back</button>
