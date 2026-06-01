@@ -64,18 +64,32 @@ export default async function handler(req, res) {
     const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     const headers = { apikey: supaKey, Authorization: `Bearer ${supaKey}`, 'Content-Type': 'application/json' };
 
-    // Idempotency: if the browser already created the order, do nothing
+    // Parse items early — needed for both the recovery path and the main path
+    let items = [];
+    try { items = JSON.parse(m.items_json || '[]'); } catch {}
+
+    // Idempotency: check if an order already exists for this payment intent
     const checkRes = await fetch(
-      `${supaUrl}/rest/v1/orders?stripe_payment_intent_id=eq.${encodeURIComponent(pi.id)}&select=id`,
+      `${supaUrl}/rest/v1/orders?stripe_payment_intent_id=eq.${encodeURIComponent(pi.id)}&select=id,order_items(id)`,
       { headers }
     );
     const existing = await checkRes.json();
     if (Array.isArray(existing) && existing.length > 0) {
-      return res.status(200).json({ received: true, skipped: 'order_already_exists' });
+      const existingOrder = existing[0];
+      if (existingOrder.order_items?.length > 0) {
+        // Fully fulfilled — nothing to do
+        return res.status(200).json({ received: true, skipped: 'order_already_exists' });
+      }
+      // Order was created but fulfillment failed on a previous attempt — recover
+      if (items.length > 0) {
+        await fetch(`${supaUrl}/rest/v1/rpc/fulfill_order`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ p_order_id: existingOrder.id, p_items: items, p_event_id: m.event_id, p_tenant_id: m.tenant_id }),
+        });
+      }
+      return res.status(200).json({ received: true, recovered: 'fulfilled_existing_order' });
     }
-
-    let items = [];
-    try { items = JSON.parse(m.items_json || '[]'); } catch {}
 
     // Create the order
     const salesTax = Number(m.sales_tax || 0);
@@ -109,40 +123,18 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Order creation failed' });
     }
 
-    // Create order_items and increment sold counts
+    // Atomically create order_items, increment sold counts, and generate tickets
     if (items.length > 0) {
-      await fetch(`${supaUrl}/rest/v1/order_items`, {
+      const fulfillRes = await fetch(`${supaUrl}/rest/v1/rpc/fulfill_order`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(items.map(i => ({
-          order_id: order.id,
-          ticket_type_id: i.ticketTypeId,
-          ticket_type_name: i.type,
-          quantity: i.qty,
-          unit_price: i.price,
-        }))),
+        body: JSON.stringify({ p_order_id: order.id, p_items: items, p_event_id: m.event_id, p_tenant_id: m.tenant_id }),
       });
-      for (const item of items) {
-        await fetch(`${supaUrl}/rest/v1/rpc/increment_sold`, {
-          method: 'POST', headers,
-          body: JSON.stringify({ tid: item.ticketTypeId, qty: item.qty }),
-        });
+      if (!fulfillRes.ok) {
+        const err = await fulfillRes.text();
+        console.error('Webhook: fulfill_order failed for order', order.id, err);
+        return res.status(500).json({ error: 'Order fulfillment failed' });
       }
-    }
-
-    // Generate individual tickets
-    if (items.length > 0) {
-      const ticketRows = [];
-      let num = 1;
-      for (const item of items) {
-        for (let i = 0; i < item.qty; i++) {
-          ticketRows.push({ order_id: order.id, ticket_type_name: item.type, ticket_number: num++, event_id: m.event_id, tenant_id: m.tenant_id, status: 'valid' });
-        }
-      }
-      await fetch(`${supaUrl}/rest/v1/tickets`, {
-        method: 'POST', headers,
-        body: JSON.stringify(ticketRows),
-      });
     }
 
     // Tag the PI with the order ID
