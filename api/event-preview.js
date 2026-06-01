@@ -1,6 +1,11 @@
+import fs from 'fs';
+import path from 'path';
+
 const BOT_RE = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|facebookexternalhit|twitterbot|linkedinbot|whatsapp|slackbot|telegrambot|applebot|rogerbot|semrushbot|ahrefsbot|mj12bot/i;
 
 export default async function handler(req, res) {
+  if (req.query.page === 'sell') return handleSellPage(req, res);
+
   const id = req.query.id;
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
     return res.redirect(302, '/');
@@ -49,7 +54,7 @@ export default async function handler(req, res) {
     : '';
 
   const metaDescription = date
-    ? `${date} at Crooked 8 in Kuna, ID. ${description}`
+    ? `${date} in Kuna, ID. ${description}`
     : description;
 
   const tickets = Array.isArray(event.ticket_types) ? event.ticket_types : [];
@@ -135,4 +140,68 @@ function escHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function handleSellPage(req, res) {
+  const isBot = BOT_RE.test(req.headers['user-agent'] || '');
+
+  if (!isBot) {
+    const indexPath = path.join(process.cwd(), 'dist', 'index.html');
+    const html = fs.readFileSync(indexPath, 'utf8');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(html);
+  }
+
+  const canonical = 'https://c8tickets.com/sell';
+  const title = 'Sell Event Tickets Online — Idaho & Treasure Valley | C8Tickets';
+  const description = 'Affordable online and door-sale ticketing for local venues and event organizers in Idaho\'s Treasure Valley. Online presales, card reader support, QR code check-in, and fast payouts.';
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    name: 'C8Tickets Venue Ticketing',
+    url: canonical,
+    description,
+    provider: {
+      '@type': 'Organization',
+      name: 'C8Tickets',
+      url: 'https://c8tickets.com',
+    },
+    areaServed: { '@type': 'State', name: 'Idaho' },
+    serviceType: 'Event Ticketing',
+    offers: {
+      '@type': 'Offer',
+      description: 'Low per-ticket service fees. No monthly subscriptions. Works for any venue or event type.',
+      url: canonical,
+    },
+  };
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
+  return res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${title}</title>
+<meta name="description" content="${escHtml(description)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${canonical}">
+<meta property="og:title" content="${escHtml(title)}">
+<meta property="og:description" content="${escHtml(description)}">
+<meta property="og:site_name" content="C8Tickets">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escHtml(title)}">
+<meta name="twitter:description" content="${escHtml(description)}">
+<link rel="canonical" href="${canonical}">
+<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+</head>
+<body style="margin:0;background:#0c0a07;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;color:#f0e9da">
+<div style="max-width:600px;padding:2rem;text-align:center">
+  <h1 style="color:#c8922a">Sell Event Tickets with C8Tickets</h1>
+  <p>${escHtml(description)}</p>
+  <p>Serving venues and organizers in Boise, Kuna, Nampa, Meridian, and across Idaho's Treasure Valley.</p>
+  <p><a href="/" style="color:#c8922a">Browse upcoming events →</a></p>
+</div>
+</body>
+</html>`);
 }
