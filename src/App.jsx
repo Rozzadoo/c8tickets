@@ -2555,38 +2555,6 @@ fetch(API_BASE+'/api/send-email', {
               return <>
                 <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>{evTitle}{evDate ? ` — ${evDate}` : ''}</p>
                 {order.status === 'cancelled' && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,color:"var(--red)",fontSize:13,fontWeight:600}}>This order has been cancelled and refunded.</div>}
-                {hasReceipt && (
-                  <div style={{marginBottom:20,padding:"16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
-                    <p style={{fontSize:12,fontWeight:700,color:"var(--gold)",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Purchase Receipt</p>
-                    <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      {(order.order_items||[]).map((i,idx) => <tr key={idx}>
-                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</td>
-                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)",textAlign:"right"}}>{fmtCurrency(i.quantity*Number(i.unit_price))}</td>
-                      </tr>)}
-                      <tr><td colSpan={2} style={{padding:"8px 0 4px",borderTop:"1px solid var(--border)"}}></td></tr>
-                      <tr><td style={{fontSize:12,color:"var(--text3)"}}>Sales Tax (6%)</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.sales_tax)}</td></tr>
-                      <tr><td style={{fontSize:12,color:"var(--text3)"}}>Service Fees</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.service_fees)}</td></tr>
-                      {order.processing_fee > 0 && <tr><td style={{fontSize:12,color:"var(--text3)"}}>Processing Fee</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.processing_fee)}</td></tr>}
-                      <tr><td style={{padding:"8px 0 0",fontWeight:700,fontSize:14,color:"var(--text)"}}>Total Paid</td><td style={{padding:"8px 0 0",fontWeight:700,fontSize:14,color:"var(--gold)",textAlign:"right"}}>{fmtCurrency(order.total_amount)}</td></tr>
-                    </table>
-                  </div>
-                )}
-                {!ticketFilterId && order.status !== 'cancelled' && <div style={{marginBottom:16,display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <button className="btn" style={{flex:1}} onClick={() => window.print()}>Print All</button>
-                  <button className="btn" style={{flex:1}} onClick={shareAll}>Share All Tickets</button>
-                  {ev && <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>}
-                  {ev && <button className="btn" style={{flex:1}} onClick={() => downloadIcs(ev, venue.location)}>Download .ics</button>}
-                </div>}
-                <div style={{marginBottom:24,padding:"20px 16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
-                  <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>Want a copy in your inbox?</p>
-                  {ticketResendSent
-                    ? <p style={{fontSize:13,color:"var(--gold)",fontWeight:600}}>Sent! Check your inbox.</p>
-                    : <div style={{display:"flex",gap:8}}>
-                        <input className="fi" type="email" placeholder="your@email.com" value={ticketResendEmail} onChange={e=>setTicketResendEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendTicketResend()} style={{flex:1,padding:"8px 10px",fontSize:13}} />
-                        <button className="btn" onClick={sendTicketResend} disabled={ticketResendSending||!ticketResendEmail} style={{flexShrink:0}}>{ticketResendSending?"Sending…":"Email Me"}</button>
-                      </div>
-                  }
-                </div>
                 <div id="ticket-print-area">
                   {displayTickets.map((t, idx) => {
                     const shareTicket = async () => {
@@ -2624,6 +2592,38 @@ fetch(API_BASE+'/api/send-email', {
                     );
                   })}
                 </div>
+                <div style={{marginBottom:24,padding:"20px 16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                  <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>{hasReceipt ? 'Save a copy to your email' : 'Want a copy in your inbox?'}</p>
+                  {ticketResendSent
+                    ? <p style={{fontSize:13,color:"var(--gold)",fontWeight:600}}>Sent! Check your inbox.</p>
+                    : <div style={{display:"flex",gap:8}}>
+                        <input className="fi" type="email" placeholder="your@email.com" value={ticketResendEmail} onChange={e=>setTicketResendEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendTicketResend()} style={{flex:1,padding:"8px 10px",fontSize:13}} />
+                        <button className="btn" onClick={sendTicketResend} disabled={ticketResendSending||!ticketResendEmail} style={{flexShrink:0}}>{ticketResendSending?"Sending…":"Email Me"}</button>
+                      </div>
+                  }
+                </div>
+                {hasReceipt && (
+                  <div style={{marginBottom:20,padding:"16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                    <p style={{fontSize:12,fontWeight:700,color:"var(--gold)",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Purchase Receipt</p>
+                    <table style={{width:"100%",borderCollapse:"collapse"}}>
+                      {(order.order_items||[]).map((i,idx) => <tr key={idx}>
+                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</td>
+                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)",textAlign:"right"}}>{fmtCurrency(i.quantity*Number(i.unit_price))}</td>
+                      </tr>)}
+                      <tr><td colSpan={2} style={{padding:"8px 0 4px",borderTop:"1px solid var(--border)"}}></td></tr>
+                      <tr><td style={{fontSize:12,color:"var(--text3)"}}>Sales Tax (6%)</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.sales_tax)}</td></tr>
+                      <tr><td style={{fontSize:12,color:"var(--text3)"}}>Service Fees</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.service_fees)}</td></tr>
+                      {order.processing_fee > 0 && <tr><td style={{fontSize:12,color:"var(--text3)"}}>Processing Fee</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.processing_fee)}</td></tr>}
+                      <tr><td style={{padding:"8px 0 0",fontWeight:700,fontSize:14,color:"var(--text)"}}>Total Paid</td><td style={{padding:"8px 0 0",fontWeight:700,fontSize:14,color:"var(--gold)",textAlign:"right"}}>{fmtCurrency(order.total_amount)}</td></tr>
+                    </table>
+                  </div>
+                )}
+                {!ticketFilterId && order.status !== 'cancelled' && <div style={{marginBottom:16,display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button className="btn" style={{flex:1}} onClick={() => window.print()}>Print All</button>
+                  <button className="btn" style={{flex:1}} onClick={shareAll}>Share All Tickets</button>
+                  {ev && <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>}
+                  {ev && <button className="btn" style={{flex:1}} onClick={() => downloadIcs(ev, venue.location)}>Download .ics</button>}
+                </div>}
               </>;
             })()}
           </div>
