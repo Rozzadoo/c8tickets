@@ -1597,13 +1597,14 @@ const sendReminder = async (ev) => {
 const resendEmail = async (o) => {
   const ev = events.find(e => e.id === o.eventId);
   if (!o.buyer.email) { alert('No email address on file for this order.'); return; }
+  const { data: { session: adminSession } } = await supabase.auth.getSession();
   const ticketTotal = o.items.reduce((s, i) => s + i.qty * i.price, 0);
   const totalQty = o.items.reduce((s, i) => s + i.qty, 0);
   const salesTax = Math.round(ticketTotal * 0.06 * 100) / 100;
   const serviceFees = totalQty * 2;
   const processingFee = Math.max(0, Math.round((o.total - ticketTotal - salesTax - serviceFees) * 100) / 100);
   const res = await fetch(API_BASE+'/api/send-email', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
     body: JSON.stringify({
       order: { id: o.id, buyer: o.buyer, items: o.items, salesTax, serviceFees, processingFee, total: o.total },
       event: { title: ev?.title || 'Event', category: ev?.category || '', date: fmtDate(ev?.date || ''), time: fmtTime(ev?.time || ''), doors: fmtTime(ev?.doors || '') },
@@ -1884,17 +1885,6 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   const nameValid = buyer.name.trim().length >= 2;
   const buyerReady = nameValid && emailValid;
 
-  const generateTickets = async (orderId, items, eventId, tenantId) => {
-    const rows = [];
-    let num = 1;
-    for (const item of items) {
-      for (let i = 0; i < item.qty; i++) {
-        rows.push({ order_id: orderId, ticket_type_name: item.type, ticket_number: num++, event_id: eventId, tenant_id: tenantId, status: 'valid' });
-      }
-    }
-    const { error } = await supabase.from('tickets').insert(rows);
-    if (error) console.error('Ticket generation error:', error);
-  };
 
   const createPaymentIntent = async () => {
     setCreatingPayment(true);
@@ -2096,7 +2086,13 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       is_published: e.published ?? true,
     }).eq('id', e.id);
     for (const t of e.tickets) {
-      if (t.id) await supabase.from('ticket_types').update({ physical_qty: t.physicalQty ?? 0, door_price: t.doorPrice ?? null }).eq('id', t.id);
+      if (t.id) await supabase.from('ticket_types').update({
+        name: t.type,
+        price: t.price,
+        quantity_total: (t.sold ?? 0) + Math.max(0, t.available),
+        physical_qty: t.physicalQty ?? 0,
+        door_price: t.doorPrice ?? null,
+      }).eq('id', t.id);
     }
     updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
   } else {
@@ -2415,31 +2411,22 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               return;
             }
 
-            const { error: itemsError } = await supabase.from('order_items').insert(
-              items.map(i => ({
-                order_id: order.id,
-                ticket_type_id: i.ticketTypeId,
-                ticket_type_name: i.type,
-                quantity: i.qty,
-                unit_price: i.price,
-              }))
-            );
+            const { error: fulfillError } = await supabase.rpc('fulfill_order', {
+              p_order_id: order.id,
+              p_items: items,
+              p_event_id: sel.id,
+              p_tenant_id: TENANT_ID,
+            });
 
-            if (itemsError) {
-              console.error(itemsError);
+            if (fulfillError) {
+              console.error(fulfillError);
               await supabase.from('orders').delete().eq('id', order.id);
-              alert(`There was a problem saving your order. Your payment was captured — please email support@c8tickets.com with payment reference: ${paymentIntentId}`);
+              const msg = fulfillError.message?.includes('remaining')
+                ? `Sorry, some tickets in your order are no longer available. Your payment was captured — please email support@c8tickets.com with your payment reference: ${paymentIntentId}`
+                : `There was a problem saving your order. Your payment was captured — please email support@c8tickets.com with payment reference: ${paymentIntentId}`;
+              alert(msg);
               return;
             }
-
-            for (const item of items) {
-              const { error: soldError } = await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
-              if (soldError) {
-                console.error('increment_sold failed for order', order.id, soldError);
-              }
-            }
-
-            await generateTickets(order.id, items, sel.id, TENANT_ID);
 
             const localOrder = {
               id: order.id, eventId: sel.id, venueId: venue.id,

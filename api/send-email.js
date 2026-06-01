@@ -306,6 +306,8 @@ export default async function handler(req, res) {
     return sendCancellation(res, req.body);
   }
 
+  const ok = await requireAdmin(req, res);
+  if (!ok) return;
   try {
     return await sendConfirmation(res, req.body);
   } catch (error) {
