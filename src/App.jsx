@@ -124,7 +124,7 @@ const exportOrdersCSV = (orders, events, filename = 'orders.csv') => {
       o.buyer?.phone || '',
       ev?.title || '',
       o.items.map(i => `${i.qty}x ${i.type}`).join('; '),
-      Number(o.total).toFixed(2),
+      Number(o.ticketSubtotal ?? o.total).toFixed(2),
       Number(o.total).toFixed(2),
       o.status,
       o.source || 'online',
@@ -1935,7 +1935,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     if (!sellForm.name || !sellForm.email) return;
     setSellStatus('sending');
     try {
-      const r = await fetch('/api/send-email', {
+      const r = await fetch(API_BASE + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'organizer_inquiry', form: sellForm }),
@@ -1950,7 +1950,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
 
   const promoApiCall = async (action, body = {}) => {
     const { data: { session: s } } = await supabase.auth.getSession();
-    return fetch('/api/promo', {
+    return fetch(API_BASE + '/api/promo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.access_token}` },
       body: JSON.stringify({ action, ...body }),
@@ -2860,7 +2860,7 @@ fetch(API_BASE+'/api/send-email', {
   <p>For privacy questions, contact us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a>.</p>
 </div>}
         {view === "forgot" && <div className="sec fade" style={{ maxWidth: 400, paddingTop: 60 }}>
-  <div className="back" onClick={() => setView("login")}>← Back to Login</div>
+  <div className="back" onClick={() => { setView("login"); setResetSent(false); setResetError(''); }}>← Back to Login</div>
   <h1 className="dsp" style={{ fontSize: 28, marginBottom: 6 }}>Reset Password</h1>
   <p style={{ color: "var(--text2)", fontSize: 13, marginBottom: 24 }}>Enter your email and we'll send you a reset link.</p>
   <div className="tkt-sec">
@@ -3573,7 +3573,7 @@ fetch(API_BASE+'/api/send-email', {
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:24,marginBottom:32,maxWidth:480}}>
                 <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,marginBottom:16}}>Create Venue Account</div>
                 <div className="fg"><label className="fl" htmlFor="vu-email">Email Address</label><input id="vu-email" className="fi" type="email" value={venueUserForm.email} onChange={e=>setVenueUserForm(p=>({...p,email:e.target.value}))} placeholder="owner@venuename.com" /></div>
-                <div className="fg"><label className="fl" htmlFor="vu-password">Password</label><input id="vu-password" className="fi" type="text" value={venueUserForm.password} onChange={e=>setVenueUserForm(p=>({...p,password:e.target.value}))} placeholder="Minimum 6 characters" /></div>
+                <div className="fg"><label className="fl" htmlFor="vu-password">Password</label><input id="vu-password" className="fi" type="password" value={venueUserForm.password} onChange={e=>setVenueUserForm(p=>({...p,password:e.target.value}))} placeholder="Minimum 6 characters" /></div>
                 <div className="fg">
                   <label className="fl" htmlFor="vu-venue">Venue</label>
                   <select id="vu-venue" className="fi" value={venueUserForm.tenantId} onChange={e=>setVenueUserForm(p=>({...p,tenantId:e.target.value}))}>
@@ -3690,7 +3690,12 @@ fetch(API_BASE+'/api/send-email', {
               <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠️</span>
               <div>
                 <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Warning — Refund & Cancellation</div>
-                <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Cancelling this order will <strong style={{color:"var(--text)"}}>immediately issue a full refund</strong> to the buyer's original payment method via Stripe. Tickets will be returned to available inventory. This action cannot be undone.</div>
+                <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>
+                  {cancelTarget.stripePaymentIntentId && !cancelTarget.stripePaymentIntentId.startsWith('CASH-')
+                    ? <>Cancelling this order will <strong style={{color:"var(--text)"}}>immediately issue a full refund</strong> to the buyer's original payment method via Stripe. Tickets will be returned to available inventory. This action cannot be undone.</>
+                    : <>Cancelling this order will return tickets to available inventory. <strong style={{color:"var(--text)"}}>No Stripe refund will be issued</strong> — you will need to handle any cash or manual refund separately. This action cannot be undone.</>
+                  }
+                </div>
               </div>
             </div>
             <h2 className="dsp" style={{fontSize:20,marginBottom:16}}>Cancel Order</h2>
