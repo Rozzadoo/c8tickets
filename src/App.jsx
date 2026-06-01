@@ -1511,7 +1511,7 @@ const sendReset = async () => {
 
 const updatePassword = async (newPassword) => {
   const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) console.error(error);
+  if (error) setAuthError(error.message);
   else setView('home');
 };
 
@@ -1526,7 +1526,7 @@ const confirmCancelOrder = async () => {
   setCancelling(true);
   const { data: { session: adminSession } } = await supabase.auth.getSession();
   try {
-    if (o.stripePaymentIntentId) {
+    if (o.stripePaymentIntentId && !o.stripePaymentIntentId.startsWith('CASH-')) {
       const refundRes = await fetch(API_BASE + '/api/refund-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },

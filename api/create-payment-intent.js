@@ -162,7 +162,11 @@ export default async function handler(req, res) {
         service_fees: String(serviceFees),
         processing_fee: String(processingFee),
         // Items — for order_items creation and email line items
-        items_json: JSON.stringify(resolvedItems),
+        items_json: (() => {
+          const s = JSON.stringify(resolvedItems);
+          if (s.length > 490) throw new Error('Your cart contains too many ticket types to process online. Please contact the venue or reduce your selection.');
+          return s;
+        })(),
       },
     });
 
