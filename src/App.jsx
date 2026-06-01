@@ -144,7 +144,7 @@ const buildGCalUrl = (ev, loc) => {
   const [h = '20', min = '00'] = (ev.time || '').split(':');
   const start = `${y}${m}${d}T${h}${min}00`;
   const end = `${y}${m}${d}T${String(Number(h) + 3).padStart(2,'0')}${min}00`;
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.title)}&dates=${start}/${end}&location=${encodeURIComponent(loc)}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.title)}&dates=${start}/${end}&location=${encodeURIComponent(loc)}&ctz=America%2FBoise`;
 };
 
 const downloadIcs = (ev, loc) => {
@@ -153,7 +153,7 @@ const downloadIcs = (ev, loc) => {
   const start = `${y}${m}${d}T${h}${min}00`;
   const end = `${y}${m}${d}T${String(Number(h) + 3).padStart(2,'0')}${min}00`;
   const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//C8Tickets//EN','BEGIN:VEVENT',
-    `DTSTART:${start}`,`DTEND:${end}`,`SUMMARY:${ev.title}`,`LOCATION:${loc}`,
+    `DTSTART;TZID=America/Boise:${start}`,`DTEND;TZID=America/Boise:${end}`,`SUMMARY:${ev.title}`,`LOCATION:${loc}`,
     `DESCRIPTION:C8Tickets — ${ev.title}`,'END:VEVENT','END:VCALENDAR'].join('\r\n');
   const a = Object.assign(document.createElement('a'), {
     href: URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' })),

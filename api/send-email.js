@@ -233,9 +233,10 @@ async function sendReminder(res, { eventId }) {
   if (!Array.isArray(orders) || orders.length === 0) return res.status(200).json({ sent: 0 });
 
   const eventDate = new Date(ev.event_date);
-  const dateStr = eventDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  const timeStr = eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const doorsStr = ev.doors_open ? new Date(ev.doors_open).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
+  const tz = { timeZone: 'America/Boise' };
+  const dateStr = eventDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', ...tz });
+  const timeStr = eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...tz });
+  const doorsStr = ev.doors_open ? new Date(ev.doors_open).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...tz }) : null;
 
   const results = await Promise.allSettled(
     orders.map(order =>
