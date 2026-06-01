@@ -1182,15 +1182,23 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
 
       {step === 'confirm' && lastSale && (
         <div style={{textAlign:'center',maxWidth:420,margin:'0 auto',paddingTop:20}}>
-          <div style={{fontSize:48,marginBottom:12}}>✅</div>
-          <h3 className="dsp" style={{fontSize:24,marginBottom:6}}>Sale Complete</h3>
-          <p style={{color:'var(--text2)',fontSize:14,marginBottom:4}}>{lastSale.buyer.name}</p>
-          <p style={{color:'var(--gold)',fontWeight:700,fontSize:20,marginBottom:24}}>{fmtCurrency(lastSale.total)}</p>
-          <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:16}}>
-            <QRImg value={`${APP_URL}/t/${lastSale.id}?receipt=1`} size={180} />
+          {/* Staff status line */}
+          <p style={{fontFamily:'monospace',fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:20,color:lastSale.checkedIn?'var(--green)':'var(--gold)'}}>
+            {lastSale.checkedIn ? '✓ CHECKED IN' : '✓ PRE SALE — TICKET EMAILED'}
+          </p>
+          {/* Event + amount — customer can verify */}
+          {ev && <div style={{marginBottom:6}}>
+            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:2,marginBottom:4}}>{fmtDate(ev.date)}{ev.time ? ` · ${fmtTime(ev.time)}` : ''}</div>
+            <div className="dsp" style={{fontSize:22,color:'var(--text)',marginBottom:4}}>{ev.title}</div>
+          </div>}
+          {lastSale.buyer.name && lastSale.buyer.name !== 'Walk-In' && <p style={{color:'var(--text2)',fontSize:13,marginBottom:4}}>{lastSale.buyer.name}</p>}
+          <p style={{color:'var(--gold)',fontWeight:700,fontSize:20,marginBottom:20}}>{fmtCurrency(lastSale.total)}</p>
+          {/* QR — customer scans this */}
+          <div style={{background:'white',borderRadius:12,padding:16,display:'inline-block',marginBottom:10}}>
+            <QRImg value={`${APP_URL}/t/${lastSale.id}?receipt=1`} size={200} />
           </div>
-          <p style={{fontFamily:'monospace',fontSize:11,color:'var(--gold)',letterSpacing:1,marginBottom:4,fontWeight:700}}>{lastSale.checkedIn ? `CHECKED IN${lastSale.source==='door_cash'?' · CASH':''}` : `PRE SALE${lastSale.source==='door_cash'?' · CASH':''} · TICKET EMAILED`}</p>
-          <p style={{fontFamily:'monospace',fontSize:10,color:'var(--text3)',marginBottom:28,letterSpacing:.5}}>{lastSale.id.toUpperCase()}</p>
+          <p style={{fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:4}}>📱 Scan to save your tickets</p>
+          <p style={{fontSize:12,color:'var(--text3)',marginBottom:24}}>Point your phone camera at this code</p>
           <button className="buy" style={{maxWidth:260,margin:'0 auto',display:'block'}} onClick={reset}>+ New Sale</button>
         </div>
       )}

@@ -51,7 +51,7 @@ export default async function handler(req, res) {
           ticket_number: num++,
           event_id: order.event_id,
           tenant_id: order.tenant_id,
-          status: 'valid',
+          status: order.status === 'checked_in' ? 'checked_in' : 'valid',
         });
       }
     }
