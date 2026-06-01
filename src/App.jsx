@@ -2033,7 +2033,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     const { data: ticket } = await supabase.from('tickets').select('*').eq('id', id).single();
     if (ticket) {
       const order = orders.find(o => o.id === ticket.order_id);
-      if (ticket.status === 'cancelled' || order?.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
+      if (!order || order.venueId !== venue.id) { setScanMsg({ ok: false, text: 'This ticket is not for an event at this venue.' }); return; }
+      if (ticket.status === 'cancelled' || order.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
       if (ticket.status === 'checked_in') { setScanMsg({ ok: false, text: `Ticket ${ticket.ticket_number} (${ticket.ticket_type_name}) already checked in.` }); return; }
       await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: new Date().toISOString() }).eq('id', ticket.id).eq('status', 'valid');
       setExpandedTickets(prev => ({ ...prev, [ticket.order_id]: (prev[ticket.order_id] || []).map(t => t.id === ticket.id ? { ...t, status: 'checked_in' } : t) }));
@@ -2042,7 +2043,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       return;
     }
     // Fall back to order-level
-    const order = orders.find(o => o.id === id);
+    const order = orders.find(o => o.id === id && o.venueId === venue.id);
     if (!order) { setScanMsg({ ok: false, text: 'No order found for that QR code.' }); return; }
     if (order.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
     if (order.checkedIn) { setScanMsg({ ok: false, text: `${order.buyer.name} is already checked in.` }); return; }
