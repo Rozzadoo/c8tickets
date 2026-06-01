@@ -553,7 +553,7 @@ const GateView = ({ events, onLogout }) => {
     setResult({ ...result, alreadyIn: false, done: true, checkedInCount: actualCheckedIn });
   };
 
-  const upcomingEvents = events.filter(e => e.isPublished);
+  const upcomingEvents = events.filter(e => e.published !== false);
 
   return (
     <div className="app">
@@ -1845,6 +1845,7 @@ const fetchOrCreatePhysicalOrders = async (ev) => {
         order_id: order.id, ticket_type_id: tier.id,
         ticket_type_name: tier.type, quantity: 1, unit_price: tier.price,
       });
+      await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
       results.push({ id: order.id, type: tier.type });
     }
   }
@@ -2032,6 +2033,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
 
   const checkin = async (oid) => {
     await supabase.from('orders').update({ status: 'checked_in' }).eq('id', oid);
+    await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: new Date().toISOString() }).eq('order_id', oid).eq('status', 'valid');
     updateOrders(orders.map(o => o.id === oid ? { ...o, checkedIn: true } : o));
   };
 
