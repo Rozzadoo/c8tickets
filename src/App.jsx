@@ -466,10 +466,12 @@ const GateView = ({ events, onLogout }) => {
 
   const next = () => { setResult(null); setGroupConfirm(false); setGroupCount(1); setScanning(true); };
 
-  // Auto-advance to next scan 2 seconds after a successful check-in
+  // Auto-advance after successful check-in (2s) or non-actionable errors like not-found / wrong event (3s)
   useEffect(() => {
-    if (!result || result === 'loading' || !result.done) return;
-    const t = setTimeout(next, 2000);
+    if (!result || result === 'loading') return;
+    const autoNext = result.done || (!result.found) || result.wrongEvent;
+    if (!autoNext) return;
+    const t = setTimeout(next, result.done ? 2000 : 3000);
     return () => clearTimeout(t);
   }, [result]);
 
@@ -1036,7 +1038,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <label className="fl">Event</label>
           <select className="fi" value={selEventId} onChange={e => { setSelEventId(e.target.value); setDoorCart({}); }}>
             <option value="">— Select Event —</option>
-            {events.map(e => <option key={e.id} value={e.id}>{e.title} — {fmtDate(e.date)}</option>)}
+            {events.filter(e => new Date(e.date) >= new Date(Date.now() - 86400000)).map(e => <option key={e.id} value={e.id}>{e.title} — {fmtDate(e.date)}</option>)}
           </select>
         </div>
         {ev && <>
@@ -3011,7 +3013,7 @@ fetch(API_BASE+'/api/send-email', {
                 {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button><button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
               </>; })()}
 
-            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'); return <>
+            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'); const ciq=orderSearch.toLowerCase().trim(); const vof=ciq?vo.filter(o=>o.buyer.name.toLowerCase().includes(ciq)||o.buyer.email.toLowerCase().includes(ciq)):vo; return <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:10}}>
                 <h2 className="dsp" style={{fontSize:26}}>Check-In</h2>
                 {!adminScan && <button className="btn gold" onClick={()=>{setAdminScan(true);setScanMsg(null);}}>📷 Scan Ticket</button>}
@@ -3021,8 +3023,11 @@ fetch(API_BASE+'/api/send-email', {
                 <button className="btn" style={{width:"100%",marginTop:8}} onClick={()=>setAdminScan(false)}>Cancel</button>
               </div>}
               {scanMsg && <div style={{marginBottom:16,padding:"10px 14px",borderRadius:"var(--rs)",background:scanMsg.ok?"rgba(93,138,60,.15)":"rgba(179,58,42,.15)",color:scanMsg.ok?"var(--green)":"var(--red)",fontSize:13,fontWeight:600}}>{scanMsg.text}</div>}
-              <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Or manually mark attendees below. Tap an order to see individual tickets.</p>
-              {vo.length===0?<div className="empty"><div className="ic">✅</div><p>No tickets.</p></div>:<div>{vo.map(o=>{
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+                <input className="fi" style={{maxWidth:280,margin:0}} placeholder="Search name or email…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
+                <span style={{fontSize:12,color:"var(--text3)"}}>{vof.length} attendee{vof.length!==1?"s":""}</span>
+              </div>
+              {vof.length===0?<div className="empty"><div className="ic">✅</div><p>{ciq?"No matching attendees.":"No tickets."}</p></div>:<div>{vof.map(o=>{
                 const ev=events.find(e=>e.id===o.eventId);
                 const isExpanded=expandedOrders.has(o.id);
                 const toggleExpand=async()=>{
