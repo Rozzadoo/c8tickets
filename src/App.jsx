@@ -1362,6 +1362,8 @@ export default function App() {
   const [reportFilter, setReportFilter] = useState('month');
   const [reportCustomStart, setReportCustomStart] = useState('');
   const [reportCustomEnd, setReportCustomEnd] = useState('');
+  const [reportTickets, setReportTickets] = useState([]);
+  const [reportTicketsLoaded, setReportTicketsLoaded] = useState(false);
   const [holdbackPct, setHoldbackPct] = useState(() => Number(localStorage.getItem('c8_holdbackPct') ?? 10) || 10);
   const [platformFeePct, setPlatformFeePct] = useState(() => Number(localStorage.getItem('c8_platformFeePct') ?? 2.5) || 2.5);
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
@@ -1498,6 +1500,15 @@ const [resetError, setResetError] = useState('');
     if (!session) { setOrders([]); return; }
     reloadOrders();
   }, [session, reloadOrders]);
+
+  useEffect(() => {
+    if (aTab !== 'reports' || !session) return;
+    setReportTicketsLoaded(false);
+    supabase.from('tickets')
+      .select('order_id,ticket_type_name,status')
+      .eq('tenant_id', TENANT_ID)
+      .then(({ data }) => { setReportTickets(data || []); setReportTicketsLoaded(true); });
+  }, [aTab, session]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -3183,7 +3194,17 @@ fetch(API_BASE+'/api/send-email', {
               const repeatBuyers=Object.values(buyerMap).filter(b=>b.orders>=2).sort((a,b)=>b.orders-a.orders);
 
               const ciTypeMap={};
-              for(const o of vo){for(const item of o.items){if(!ciTypeMap[item.type])ciTypeMap[item.type]={sold:0,checkedIn:0};ciTypeMap[item.type].sold+=item.qty;if(o.checkedIn)ciTypeMap[item.type].checkedIn+=item.qty;}}
+              const voOrderIds=new Set(vo.map(o=>o.id));
+              if(reportTicketsLoaded&&reportTickets.length>0){
+                for(const t of reportTickets){
+                  if(!voOrderIds.has(t.order_id)||t.status==='cancelled')continue;
+                  if(!ciTypeMap[t.ticket_type_name])ciTypeMap[t.ticket_type_name]={sold:0,checkedIn:0};
+                  ciTypeMap[t.ticket_type_name].sold++;
+                  if(t.status==='checked_in')ciTypeMap[t.ticket_type_name].checkedIn++;
+                }
+              } else {
+                for(const o of vo){for(const item of o.items){if(!ciTypeMap[item.type])ciTypeMap[item.type]={sold:0,checkedIn:0};ciTypeMap[item.type].sold+=item.qty;if(o.checkedIn)ciTypeMap[item.type].checkedIn+=item.qty;}}
+              }
               const ciTypeRows=Object.entries(ciTypeMap).sort((a,b)=>b[1].sold-a[1].sold);
 
               // Bookkeeping calculations
@@ -3483,7 +3504,7 @@ fetch(API_BASE+'/api/send-email', {
                 }
 
                 <h3 className="dsp" style={{fontSize:18,marginBottom:4}}>Check-In Rate by Ticket Type</h3>
-                <p style={{color:'var(--text3)',fontSize:12,marginBottom:12}}>Based on order-level check-in status. Per-ticket granularity is available in the Check-In tab.</p>
+                <p style={{color:'var(--text3)',fontSize:12,marginBottom:12}}>{reportTicketsLoaded?'Per-ticket accuracy — each ticket counted individually.':'Loading ticket data…'}</p>
                 {ciTypeRows.length===0
                   ?<div className="empty" style={{marginBottom:28}}><p>No data for this period.</p></div>
                   :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Ticket Type</th><th>Sold</th><th>Checked In</th><th>Rate</th></tr></thead><tbody>{ciTypeRows.map(([type,d])=>{const pct=d.sold>0?Math.round(d.checkedIn/d.sold*100):0;return<tr key={type}><td style={{fontWeight:600}}>{type}</td><td>{d.sold}</td><td>{d.checkedIn}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:pct+"%",background:"var(--green)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{pct}%</span></div></td></tr>;})}</tbody></table></div>
