@@ -161,7 +161,7 @@ async function requireSuperAdmin(req, res) {
   });
   if (!r.ok) { res.status(401).json({ error: 'Unauthorized' }); return false; }
   const user = await r.json();
-  if (user?.user_metadata?.role === 'venue') { res.status(403).json({ error: 'Forbidden' }); return false; }
+  if (user?.app_metadata?.role === 'venue') { res.status(403).json({ error: 'Forbidden' }); return false; }
   return true;
 }
 
@@ -180,7 +180,7 @@ async function handleCreateVenueUser(req, res) {
       email,
       password,
       email_confirm: true,
-      user_metadata: { role: assignedRole, tenant_id: tenantId, tenant_name: tenantName || '' },
+      app_metadata: { role: assignedRole, tenant_id: tenantId, tenant_name: tenantName || '' },
     }),
   });
   const data = await r.json();
@@ -197,7 +197,7 @@ async function handleListVenueUsers(req, res) {
   });
   const data = await r.json();
   const all = Array.isArray(data) ? data : (data.users || []);
-  const users = all.filter(u => u.user_metadata?.role === 'venue' || u.user_metadata?.role === 'gate');
+  const users = all.filter(u => u.app_metadata?.role === 'venue' || u.app_metadata?.role === 'gate');
   return res.status(200).json({ users });
 }
 
@@ -324,14 +324,14 @@ async function handleWeeklyVenueReport() {
   });
   const usersData = await usersRes.json();
   const venueAdmins = (Array.isArray(usersData) ? usersData : (usersData.users || []))
-    .filter(u => u.user_metadata?.role === 'venue');
+    .filter(u => u.app_metadata?.role === 'venue');
 
   // Group by tenant_id
   const tenantMap = {};
   for (const u of venueAdmins) {
-    const tid = u.user_metadata?.tenant_id;
+    const tid = u.app_metadata?.tenant_id;
     if (!tid) continue;
-    if (!tenantMap[tid]) tenantMap[tid] = { users: [], name: u.user_metadata?.tenant_name || 'Your Venue' };
+    if (!tenantMap[tid]) tenantMap[tid] = { users: [], name: u.app_metadata?.tenant_name || 'Your Venue' };
     tenantMap[tid].users.push(u);
   }
 
