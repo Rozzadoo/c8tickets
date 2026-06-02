@@ -67,6 +67,8 @@ export default async function handler(req, res) {
     // Parse items early — needed for both the recovery path and the main path
     let items = [];
     try { items = JSON.parse(m.items_json || '[]'); } catch {}
+    let addonItems = [];
+    try { addonItems = JSON.parse(m.addons_json || '[]'); } catch {}
 
     // Idempotency: check if an order already exists for this payment intent
     const checkRes = await fetch(
@@ -137,6 +139,22 @@ export default async function handler(req, res) {
       }
     }
 
+    // Insert addon order_items
+    if (addonItems.length > 0) {
+      await fetch(`${supaUrl}/rest/v1/order_items`, {
+        method: 'POST',
+        headers: { ...headers, Prefer: 'return=minimal' },
+        body: JSON.stringify(addonItems.map(ai => ({
+          order_id: order.id,
+          ticket_type_id: null,
+          ticket_type_name: ai.name,
+          quantity: ai.qty,
+          unit_price: ai.price,
+          is_addon: true,
+        }))),
+      }).catch(e => console.error('Webhook addon order_items error:', e.message));
+    }
+
     // Tag the PI with the order ID
     await stripe.paymentIntents.update(pi.id, {
       description: `C8Tickets — ${m.event_title || 'Event'} — Order ${order.id.slice(0, 8).toUpperCase()}`,
@@ -151,6 +169,12 @@ export default async function handler(req, res) {
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">${escHtml(i.qty)}× ${escHtml(i.type)}</td>
         <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${(i.qty * i.price).toFixed(2)}</td>
+      </tr>`).join('');
+
+    const addonsHtml = addonItems.map(ai => `
+      <tr>
+        <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#c8922a">🎁 ${escHtml(ai.qty)}× ${escHtml(ai.name)}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#c8922a;text-align:right">$${(ai.qty * ai.price).toFixed(2)}</td>
       </tr>`).join('');
 
     await resend.emails.send({
@@ -183,6 +207,7 @@ export default async function handler(req, res) {
     <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Order Summary</div>
     <table style="width:100%;border-collapse:collapse">
       ${itemsHtml}
+      ${addonsHtml}
       <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Sales Tax (6%)</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(m.sales_tax||0).toFixed(2)}</td></tr>
       <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Service Fees</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(m.service_fees||0).toFixed(2)}</td></tr>
       <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Processing Fee</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(m.processing_fee||0).toFixed(2)}</td></tr>

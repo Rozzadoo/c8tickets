@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta, promoCode } = req.body;
+    const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta, promoCode, addonItems } = req.body;
 
     // Rate limit online purchases — door sales are admin-initiated, no limit needed
     if (!isDoorSale) {
@@ -127,10 +127,38 @@ export default async function handler(req, res) {
       }
     }
 
+    // Validate and price add-on items
+    let addonTotal = 0;
+    const resolvedAddonItems = [];
+    if (Array.isArray(addonItems) && addonItems.length > 0) {
+      if (!eventId || !UUID_RE.test(eventId)) {
+        return res.status(400).json({ error: 'Invalid eventId for add-on validation' });
+      }
+      const evRes = await fetch(
+        `${process.env.VITE_SUPABASE_URL}/rest/v1/events?id=eq.${eventId}&select=addons&limit=1`,
+        { headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` } }
+      );
+      const evRows = await evRes.json();
+      const eventAddons = evRows?.[0]?.addons || [];
+      for (const ai of addonItems) {
+        if (!Number.isInteger(ai.qty) || ai.qty < 1 || ai.qty > 20) {
+          return res.status(400).json({ error: 'Invalid add-on quantity' });
+        }
+        const def = eventAddons.find(a => a.id === ai.addonId && a.active !== false);
+        if (!def) return res.status(400).json({ error: 'Add-on not available' });
+        if (def.maxPerOrder != null && ai.qty > def.maxPerOrder) {
+          return res.status(400).json({ error: `Max ${def.maxPerOrder} of "${def.name}" per order` });
+        }
+        resolvedAddonItems.push({ addonId: ai.addonId, name: def.name, qty: ai.qty, price: Number(def.price) });
+        addonTotal += ai.qty * Number(def.price);
+      }
+    }
+
     const discountedTicketTotal = ticketTotal - discountAmount;
-    const salesTax = Math.round(discountedTicketTotal * SALES_TAX_RATE * 100) / 100;
+    const taxableBase = discountedTicketTotal + addonTotal;
+    const salesTax = Math.round(taxableBase * SALES_TAX_RATE * 100) / 100;
     const serviceFees = totalTickets * SERVICE_FEE_PER_TICKET;
-    const subtotal = discountedTicketTotal + salesTax + serviceFees;
+    const subtotal = taxableBase + salesTax + serviceFees;
     const processingFee = Math.round((subtotal * PROCESSING_FEE_RATE + PROCESSING_FEE_FLAT) * 100) / 100;
     const grandTotal = subtotal + processingFee;
 
@@ -167,6 +195,12 @@ export default async function handler(req, res) {
           if (s.length > 490) throw new Error('Your cart contains too many ticket types to process online. Please contact the venue or reduce your selection.');
           return s;
         })(),
+        addons_json: (() => {
+          if (resolvedAddonItems.length === 0) return '[]';
+          const s = JSON.stringify(resolvedAddonItems);
+          if (s.length > 490) throw new Error('Too many add-ons selected. Please reduce your selection.');
+          return s;
+        })(),
       },
     });
 
@@ -174,6 +208,7 @@ export default async function handler(req, res) {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       ticketTotal,
+      addonTotal,
       discountAmount,
       salesTax,
       serviceFees,

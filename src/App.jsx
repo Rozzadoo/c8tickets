@@ -55,7 +55,8 @@ const mapEvent = (e) => ({
     total: t.quantity_total,
     sold: t.quantity_sold,
     physicalQty: t.physical_qty ?? 0,
-  }))
+  })),
+  addons: e.addons || [],
 });
 
 const mapVenue = (v) => ({
@@ -1421,6 +1422,7 @@ const [resetError, setResetError] = useState('');
   const [promoUsage, setPromoUsage] = useState({});
   const [promoInput, setPromoInput] = useState('');
   const [promoApplied, setPromoApplied] = useState(null);
+  const [addonCart, setAddonCart] = useState({});
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState('');
   const [promos, setPromos] = useState([]);
@@ -1517,7 +1519,7 @@ const [resetError, setResetError] = useState('');
     if (eventId) {
       const ev = events.find(e => e.id === eventId);
       if (ev && ev.published === false && !session) { setView('home'); }
-      else { setSelId(eventId); setCart({}); setView('detail'); }
+      else { setSelId(eventId); setCart({}); setAddonCart({}); setView('detail'); }
     }
     const ticketMatch = window.location.pathname.match(/^\/t\/([0-9a-f-]{36})$/i);
     if (ticketMatch) {
@@ -1967,6 +1969,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   const CATS = ["All", "Live Music", "Rodeo", "Family", "Other Events"];
   const filtered = (filter === "All" ? publicEvents : publicEvents.filter(e => e.category === filter));
   const cartTotal = useMemo(() => sel ? sel.tickets.reduce((s, t, i) => s + (cart[i] || 0) * t.price, 0) : 0, [cart, sel]);
+  const addonTotal = useMemo(() => sel ? (sel.addons || []).reduce((s, a) => s + a.price * (addonCart[a.id] || 0), 0) : 0, [addonCart, sel]);
   const cartN = Object.values(cart).reduce((a, b) => a + b, 0);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email);
   const nameValid = buyer.name.trim().length >= 2;
@@ -1977,11 +1980,15 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     setCreatingPayment(true);
     try {
       const items = sel.tickets.map((t, i) => ({ qty: cart[i] || 0, ticketTypeId: t.id })).filter(i => i.qty > 0);
+      const addonItemsReq = (sel.addons || [])
+        .filter(a => a.active !== false && (addonCart[a.id] || 0) > 0)
+        .map(a => ({ addonId: a.id, name: a.name, qty: addonCart[a.id], price: a.price }));
       const res = await fetch(API_BASE + '/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items,
+          addonItems: addonItemsReq,
           eventId: sel.id,
           tenantId: TENANT_ID,
           buyer: { name: buyer.name.trim(), email: buyer.email.trim(), phone: buyer.phone.trim() },
@@ -1999,6 +2006,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           const { data: fresh } = await supabase.from('events').select('*, ticket_types(*)').eq('id', sel.id).single();
           if (fresh) updateEvents(events.map(e => e.id === sel.id ? mapEvent(fresh) : e));
           setCart({});
+          setAddonCart({});
         } else {
           alert(msg);
         }
@@ -2007,7 +2015,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       if (!data.clientSecret) { alert('Payment setup failed. Please try again.'); return; }
       setSoldOutError('');
       setClientSecret(data.clientSecret);
-      setPaymentAmounts({ ticketTotal: data.ticketTotal, discountAmount: data.discountAmount || 0, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
+      setPaymentAmounts({ ticketTotal: data.ticketTotal, addonTotal: data.addonTotal || 0, discountAmount: data.discountAmount || 0, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
     } catch {
       alert('Payment setup failed. Please try again.');
     } finally {
@@ -2015,7 +2023,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     }
   };
 
-  const open = (id) => { setSelId(id); setCart({}); setView("detail"); window.history.pushState({}, '', `/e/${id}`); };
+  const open = (id) => { setSelId(id); setCart({}); setAddonCart({}); setView("detail"); window.history.pushState({}, '', `/e/${id}`); };
   const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
 
   const submitSellInquiry = async () => {
@@ -2138,7 +2146,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
     setTimeout(() => setScanMsg(null), 4000);
   };
-  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }] });
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }], addons: [] });
   const saveEvt = async (e) => {
   setIsSaving(true);
   try {
@@ -2172,6 +2180,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       focal_x: e.focalX ?? 50,
       focal_y: e.focalY ?? 50,
       is_published: e.published ?? true,
+      addons: e.addons || [],
     }).eq('id', e.id);
     for (const t of e.tickets) {
       if (t.id) await supabase.from('ticket_types').update({
@@ -2196,6 +2205,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       focal_y: e.focalY ?? 50,
       venue_name: venue.name,
       is_published: e.published ?? true,
+      addons: e.addons || [],
     }).select().single();
     if (error) { console.error(error); return; }
     await supabase.from('ticket_types').insert(
@@ -2407,6 +2417,26 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             <div className="fg"><label className="fl" htmlFor="buyer-phone">Phone <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label><input id="buyer-phone" className="fi" type="tel" autoComplete="tel" value={buyer.phone} onChange={e => setBuyer({...buyer,phone:e.target.value})} placeholder="(208) 555-1234" /></div>
           </div>
         </div>
+        {(sel.addons||[]).filter(a=>a.active!==false).length > 0 && (
+          <div className="tkt-sec" style={{marginBottom:20}}>
+            <h3 className="dsp">Add-ons</h3>
+            {(sel.addons||[]).filter(a=>a.active!==false).map(a => {
+              const aqty = addonCart[a.id] || 0;
+              const maxAqty = a.maxPerOrder || 10;
+              return (
+                <div className="tkt-row" key={a.id}>
+                  <div className="tkt-info"><h4>{a.name}</h4>{a.description && <p style={{fontSize:12,color:'var(--text2)'}}>{a.description}</p>}</div>
+                  <div className="tkt-price">{fmtCurrency(a.price)}</div>
+                  <div className="qty">
+                    <button className="qb" aria-label={`Remove one ${a.name}`} disabled={!aqty} onClick={()=>setAddonCart({...addonCart,[a.id]:aqty-1})}>−</button>
+                    <div className="qv">{aqty}</div>
+                    <button className="qb" aria-label={`Add one ${a.name}`} disabled={aqty>=maxAqty} onClick={()=>setAddonCart({...addonCart,[a.id]:aqty+1})}>+</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {!buyerReady && (
           <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", marginTop: 10 }}>Enter a valid name and email above to continue.</p>
         )}
@@ -2417,9 +2447,9 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               : Math.min(promoApplied.discountValue, cartTotal)
             : 0;
           const discounted = cartTotal - discount;
-          const tax = Math.round(discounted * 0.06 * 100) / 100;
+          const tax = Math.round((discounted + addonTotal) * 0.06 * 100) / 100;
           const svcFees = cartN * 2.00;
-          const subtotal = discounted + tax + svcFees;
+          const subtotal = discounted + addonTotal + tax + svcFees;
           const procFee = Math.round((subtotal * 0.035 + 0.30) * 100) / 100;
           const grand = subtotal + procFee;
           return (
@@ -2427,6 +2457,9 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               <h3 className="dsp">Order Summary</h3>
               <div className="cart-sum">
                 {sel.tickets.map((t, i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i] * t.price)}</span></div>)}
+                {(sel.addons||[]).filter(a=>a.active!==false&&(addonCart[a.id]||0)>0).map(a=>(
+                  <div className="cart-ln" key={a.id} style={{color:'var(--gold)'}}><span>{addonCart[a.id]}× {a.name}</span><span>{fmtCurrency(addonCart[a.id]*a.price)}</span></div>
+                ))}
                 {promoApplied && <div className="cart-ln" style={{color:'var(--green)'}}><span>Promo: {promoApplied.code}</span><span>-{fmtCurrency(discount)}</span></div>}
                 <div className="cart-ln"><span>Sales Tax (6%)</span><span>{fmtCurrency(tax)}</span></div>
                 <div className="cart-ln"><span>Service Fees</span><span>{fmtCurrency(svcFees)}</span></div>
@@ -2516,11 +2549,30 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               return;
             }
 
+            const currentAddonItems = (sel.addons || [])
+              .filter(a => a.active !== false && (addonCart[a.id] || 0) > 0)
+              .map(a => ({ addonId: a.id, name: a.name, qty: addonCart[a.id], price: a.price }));
+
+            if (currentAddonItems.length > 0) {
+              await supabase.from('order_items').insert(
+                currentAddonItems.map(ai => ({
+                  order_id: order.id,
+                  ticket_type_id: null,
+                  ticket_type_name: ai.name,
+                  quantity: ai.qty,
+                  unit_price: ai.price,
+                  is_addon: true,
+                }))
+              );
+            }
+
             const localOrder = {
               id: order.id, eventId: sel.id, venueId: venue.id,
               buyer: { ...buyer },
               items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId })),
+              addonItems: currentAddonItems,
               ticketTotal: paymentAmounts.ticketTotal,
+              addonTotal: paymentAmounts.addonTotal || 0,
               salesTax: paymentAmounts.salesTax,
               serviceFees: paymentAmounts.serviceFees,
               processingFee: paymentAmounts.processingFee,
@@ -2535,6 +2587,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             setView("ticket");
             setBuyer({ name: "", email: "", phone: "" });
             setCart({});
+            setAddonCart({});
             setClientSecret(null);
             if (promoApplied) {
               fetch(API_BASE + '/api/promo', {
@@ -2739,7 +2792,7 @@ fetch(API_BASE+'/api/send-email', {
                       {vpEvents.map(ev => {
                         const soldOut = ev.tickets?.every(t => t.available <= 0);
                         return (
-                          <div key={ev.id} className="card" role="button" tabIndex={0} onClick={() => { setSelId(ev.id); setCart({}); setView('detail'); window.history.pushState({}, '', `/e/${ev.id}`); }} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelId(ev.id);setCart({});setView('detail');window.history.pushState({},'',(ev.id));}}}>
+                          <div key={ev.id} className="card" role="button" tabIndex={0} onClick={() => { setSelId(ev.id); setCart({}); setAddonCart({}); setView('detail'); window.history.pushState({}, '', `/e/${ev.id}`); }} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelId(ev.id);setCart({});setAddonCart({});setView('detail');window.history.pushState({},'',(ev.id));}}}>
                             <div className="card-img">
                               {ev.image
                                 ? <img src={ev.image} alt={ev.title} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:`${(ev.focalX??50)}% ${(ev.focalY??50)}%`}} />
@@ -3858,6 +3911,16 @@ fetch(API_BASE+'/api/send-email', {
           <h3 className="dsp" style={{fontSize:16,margin:"16px 0 10px"}}>Ticket Tiers</h3>
           {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Presale $</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Door price shown in the at-door sales terminal. Leave blank to use presale price.">Door $</label>}<input className="fi" type="number" min="0" placeholder="same" value={t.doorPrice??''} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],doorPrice:e.target.value===''?null:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Reserve this many tickets for physical/in-person sale. They won't be available online.">Physical</label>}<input className="fi" type="number" min="0" value={t.physicalQty??0} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],physicalQty:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100,physicalQty:0,doorPrice:null}]})}}>×</button></div>)}
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
+          <h3 className="dsp" style={{fontSize:16,margin:"20px 0 4px"}}>Add-ons <span style={{fontWeight:400,fontSize:11,color:"var(--text3)"}}>shown at checkout (drink tokens, VIP, etc.)</span></h3>
+          {(editEvt.addons||[]).map((a,i)=>(
+            <div key={a.id||i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}>
+              <div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Name</label>}<input className="fi" value={a.name} placeholder="Drink Token" onChange={e=>{const x=[...(editEvt.addons||[])];x[i]={...x[i],name:e.target.value};setEditEvt({...editEvt,addons:x})}}/></div>
+              <div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Price $</label>}<input className="fi" type="number" min="0" step="0.01" value={a.price} onChange={e=>{const x=[...(editEvt.addons||[])];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,addons:x})}}/></div>
+              <div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Max per order (blank = unlimited)">Max/order</label>}<input className="fi" type="number" min="1" placeholder="∞" value={a.maxPerOrder??''} onChange={e=>{const x=[...(editEvt.addons||[])];x[i]={...x[i],maxPerOrder:e.target.value===''?null:+e.target.value};setEditEvt({...editEvt,addons:x})}}/></div>
+              <button className="qb" style={{marginTop:i===0?22:0}} onClick={()=>{const x=(editEvt.addons||[]).filter((_,j)=>j!==i);setEditEvt({...editEvt,addons:x})}}>×</button>
+            </div>
+          ))}
+          <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,addons:[...(editEvt.addons||[]),{id:`ao_${Date.now().toString(36)}`,name:"",price:0,maxPerOrder:null,active:true}]})}>+ Add Add-on</button>
           <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date||isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
 

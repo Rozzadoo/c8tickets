@@ -41,6 +41,12 @@ async function sendConfirmation(res, { order, event, venue }) {
       <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${(i.qty * i.price).toFixed(2)}</td>
     </tr>`).join('');
 
+  const addonsHtml = (order.addonItems || []).map(ai => `
+    <tr>
+      <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#c8922a">🎁 ${escHtml(ai.qty)}× ${escHtml(ai.name)}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#c8922a;text-align:right">$${(ai.qty * ai.price).toFixed(2)}</td>
+    </tr>`).join('');
+
   const discountRow = order.discountAmount > 0 ? `
     <tr>
       <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#4caf7d">Promo Discount</td>
@@ -80,6 +86,7 @@ async function sendConfirmation(res, { order, event, venue }) {
     <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Order Summary</div>
     <table style="width:100%;border-collapse:collapse">
       ${itemsHtml}
+      ${addonsHtml}
       ${discountRow}
       <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Sales Tax (6%)</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(order.salesTax).toFixed(2)}</td></tr>
       <tr><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Service Fees</td><td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a;text-align:right">$${Number(order.serviceFees).toFixed(2)}</td></tr>
