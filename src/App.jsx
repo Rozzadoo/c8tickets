@@ -1429,6 +1429,9 @@ const [resetError, setResetError] = useState('');
   const [promosLoaded, setPromosLoaded] = useState(false);
   const [promoForm, setPromoForm] = useState({ code: '', discountType: 'percent', discountValue: '', maxUses: '', eventId: '', expiresAt: '' });
   const [promoSaving, setPromoSaving] = useState(false);
+  const [venuePayouts, setVenuePayouts] = useState([]);
+  const [payoutForm, setPayoutForm] = useState({ amount: '', date: new Date().toISOString().slice(0,10), notes: '' });
+  const [savingPayout, setSavingPayout] = useState(false);
   const [sellForm, setSellForm] = useState({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' });
   const [sellStatus, setSellStatus] = useState('idle');
   const [venueUsers, setVenueUsers] = useState([]);
@@ -1510,6 +1513,12 @@ const [resetError, setResetError] = useState('');
       .select('order_id,ticket_type_name,status')
       .eq('tenant_id', TENANT_ID)
       .then(({ data }) => { setReportTickets(data || []); setReportTicketsLoaded(true); });
+  }, [aTab, session]);
+
+  useEffect(() => {
+    if (aTab !== 'reports' || !session) return;
+    supabase.from('venue_payouts').select('*').order('paid_at', { ascending: false })
+      .then(({ data }) => setVenuePayouts(data || []));
   }, [aTab, session]);
 
   useEffect(() => {
@@ -1713,6 +1722,29 @@ const updateOrderEmail = async () => {
   setEditEmailSaving(false);
   setEditEmailOrder(null);
   setEditEmailValue('');
+};
+
+const savePayout = async () => {
+  if (!payoutForm.amount || !payoutForm.date) return;
+  setSavingPayout(true);
+  const targetVenueId = bkVenueFilter === 'all' ? venue.id : bkVenueFilter;
+  const { data, error } = await supabase.from('venue_payouts').insert({
+    tenant_id: targetVenueId,
+    amount: Number(payoutForm.amount),
+    notes: payoutForm.notes || null,
+    paid_at: payoutForm.date,
+  }).select().single();
+  if (!error && data) {
+    setVenuePayouts([data, ...venuePayouts]);
+    setPayoutForm({ amount: '', date: new Date().toISOString().slice(0,10), notes: '' });
+  }
+  setSavingPayout(false);
+};
+
+const deletePayout = async (id) => {
+  if (!window.confirm('Remove this payment record? This cannot be undone.')) return;
+  await supabase.from('venue_payouts').delete().eq('id', id);
+  setVenuePayouts(venuePayouts.filter(p => p.id !== id));
 };
 
 const applyPromo = async () => {
@@ -3689,6 +3721,92 @@ fetch(API_BASE+'/api/send-email', {
                       <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Exports transaction detail, financial summary, and weekly payout schedule for the selected period.</p>
                     </>
                   }
+
+                  {/* Venue Payment Tracker */}
+                  {(() => {
+                    const trackerVenueId = bkVenueFilter === 'all' ? venue.id : bkVenueFilter;
+                    const trackerVenueName = venues.find(v => v.id === trackerVenueId)?.name || 'Venue';
+                    const allTrackerOrders = orders.filter(o => o.venueId === trackerVenueId && o.status !== 'cancelled');
+                    const allTimeOwed = allTrackerOrders.reduce((s, o) => {
+                      const f = bkFees(o);
+                      const pf = Math.round(f.ticketSub * PLATFORM_PCT * 100) / 100;
+                      const vg = f.ticketSub - pf;
+                      const hb = Math.round(vg * hbRate * 100) / 100;
+                      return s + (vg - hb);
+                    }, 0);
+                    const trackerPayouts = venuePayouts.filter(p => p.tenant_id === trackerVenueId);
+                    const totalEverPaid = trackerPayouts.reduce((s, p) => s + Number(p.amount), 0);
+                    const outstandingBalance = Math.round((allTimeOwed - totalEverPaid) * 100) / 100;
+                    return (
+                      <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:24}}>
+                        <h3 className="dsp" style={{fontSize:18,marginBottom:16}}>Venue Payment Tracker</h3>
+                        <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+                          <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>All-Time Owed</div>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(allTimeOwed)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{trackerVenueName}</div>
+                          </div>
+                          <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Total Paid</div>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--green)'}}>{fmtCurrency(totalEverPaid)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{trackerPayouts.length} payment{trackerPayouts.length!==1?'s':''}</div>
+                          </div>
+                          <div style={{flex:1,minWidth:130,background:outstandingBalance>0.005?'rgba(200,146,42,.1)':'rgba(76,175,125,.08)',border:`1px solid ${outstandingBalance>0.005?'rgba(200,146,42,.3)':'rgba(76,175,125,.25)'}`,borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Outstanding</div>
+                            <div style={{fontSize:22,fontWeight:700,color:outstandingBalance>0.005?'var(--gold)':'var(--green)'}}>{fmtCurrency(outstandingBalance)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{outstandingBalance<=0.005?'All paid up':'Balance due'}</div>
+                          </div>
+                        </div>
+                        <p style={{fontSize:11,color:'var(--text3)',marginBottom:20,lineHeight:1.6}}>
+                          Based on all-time non-cancelled orders using current platform fee ({platformFeePct}%) and holdback ({holdbackPct}%) settings. Changing these settings will update the calculation.
+                        </p>
+                        <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'16px 18px',marginBottom:20}}>
+                          <div style={{fontSize:12,fontWeight:700,color:'var(--text)',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>Record a Payment</div>
+                          <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+                            <div className="fg" style={{margin:0,minWidth:110}}>
+                              <label className="fl">Amount $</label>
+                              <input className="fi" type="number" min="0" step="0.01" value={payoutForm.amount} onChange={e=>setPayoutForm({...payoutForm,amount:e.target.value})} placeholder="0.00" />
+                            </div>
+                            <div className="fg" style={{margin:0,minWidth:150}}>
+                              <label className="fl">Date Paid</label>
+                              <input className="fi" type="date" value={payoutForm.date} onChange={e=>setPayoutForm({...payoutForm,date:e.target.value})} />
+                            </div>
+                            <div className="fg" style={{margin:0,flex:1,minWidth:180}}>
+                              <label className="fl">Notes (optional)</label>
+                              <input className="fi" value={payoutForm.notes} onChange={e=>setPayoutForm({...payoutForm,notes:e.target.value})} placeholder="e.g. Feb 2025 payout" />
+                            </div>
+                            <button className="btn gold" style={{flexShrink:0,padding:'10px 18px'}} disabled={!payoutForm.amount||!payoutForm.date||savingPayout} onClick={savePayout}>{savingPayout?'Saving…':'Record Payment'}</button>
+                          </div>
+                        </div>
+                        {trackerPayouts.length > 0
+                          ? <div style={{overflowX:'auto'}}>
+                              <table className="dt">
+                                <thead><tr><th>Date</th><th>Amount</th><th>Notes</th><th>Recorded</th><th></th></tr></thead>
+                                <tbody>
+                                  {trackerPayouts.map(p=>(
+                                    <tr key={p.id}>
+                                      <td style={{whiteSpace:'nowrap',fontWeight:600}}>{new Date(p.paid_at+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+                                      <td style={{fontWeight:700,color:'var(--green)'}}>{fmtCurrency(Number(p.amount))}</td>
+                                      <td style={{color:'var(--text3)',fontSize:13}}>{p.notes||'—'}</td>
+                                      <td style={{fontSize:11,color:'var(--text3)'}}>{new Date(p.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</td>
+                                      <td><button className="btn" style={{fontSize:11,padding:'4px 10px',color:'var(--red)'}} onClick={()=>deletePayout(p.id)}>Remove</button></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr style={{borderTop:'2px solid var(--border)'}}>
+                                    <td style={{fontWeight:700}}>Total Paid</td>
+                                    <td style={{fontWeight:700,color:'var(--green)',fontSize:15}}>{fmtCurrency(totalEverPaid)}</td>
+                                    <td colSpan={3}></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          : <p style={{fontSize:13,color:'var(--text3)'}}>No payments recorded yet — use the form above to log each payout.</p>
+                        }
+                      </div>
+                    );
+                  })()}
                 </div>}
               </>;
             })()}
