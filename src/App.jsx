@@ -3295,6 +3295,53 @@ fetch(API_BASE+'/api/send-email', {
                 URL.revokeObjectURL(url);
               };
 
+              const downloadSalesCSV = () => {
+                const fmt = n => Number(n).toFixed(2);
+                const q = s => `"${String(s).replace(/"/g,'""')}"`;
+                const rows = [];
+                rows.push(['C8 Tickets Sales Report']);
+                rows.push([`Venue: ${venue.name}`]);
+                rows.push([`Period: ${filterLabels[reportFilter]}`]);
+                rows.push([`Generated: ${new Date().toLocaleDateString('en-US')}`]);
+                rows.push([]);
+                rows.push(['PERFORMANCE SUMMARY']);
+                rows.push(['Metric','Value']);
+                rows.push(['Total Venue Revenue',fmt(venueRev)]);
+                rows.push(['Total Tickets Sold',totalTix]);
+                rows.push(['Total Orders',vo.length]);
+                rows.push(['Average Order Value',vo.length>0?fmt(avgOrderTotal):'0.00']);
+                rows.push([]);
+                rows.push(['TICKET TYPE BREAKDOWN']);
+                rows.push(['Ticket Type','Qty Sold','% of Sales','Revenue']);
+                for(const [type,d] of typeRows){const pct=totalTix>0?Math.round(d.qty/totalTix*100):0;rows.push([type,d.qty,pct+'%',fmt(d.rev)]);}
+                rows.push([]);
+                rows.push(['EVENT PERFORMANCE']);
+                rows.push(['Event','Orders','Tickets Sold','Revenue','Capacity','Remaining','Sell-Through']);
+                for(const {ev,count,totalTix:tix,totalRev,capacity,remaining,sellThru} of evAvgRows){rows.push([ev.title,count,tix,fmt(totalRev),capacity||'—',remaining!==null?remaining:'—',capacity?sellThru+'%':'—']);}
+                rows.push([]);
+                const dcOrds=doorOrders.filter(o=>o.source==='door'),cashOrds=doorOrders.filter(o=>o.source==='door_cash');
+                const dcRev=dcOrds.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),cashRev=cashOrds.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
+                const dcTix=dcOrds.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),cashTix=cashOrds.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);
+                const pctRev=r=>venueRev>0?Math.round(r/venueRev*100)+'%':'0%';
+                rows.push(['SALES CHANNEL']);
+                rows.push(['Channel','Orders','Tickets','Revenue','% of Revenue']);
+                rows.push(['Online',onlineOrders.length,onlineTix,fmt(onlineRev),pctRev(onlineRev)]);
+                rows.push(['Door — Card',dcOrds.length,dcTix,fmt(dcRev),pctRev(dcRev)]);
+                rows.push(['Door — Cash',cashOrds.length,cashTix,fmt(cashRev),pctRev(cashRev)]);
+                rows.push([]);
+                const dwR=Array(7).fill(0),dwO=Array(7).fill(0),dwT=Array(7).fill(0);
+                for(const o of vo){const i=(new Date(o.date).getDay()+6)%7;dwR[i]+=o.items.reduce((s,x)=>s+x.qty*x.price,0);dwO[i]++;dwT[i]+=o.items.reduce((s,x)=>s+x.qty,0);}
+                rows.push(['SALES BY DAY OF WEEK']);
+                rows.push(['Day','Orders','Tickets','Revenue','Avg Order Value']);
+                ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].forEach((d,i)=>{if(dwO[i]>0)rows.push([d,dwO[i],dwT[i],fmt(dwR[i]),fmt(dwR[i]/dwO[i])]);});
+                const csv=rows.map(r=>r.map(c=>typeof c==='string'&&(c.includes(',')||c.includes('"'))?q(c):c).join(',')).join('\n');
+                const blob=new Blob([csv],{type:'text/csv'});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a');
+                a.href=url;a.download=`c8tickets-sales-${venue.name.toLowerCase().replace(/[^\w]+/g,'-')}-${new Date().toISOString().slice(0,10)}.csv`;a.click();
+                URL.revokeObjectURL(url);
+              };
+
               // ── Week-over-week trend ──
               const wowWeekStart = new Date(now);
               wowWeekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
@@ -3449,7 +3496,11 @@ fetch(API_BASE+'/api/send-email', {
                   :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th><th>Last Purchase</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td><td style={{fontSize:12,color:'var(--text3)'}}>{b.lastPurchase?new Date(b.lastPurchase).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</td></tr>)}</tbody></table></div>
                 }
 
-                {isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:8,color:'var(--text3)',fontSize:13}}>Bookkeeping & payout details are visible to C8Tickets administrators only.</div>}
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:8,marginBottom:isVenueUser?0:28}}>
+                  <button className="btn gold" onClick={downloadSalesCSV} disabled={vo.length===0}>Download Sales Report CSV</button>
+                  <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Exports performance summary, ticket type breakdown, event performance, sales channel, and day-of-week data for the selected period.</p>
+                </div>
+                {isVenueUser && <div style={{color:'var(--text3)',fontSize:13,marginTop:4}}>Bookkeeping & payout details are visible to C8Tickets administrators only.</div>}
                 {!isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:8}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6,flexWrap:'wrap',gap:10}}>
                     <h3 className="dsp" style={{fontSize:18}}>Bookkeeping & Payouts</h3>
