@@ -2573,7 +2573,6 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
 
             if (fulfillError) {
               console.error(fulfillError);
-              await supabase.from('orders').delete().eq('id', order.id);
               const msg = fulfillError.message?.includes('remaining')
                 ? `Sorry, some tickets in your order are no longer available. Your payment was captured — please email support@c8tickets.com with your payment reference: ${paymentIntentId}`
                 : `There was a problem saving your order. Your payment was captured — please email support@c8tickets.com with payment reference: ${paymentIntentId}`;
