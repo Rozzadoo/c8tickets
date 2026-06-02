@@ -3167,7 +3167,7 @@ fetch(API_BASE+'/api/send-email', {
 
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
               const avgOrderTotal=vo.length>0?vo.reduce((s,o)=>s+o.total,0)/vo.length:0;
-              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;const capacity=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const evTotalSold=ev.tickets.reduce((s,t)=>s+(t.sold??0),0);const sellThru=capacity>0?Math.round(evTotalSold/capacity*100):0;return{ev,count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru};}).filter(Boolean);
+              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;const capacity=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const evTotalSold=ev.tickets.reduce((s,t)=>s+(t.sold??0),0);const sellThru=capacity>0?Math.round(evTotalSold/capacity*100):0;const remaining=capacity>0?Math.max(0,capacity-evTotalSold):null;return{ev,count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru,remaining};}).filter(Boolean);
 
               const isDoor = o => o.source==='door'||o.source==='door_cash';
               const doorOrders=vo.filter(isDoor);
@@ -3179,7 +3179,7 @@ fetch(API_BASE+'/api/send-email', {
 
               const allVenueOrders=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled');
               const buyerMap={};
-              for(const o of allVenueOrders){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);}
+              for(const o of allVenueOrders){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0,lastPurchase:null};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);if(!buyerMap[key].lastPurchase||new Date(o.date)>new Date(buyerMap[key].lastPurchase))buyerMap[key].lastPurchase=o.date;}
               const repeatBuyers=Object.values(buyerMap).filter(b=>b.orders>=2).sort((a,b)=>b.orders-a.orders);
 
               const ciTypeMap={};
@@ -3342,7 +3342,8 @@ fetch(API_BASE+'/api/send-email', {
                   <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>To</label><input className="fi" type="date" value={reportCustomEnd} onChange={e=>setReportCustomEnd(e.target.value)} style={{width:160,margin:0}} /></div>
                 </div>}
 
-                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>This Week vs Last Week</h3>
+                <h3 className="dsp" style={{fontSize:18,marginBottom:4}}>This Week vs Last Week</h3>
+                <p style={{color:'var(--text3)',fontSize:12,marginBottom:12}}>Always showing live current data — not affected by the period filter above.</p>
                 <div className="tkt-sec" style={{marginBottom:32,padding:'20px 20px 16px'}}>
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
                     {[['Revenue','$'+thisRev.toFixed(2),'$'+lastRev.toFixed(2),thisRev,lastRev],['Orders',thisOrd,lastOrd,thisOrd,lastOrd],['Tickets',thisTix,lastTix,thisTix,lastTix]].map(([label,curr,prev,c,p])=>(
@@ -3398,7 +3399,7 @@ fetch(API_BASE+'/api/send-email', {
                 <p style={{color:"var(--text3)",fontSize:12,marginBottom:12}}>Orders, tickets, and revenue are for the selected period. Capacity and sell-through reflect all-time totals for each event.</p>
                 {evAvgRows.length===0
                   ?<div className="empty" style={{marginBottom:28}}><p>No event data for this period.</p></div>
-                  :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Total Tickets Sold</th><th>Total Venue Revenue</th><th>Capacity</th><th>Sell-Through</th></tr></thead><tbody>{evAvgRows.map(({ev,count,totalTix,totalRev,capacity,evTotalSold,sellThru})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{totalTix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(totalRev)}</td><td style={{color:"var(--text2)"}}>{capacity||"—"}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:60}}><div style={{height:"100%",width:sellThru+"%",background:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right",color:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",fontWeight:700}}>{capacity?sellThru+"%":"—"}</span></div></td></tr>)}</tbody></table></div>
+                  :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Event</th><th>Orders</th><th>Tickets Sold</th><th>Revenue</th><th>Capacity</th><th>Remaining</th><th>Sell-Through</th></tr></thead><tbody>{evAvgRows.map(({ev,count,totalTix,totalRev,capacity,evTotalSold,sellThru,remaining})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{count}</td><td>{totalTix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(totalRev)}</td><td style={{color:"var(--text2)"}}>{capacity||"—"}</td><td style={{fontWeight:700,color:remaining===null?"var(--text2)":remaining===0?"var(--red)":remaining/capacity<0.15?"var(--gold)":"var(--green)"}}>{remaining!==null?remaining:"—"}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:60}}><div style={{height:"100%",width:sellThru+"%",background:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right",color:sellThru>=80?"var(--green)":sellThru>=50?"var(--gold)":"var(--red)",fontWeight:700}}>{capacity?sellThru+"%":"—"}</span></div></td></tr>)}</tbody></table></div>
                 }
 
                 <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Sales Channel</h3>
@@ -3408,7 +3409,34 @@ fetch(API_BASE+'/api/send-email', {
                   <tr><td style={{fontWeight:600}}>Door — Cash</td><td>{doorOrders.filter(o=>o.source==='door_cash').length}</td><td>{doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0))}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:(venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0)+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0}%</span></div></td></tr>
                 </tbody></table></div>
 
-                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Check-In Rate by Ticket Type</h3>
+                <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Sales by Day of Week</h3>
+                {vo.length===0
+                  ?<div className="empty" style={{marginBottom:28}}><p>No sales data for this period.</p></div>
+                  :(() => {
+                    const dowRev=Array(7).fill(0),dowOrders=Array(7).fill(0),dowTix=Array(7).fill(0);
+                    for(const o of vo){const idx=(new Date(o.date).getDay()+6)%7;dowRev[idx]+=o.items.reduce((s,i)=>s+i.qty*i.price,0);dowOrders[idx]++;dowTix[idx]+=o.items.reduce((s,i)=>s+i.qty,0);}
+                    const DOW_FULL=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+                    const dowMax=Math.max(...dowRev,1);
+                    const bestIdx=dowRev.indexOf(Math.max(...dowRev));
+                    return <div className="tkt-sec" style={{marginBottom:32,padding:'20px 20px 16px'}}>
+                      <div style={{display:'flex',gap:4,alignItems:'flex-end',height:80,marginBottom:8}}>
+                        {DOW_FULL.map((d,i)=>{
+                          const h=Math.round((dowRev[i]/dowMax)*72);
+                          return <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                            <div title={`${d}: $${dowRev[i].toFixed(2)} · ${dowOrders[i]} orders`} style={{width:'100%',height:h||2,background:i===bestIdx?'var(--gold)':'rgba(200,146,42,0.35)',borderRadius:'3px 3px 0 0',transition:'height .3s',minHeight:2}}/>
+                            <div style={{fontSize:11,color:i===bestIdx?'var(--gold)':'var(--text3)',fontWeight:i===bestIdx?700:400}}>{d}</div>
+                          </div>;
+                        })}
+                      </div>
+                      <div style={{overflowX:'auto',marginTop:12}}><table className="dt"><thead><tr><th>Day</th><th>Orders</th><th>Tickets</th><th>Revenue</th><th>Avg Order</th></tr></thead><tbody>
+                        {DOW_FULL.map((d,i)=>dowOrders[i]>0&&<tr key={d} style={i===bestIdx?{background:'rgba(200,146,42,0.06)'}:{}}><td style={{fontWeight:i===bestIdx?700:400,color:i===bestIdx?'var(--gold)':'inherit'}}>{d}{i===bestIdx&&<span style={{marginLeft:6,fontSize:10,color:'var(--gold)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Best</span>}</td><td>{dowOrders[i]}</td><td>{dowTix[i]}</td><td style={{color:'var(--gold)',fontWeight:700}}>{fmtCurrency(dowRev[i])}</td><td style={{color:'var(--text3)'}}>{fmtCurrency(dowRev[i]/dowOrders[i])}</td></tr>)}
+                      </tbody></table></div>
+                    </div>;
+                  })()
+                }
+
+                <h3 className="dsp" style={{fontSize:18,marginBottom:4}}>Check-In Rate by Ticket Type</h3>
+                <p style={{color:'var(--text3)',fontSize:12,marginBottom:12}}>Based on order-level check-in status. Per-ticket granularity is available in the Check-In tab.</p>
                 {ciTypeRows.length===0
                   ?<div className="empty" style={{marginBottom:28}}><p>No data for this period.</p></div>
                   :<div style={{overflowX:"auto",marginBottom:32}}><table className="dt"><thead><tr><th>Ticket Type</th><th>Sold</th><th>Checked In</th><th>Rate</th></tr></thead><tbody>{ciTypeRows.map(([type,d])=>{const pct=d.sold>0?Math.round(d.checkedIn/d.sold*100):0;return<tr key={type}><td style={{fontWeight:600}}>{type}</td><td>{d.sold}</td><td>{d.checkedIn}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:pct+"%",background:"var(--green)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{pct}%</span></div></td></tr>;})}</tbody></table></div>
@@ -3418,7 +3446,7 @@ fetch(API_BASE+'/api/send-email', {
                 <p style={{color:"var(--text3)",fontSize:12,marginBottom:12}}>Buyers with 2 or more orders all-time.</p>
                 {repeatBuyers.length===0
                   ?<div className="empty" style={{marginBottom:28}}><p>No repeat buyers yet.</p></div>
-                  :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td></tr>)}</tbody></table></div>
+                  :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th><th>Last Purchase</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td><td style={{fontSize:12,color:'var(--text3)'}}>{b.lastPurchase?new Date(b.lastPurchase).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</td></tr>)}</tbody></table></div>
                 }
 
                 {isVenueUser && <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:8,color:'var(--text3)',fontSize:13}}>Bookkeeping & payout details are visible to C8Tickets administrators only.</div>}
