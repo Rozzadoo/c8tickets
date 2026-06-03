@@ -911,9 +911,10 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       ticket_type_name: i.type, quantity: i.qty, unit_price: i.price,
     })));
     for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
-    fetch(API_BASE+'/api/tag-order', {
+    fetch(API_BASE+'/api/stripe-orders', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
       body: JSON.stringify({
+        action: 'tag',
         paymentIntentId,
         orderId: order.id,
         buyerName: buyerName.trim() || 'Walk-In',
@@ -1624,10 +1625,10 @@ const confirmCancelOrder = async () => {
   const { data: { session: adminSession } } = await supabase.auth.getSession();
   try {
     if (o.stripePaymentIntentId && !o.stripePaymentIntentId.startsWith('CASH-')) {
-      const refundRes = await fetch(API_BASE + '/api/refund-order', {
+      const refundRes = await fetch(API_BASE + '/api/stripe-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
-        body: JSON.stringify({ paymentIntentId: o.stripePaymentIntentId, orderId: o.id }),
+        body: JSON.stringify({ action: 'refund', paymentIntentId: o.stripePaymentIntentId, orderId: o.id }),
       });
       const refundData = await refundRes.json();
       if (!refundRes.ok) {
