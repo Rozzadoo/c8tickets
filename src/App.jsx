@@ -1451,8 +1451,8 @@ const [resetError, setResetError] = useState('');
   const venue = venues.find(v => v.id === TENANT_ID) || venues[0] || DEFAULT_VENUE;
   const sel = events.find(e => e.id === selId) || null;
   const selVenue = (sel ? venues.find(v => v.id === sel.venueId) : null) || venue;
-  const isGate = session?.user?.user_metadata?.role === 'gate';
-  const isVenueUser = session?.user?.user_metadata?.role === 'venue';
+  const isGate = session?.user?.app_metadata?.role === 'gate';
+  const isVenueUser = session?.user?.app_metadata?.role === 'venue';
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -1592,7 +1592,7 @@ const login = async () => {
   setAuthError('');
   const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
   if (error) { setAuthError(error.message); return; }
-  const role = data.user?.user_metadata?.role;
+  const role = data.user?.app_metadata?.role;
   if (role === 'gate') setView('gate');
   else if (role === 'admin' || role === 'venue') setView('admin');
   else { await supabase.auth.signOut(); setAuthError('Access denied. Contact your administrator.'); }
