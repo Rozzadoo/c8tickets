@@ -2746,6 +2746,11 @@ fetch(API_BASE+'/api/send-email', {
                     );
                   })}
                 </div>
+                {order.status !== 'cancelled' && (
+                  <a href={`${API_BASE}/api/wallet-pass?id=${order.id}`} style={{display:"block",textAlign:"center",marginBottom:16}}>
+                    <img src="/add-to-apple-wallet.svg" alt="Add to Apple Wallet" style={{height:44}} />
+                  </a>
+                )}
                 <div style={{marginBottom:24,padding:"20px 16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
                   <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>{hasReceipt ? 'Save a copy to your email' : 'Want another copy in your inbox?'}</p>
                   {ticketResendSent
