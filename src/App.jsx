@@ -2677,7 +2677,10 @@ fetch(API_BASE+'/api/send-email', {
               <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>
               <button className="btn" style={{flex:1}} onClick={()=>downloadIcs(ev, venue.location)}>Download .ics</button>
             </div>}
-            <button className="buy" style={{marginTop:12}} onClick={goHome}>Browse More Events</button>
+            <a href={`${API_BASE}/api/wallet-pass?id=${lastOrder.id}`} style={{display:"block",marginTop:10,textAlign:"center"}}>
+              <img src="/add-to-apple-wallet.svg" alt="Add to Apple Wallet" style={{height:44}} />
+            </a>
+            <button className="buy" style={{marginTop:8}} onClick={goHome}>Browse More Events</button>
           </div>); })()}
         {view === "mytickets" && (
           <div className="sec fade" style={{maxWidth:520}}>

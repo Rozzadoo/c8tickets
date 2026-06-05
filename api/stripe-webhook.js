@@ -222,6 +222,9 @@ export default async function handler(req, res) {
     </div>
     <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
     <div style="font-size:12px;color:#b5a78a;line-height:1.7">📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>Buying for a group? View and share individual tickets at:<br><a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="color:#c8922a;font-weight:700">c8tickets.com/t/${order.id.slice(0,8).toLowerCase()}…</a></div>
+    <div style="margin-top:16px">
+      <a href="https://c8tickets.com/api/wallet-pass?id=${encodeURIComponent(order.id)}" style="display:inline-block;background:#000;color:#fff;font-family:-apple-system,Helvetica Neue,Arial,sans-serif;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;border:1px solid #555">Add to Apple Wallet</a>
+    </div>
   </div>
   <div style="background:#161310;border:1px solid rgba(200,146,42,.08);border-radius:10px;padding:14px 18px;margin-bottom:20px;text-align:center">
     <div style="font-size:11px;color:#7a6c54;line-height:1.8"><strong style="color:#b5a78a">Refund Policy:</strong> All ticket sales are final and non-refundable unless the event is cancelled by the organizer. Questions? <a href="mailto:support@c8tickets.com" style="color:#c8922a">support@c8tickets.com</a></div>
