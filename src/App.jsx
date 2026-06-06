@@ -440,16 +440,18 @@ const ScannerWidget = ({ scannerId, onResult }) => {
   useEffect(() => {
     setCamErr('');
     let qr = new Html5Qrcode(scannerId);
+    let stopped = false;
+    const stop = () => { if (!stopped) { stopped = true; qr.stop().catch(() => {}); } };
     qr.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 250, height: 250 } },
-      (text) => { qr.stop().catch(() => {}); onResultRef.current(text.trim()); },
+      (text) => { stop(); onResultRef.current(text.trim()); },
       () => {}
     ).catch(e => {
       console.error(e);
       setCamErr('Camera blocked or unavailable. On iPhone: Settings → Safari → Camera → Allow for c8tickets.com, then tap "Scan Ticket" again.');
     });
-    return () => { if (qr) qr.stop().catch(() => {}); };
+    return () => { stop(); };
   }, [scannerId]);
   return <div style={{width:'100%'}}>
     {camErr && <div style={{padding:'12px 14px',marginBottom:8,background:'rgba(179,58,42,.12)',border:'1px solid rgba(179,58,42,.3)',borderRadius:'var(--rs)',fontSize:12,color:'var(--red)',lineHeight:1.6}}>{camErr}</div>}
@@ -1396,6 +1398,7 @@ const [resetError, setResetError] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [adminScan, setAdminScan] = useState(false);
   const [scanMsg, setScanMsg] = useState(null);
+  const [scanKey, setScanKey] = useState(0);
   const [sendingReminder, setSendingReminder] = useState(null);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderSourceFilter, setOrderSourceFilter] = useState('all');
@@ -2167,7 +2170,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     const id = rawId.replace(/^https?:\/\/[^/]+\/t\//, '').split('?')[0].trim();
     const showMsg = (msg, delay = 3000) => {
       setScanMsg(msg);
-      setTimeout(() => { setScanMsg(null); setAdminScan(true); }, delay);
+      setTimeout(() => { setScanMsg(null); setScanKey(k => k + 1); setAdminScan(true); }, delay);
     };
     // Try individual ticket lookup first
     const { data: ticket } = await supabase.from('tickets').select('*').eq('id', id).single();
@@ -3199,7 +3202,7 @@ fetch(API_BASE+'/api/send-email', {
                 </div>
               </div>
               {adminScan && <div style={{marginBottom:16,maxWidth:400}}>
-                <ScannerWidget scannerId="admin-scanner" onResult={handleAdminScan} />
+                <ScannerWidget key={scanKey} scannerId="admin-scanner" onResult={handleAdminScan} />
                 <button className="btn" style={{width:"100%",marginTop:8}} onClick={()=>setAdminScan(false)}>Cancel</button>
               </div>}
               {scanMsg && <div style={{marginBottom:16,padding:"10px 14px",borderRadius:"var(--rs)",background:scanMsg.ok?"rgba(93,138,60,.15)":"rgba(179,58,42,.15)",color:scanMsg.ok?"var(--green)":"var(--red)",fontSize:13,fontWeight:600}}>{scanMsg.text}</div>}
