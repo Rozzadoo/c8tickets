@@ -435,19 +435,26 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 // ── QR Scanner ──
 const ScannerWidget = ({ scannerId, onResult }) => {
   const onResultRef = useRef(onResult);
+  const [camErr, setCamErr] = useState('');
   useEffect(() => { onResultRef.current = onResult; });
   useEffect(() => {
-    let qr;
-    qr = new Html5Qrcode(scannerId);
+    setCamErr('');
+    let qr = new Html5Qrcode(scannerId);
     qr.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 250, height: 250 } },
       (text) => { qr.stop().catch(() => {}); onResultRef.current(text.trim()); },
       () => {}
-    ).catch(console.error);
+    ).catch(e => {
+      console.error(e);
+      setCamErr('Camera blocked or unavailable. On iPhone: Settings → Safari → Camera → Allow for c8tickets.com, then tap "Scan Ticket" again.');
+    });
     return () => { if (qr) qr.stop().catch(() => {}); };
   }, [scannerId]);
-  return <div id={scannerId} style={{width:'100%',minHeight:300,background:'var(--bg3)',borderRadius:'var(--r)'}} />;
+  return <div style={{width:'100%'}}>
+    {camErr && <div style={{padding:'12px 14px',marginBottom:8,background:'rgba(179,58,42,.12)',border:'1px solid rgba(179,58,42,.3)',borderRadius:'var(--rs)',fontSize:12,color:'var(--red)',lineHeight:1.6}}>{camErr}</div>}
+    <div id={scannerId} style={{width:'100%',minHeight:camErr?0:300,background:'var(--bg3)',borderRadius:'var(--r)'}} />
+  </div>;
 };
 
 // ── Gate Check-In View ──
