@@ -2162,29 +2162,32 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     updateOrders(orders.map(o => o.id === oid ? { ...o, checkedIn: true } : o));
   };
 
-  const handleAdminScan = async (id) => {
+  const handleAdminScan = async (rawId) => {
     setAdminScan(false);
+    const id = rawId.replace(/^https?:\/\/[^/]+\/t\//, '').split('?')[0].trim();
+    const showMsg = (msg, delay = 3000) => {
+      setScanMsg(msg);
+      setTimeout(() => { setScanMsg(null); setAdminScan(true); }, delay);
+    };
     // Try individual ticket lookup first
     const { data: ticket } = await supabase.from('tickets').select('*').eq('id', id).single();
     if (ticket) {
       const order = orders.find(o => o.id === ticket.order_id);
-      if (!order || order.venueId !== venue.id) { setScanMsg({ ok: false, text: 'This ticket is not for an event at this venue.' }); return; }
-      if (ticket.status === 'cancelled' || order.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
-      if (ticket.status === 'checked_in') { setScanMsg({ ok: false, text: `Ticket ${ticket.ticket_number} (${ticket.ticket_type_name}) already checked in.` }); return; }
+      if (!order || order.venueId !== venue.id) { showMsg({ ok: false, text: 'This ticket is not for an event at this venue.' }); return; }
+      if (ticket.status === 'cancelled' || order.status === 'cancelled') { showMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
+      if (ticket.status === 'checked_in') { showMsg({ ok: false, text: `Ticket ${ticket.ticket_number} (${ticket.ticket_type_name}) already checked in.` }); return; }
       await supabase.from('tickets').update({ status: 'checked_in', checked_in_at: new Date().toISOString() }).eq('id', ticket.id).eq('status', 'valid');
       setExpandedTickets(prev => ({ ...prev, [ticket.order_id]: (prev[ticket.order_id] || []).map(t => t.id === ticket.id ? { ...t, status: 'checked_in' } : t) }));
-      setScanMsg({ ok: true, text: `✓ Ticket ${ticket.ticket_number} — ${ticket.ticket_type_name} — checked in!` });
-      setTimeout(() => setScanMsg(null), 4000);
+      showMsg({ ok: true, text: `✓ Ticket ${ticket.ticket_number} — ${ticket.ticket_type_name} — checked in!` });
       return;
     }
     // Fall back to order-level
     const order = orders.find(o => o.id === id && o.venueId === venue.id);
-    if (!order) { setScanMsg({ ok: false, text: 'No order found for that QR code.' }); return; }
-    if (order.status === 'cancelled') { setScanMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
-    if (order.checkedIn) { setScanMsg({ ok: false, text: `${order.buyer.name} is already checked in.` }); return; }
+    if (!order) { showMsg({ ok: false, text: 'No order found for that QR code.' }); return; }
+    if (order.status === 'cancelled') { showMsg({ ok: false, text: 'This order has been cancelled and refunded.' }); return; }
+    if (order.checkedIn) { showMsg({ ok: false, text: `${order.buyer.name} is already checked in.` }); return; }
     await checkin(id);
-    setScanMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
-    setTimeout(() => setScanMsg(null), 4000);
+    showMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
   };
   const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }], addons: [] });
   const saveEvt = async (e) => {
