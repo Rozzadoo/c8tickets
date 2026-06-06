@@ -162,8 +162,7 @@ export default async function handler(req, res) {
     }).catch(e => console.error('PI tag error:', e.message));
 
     // Send confirmation email
-    const qrSvgRaw = await QRCode.toString(order.id, { type: 'svg', width: 180, margin: 1, color: { dark: '#1a1007', light: '#ffffff' } });
-    const qrSvg = qrSvgRaw.replace(/^[\s\S]*?(?=<svg)/, '');
+    const qrDataUrl = await QRCode.toDataURL(order.id, { width: 200, margin: 2, color: { dark: '#1a1007', light: '#ffffff' } });
 
     const itemsHtml = items.map(i => `
       <tr>
@@ -218,7 +217,7 @@ export default async function handler(req, res) {
   <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
     <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
     <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
-      ${qrSvg}
+      <img src="${qrDataUrl}" width="180" height="180" alt="QR Code" style="display:block;border-radius:4px">
     </div>
     <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
     <div style="font-size:12px;color:#b5a78a;line-height:1.7">📱 <strong style="color:#f0e9da">Show this QR code at the gate</strong><br>Buying for a group? View and share individual tickets at:<br><a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="color:#c8922a;font-weight:700">c8tickets.com/t/${order.id.slice(0,8).toLowerCase()}…</a></div>

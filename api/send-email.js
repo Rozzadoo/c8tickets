@@ -53,8 +53,7 @@ async function sendConfirmation(res, { order, event, venue }) {
       <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#4caf7d;text-align:right">-$${Number(order.discountAmount).toFixed(2)}</td>
     </tr>` : '';
 
-  const qrSvgRaw = await QRCode.toString(order.id, { type: 'svg', width: 180, margin: 1, color: { dark: '#1a1007', light: '#ffffff' } });
-  const qrSvg = qrSvgRaw.replace(/^[\s\S]*?(?=<svg)/, '');
+  const qrDataUrl = await QRCode.toDataURL(order.id, { width: 200, margin: 2, color: { dark: '#1a1007', light: '#ffffff' } });
 
   const { error } = await resend.emails.send({
     from: 'C8Tickets <noreply@c8tickets.com>',
@@ -98,7 +97,7 @@ async function sendConfirmation(res, { order, event, venue }) {
   <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
     <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
     <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
-      ${qrSvg}
+      <img src="${qrDataUrl}" width="180" height="180" alt="QR Code" style="display:block;border-radius:4px">
     </div>
     <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
     <div style="font-size:12px;color:#b5a78a;line-height:1.7">
