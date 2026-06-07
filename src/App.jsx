@@ -3250,12 +3250,22 @@ fetch(API_BASE+'/api/send-email', {
                       <span className={`badge ${t.status==='checked_in'?'badge-done':'badge-ok'}`} style={{fontSize:10}}>{t.status==='checked_in'?'In':'Valid'}</span>
                       {t.status==='checked_in'
                         ? <button className="btn" style={{fontSize:11,padding:"4px 10px",color:'var(--text3)'}} onClick={async()=>{
-                            await supabase.from('tickets').update({status:'valid',checked_in_at:null}).eq('id',t.id);
-                            setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'valid',checked_in_at:null}:x)}));
+                            const {error} = await supabase.from('tickets').update({status:'valid',checked_in_at:null}).eq('id',t.id);
+                            if (error) { alert('Undo failed: ' + error.message); return; }
+                            const newTix = (expandedTickets[o.id]||[]).map(x=>x.id===t.id?{...x,status:'valid',checked_in_at:null}:x);
+                            setExpandedTickets(prev=>({...prev,[o.id]:newTix}));
+                            await supabase.from('orders').update({status:'confirmed'}).eq('id',o.id);
+                            updateOrders(orders.map(ord=>ord.id===o.id?{...ord,checkedIn:false}:ord));
                           }}>Undo</button>
                         : <button className="ci-btn" style={{fontSize:11,padding:"4px 10px"}} onClick={async()=>{
-                            await supabase.from('tickets').update({status:'checked_in',checked_in_at:new Date().toISOString()}).eq('id',t.id).eq('status','valid');
-                            setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'checked_in'}:x)}));
+                            const {error} = await supabase.from('tickets').update({status:'checked_in',checked_in_at:new Date().toISOString()}).eq('id',t.id).eq('status','valid');
+                            if (error) { alert('Check-in failed: ' + error.message); return; }
+                            const newTix = (expandedTickets[o.id]||[]).map(x=>x.id===t.id?{...x,status:'checked_in'}:x);
+                            setExpandedTickets(prev=>({...prev,[o.id]:newTix}));
+                            if (newTix.filter(x=>x.status!=='cancelled').every(x=>x.status==='checked_in')) {
+                              await supabase.from('orders').update({status:'checked_in'}).eq('id',o.id);
+                              updateOrders(orders.map(ord=>ord.id===o.id?{...ord,checkedIn:true}:ord));
+                            }
                           }}>Check In</button>
                       }
                     </div>)}
