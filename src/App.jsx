@@ -469,9 +469,10 @@ const GateView = ({ events, onLogout }) => {
 
   useEffect(() => {
     if (selGateEventId || events.length === 0) return;
+    const todayStr = new Date().toLocaleDateString('en-CA');
     const upcoming = [...events].filter(e => e.published !== false)
       .sort((a, b) => new Date(a.date) - new Date(b.date))
-      .find(e => new Date(e.date) >= new Date(Date.now() - 86400000));
+      .find(e => e.date >= todayStr);
     if (upcoming) setSelGateEventId(upcoming.id);
   }, [events, selGateEventId]);
 
@@ -772,8 +773,9 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
 
   useEffect(() => {
     if (selEventId || events.length === 0) return;
+    const todayStr = new Date().toLocaleDateString('en-CA');
     const upcoming = [...events].sort((a, b) => new Date(a.date) - new Date(b.date))
-      .find(e => new Date(e.date) >= new Date(Date.now() - 86400000));
+      .find(e => e.date >= todayStr);
     setSelEventId(upcoming?.id || events[0]?.id || '');
   }, [events, selEventId]);
 
@@ -1073,7 +1075,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
           <label className="fl">Event</label>
           <select className="fi" value={selEventId} onChange={e => { setSelEventId(e.target.value); setDoorCart({}); }}>
             <option value="">— Select Event —</option>
-            {events.filter(e => new Date(e.date) >= new Date(Date.now() - 86400000)).map(e => <option key={e.id} value={e.id}>{e.title} — {fmtDate(e.date)}</option>)}
+            {events.filter(e => e.date >= new Date().toLocaleDateString('en-CA')).map(e => <option key={e.id} value={e.id}>{e.title} — {fmtDate(e.date)}</option>)}
           </select>
         </div>
         {ev && <>
@@ -1269,20 +1271,36 @@ const LiveDash = ({ events, orders }) => {
 
   useEffect(() => {
     if (selEventId || events.length === 0) return;
+    const todayStr = new Date().toLocaleDateString('en-CA');
     const upcoming = [...events].sort((a, b) => new Date(a.date) - new Date(b.date))
-      .find(e => new Date(e.date) >= new Date(Date.now() - 86400000));
+      .find(e => e.date >= todayStr);
     setSelEventId(upcoming?.id || events[0]?.id || '');
   }, [events, selEventId]);
 
   useEffect(() => {
     if (!selEventId) return;
     const refresh = async () => {
-      const { data } = await supabase.from('orders').select('id, status').eq('event_id', selEventId);
-      if (data) setCheckedInIds(new Set(data.filter(r => r.status === 'checked_in').map(r => r.id)));
+      const { data: ordData } = await supabase.from('orders').select('id, status').eq('event_id', selEventId);
+      const checkedIn = new Set((ordData || []).filter(r => r.status === 'checked_in').map(r => r.id));
+      // Also detect orders where all tickets are individually checked in (covers pre-fix manual check-ins)
+      const confirmedIds = (ordData || []).filter(r => r.status !== 'checked_in').map(r => r.id);
+      if (confirmedIds.length > 0) {
+        const { data: tixData } = await supabase.from('tickets').select('order_id, status').in('order_id', confirmedIds);
+        if (tixData && tixData.length > 0) {
+          const byOrder = {};
+          tixData.forEach(t => { (byOrder[t.order_id] = byOrder[t.order_id] || []).push(t); });
+          for (const [ordId, tix] of Object.entries(byOrder)) {
+            const active = tix.filter(t => t.status !== 'cancelled');
+            if (active.length > 0 && active.every(t => t.status === 'checked_in')) checkedIn.add(ordId);
+          }
+        }
+      }
+      setCheckedInIds(checkedIn);
     };
     refresh();
     const ch = supabase.channel('live-' + selEventId)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `event_id=eq.${selEventId}` }, refresh)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tickets' }, refresh)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [selEventId]);
@@ -1516,6 +1534,14 @@ const [resetError, setResetError] = useState('');
   useEffect(() => {
     if (!session) { setOrders([]); return; }
     reloadOrders();
+  }, [session, reloadOrders]);
+
+  useEffect(() => {
+    if (!session) return;
+    const ch = supabase.channel('orders-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => reloadOrders())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [session, reloadOrders]);
 
   useEffect(() => {
@@ -3178,7 +3204,7 @@ fetch(API_BASE+'/api/send-email', {
               const vo=orders.filter(o=>o.venueId===venue.id);
               const vs=orderSourceFilter==='all'?vo:vo.filter(o=>orderSourceFilter==='online'?(o.source==='online'||!o.source):o.source==='door'||o.source==='door_cash');
               const q=orderSearch.toLowerCase().trim();
-              const fo=q?vs.filter(o=>{const ev=events.find(e=>e.id===o.eventId);return o.buyer.name.toLowerCase().includes(q)||o.buyer.email.toLowerCase().includes(q)||(ev?.title||'').toLowerCase().includes(q);}):vs;
+              const fo=q?vs.filter(o=>{const ev=events.find(e=>e.id===o.eventId);return (o.buyer.name||'').toLowerCase().includes(q)||(o.buyer.email||'').toLowerCase().includes(q)||(ev?.title||'').toLowerCase().includes(q);}):vs;
               return <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
                   <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
@@ -3194,7 +3220,7 @@ fetch(API_BASE+'/api/send-email', {
                 {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{!expandedTickets[o.id]?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No individual ticket records for this order.</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
               </>; })()}
 
-            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&(!checkInEventFilter||o.eventId===checkInEventFilter)); const ciq=orderSearch.toLowerCase().trim(); const vof=ciq?vo.filter(o=>o.buyer.name.toLowerCase().includes(ciq)||o.buyer.email.toLowerCase().includes(ciq)):vo; const ciCheckedIn=vof.filter(o=>o.checkedIn).length; const ciTotal=vof.length; return <>
+            {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&(!checkInEventFilter||o.eventId===checkInEventFilter)); const ciq=orderSearch.toLowerCase().trim(); const vof=ciq?vo.filter(o=>(o.buyer.name||'').toLowerCase().includes(ciq)||(o.buyer.email||'').toLowerCase().includes(ciq)):vo; const ciCheckedIn=vof.filter(o=>o.checkedIn).length; const ciTotal=vof.length; return <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:10}}>
                 <h2 className="dsp" style={{fontSize:26}}>Check-In</h2>
                 <div style={{display:"flex",gap:8}}>
