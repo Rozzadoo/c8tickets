@@ -2358,9 +2358,13 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <div className="sec" id="events">
             {(() => {
               const oa = (t) => Math.max(0, t.available - (t.physicalQty ?? 0));
-              const sorted = [...publicEvents].sort((a,b) => new Date(a.date)-new Date(b.date));
+              const todayStr = new Date().toLocaleDateString('en-CA');
+              const sorted = [...publicEvents].filter(e => e.date >= todayStr).sort((a,b) => new Date(a.date)-new Date(b.date));
+              const pastEvents = [...publicEvents].filter(e => e.date < todayStr).sort((a,b) => new Date(b.date)-new Date(a.date));
               const featuredEv = filter === 'All' ? (sorted.find(ev=>ev.tickets.some(t=>oa(t)>0)) ?? sorted[0] ?? null) : null;
-              const gridEvents = featuredEv ? filtered.filter(ev=>ev.id!==featuredEv.id) : filtered;
+              const upcomingFiltered = filter === 'All' ? sorted : sorted.filter(e => e.category === filter);
+              const pastFiltered = filter === 'All' ? pastEvents : pastEvents.filter(e => e.category === filter);
+              const gridEvents = featuredEv ? upcomingFiltered.filter(ev=>ev.id!==featuredEv.id) : upcomingFiltered;
               return <>
                 {featuredEv && (()=>{
                   const fSoldOut=featuredEv.tickets.every(t=>oa(t)<=0);
@@ -2398,7 +2402,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                   <div className="filters" role="group" aria-label="Filter by category">{CATS.map(c=><button key={c} className={`chip ${filter===c?"on":""}`} aria-pressed={filter===c} onClick={()=>setFilter(c)}>{c}</button>)}</div>
                 </div>
                 {gridEvents.length===0?(
-                  publicEvents.length===0
+                  sorted.length===0
                     ? <div className="empty"><p style={{fontSize:16,color:"var(--text2)",marginBottom:8}}>No upcoming events right now.</p><p style={{fontSize:13,color:"var(--text3)"}}>Check back soon, or email us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a></p></div>
                     : <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>
                 ):
@@ -2420,6 +2424,29 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                         <div className="card-foot"><div className="card-price">{soldOut?<span style={{color:'var(--text3)',fontWeight:600,fontSize:14,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span>:<>{fmtCurrency(mp)}{mp>0&&<small> & up</small>}</>}</div>{soldOut?null:<button className="btn gold" onClick={e=>{e.stopPropagation();open(ev.id);}}>Tickets</button>}</div>
                       </div>
                     </div>);})}</div>}
+                {pastFiltered.length > 0 && <div style={{marginTop:52}}>
+                  <div style={{display:'flex',alignItems:'baseline',gap:12,marginBottom:14,flexWrap:'wrap'}}>
+                    <div className="sec-title dsp" style={{fontSize:'clamp(20px,3vw,26px)',letterSpacing:2,opacity:.55}}>Past Events</div>
+                    <div style={{height:2,flex:1,minWidth:32,background:'linear-gradient(90deg,rgba(200,146,42,.15),transparent)',borderRadius:2,alignSelf:'center'}}/>
+                  </div>
+                  <div className="grid">{pastFiltered.map(ev=>(
+                    <div key={ev.id} className="card" role="button" tabIndex={0} onClick={()=>open(ev.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(ev.id);}}} style={{opacity:.45,filter:'grayscale(0.4)'}}>
+                      <div className="card-img">
+                        {ev.image&&ev.image.startsWith('http')
+                          ?<img src={ev.image} alt={ev.title} loading="lazy" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',objectPosition:`${ev.focalX??50}% ${ev.focalY??50}%`}} />
+                          :<span style={{fontSize:48}}>🎵</span>}
+                        <div className="card-cat">{ev.category}</div>
+                        <div style={{position:'absolute',inset:0,background:'rgba(12,10,7,.5)',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:20,letterSpacing:4,textTransform:'uppercase',color:'rgba(240,233,218,.7)',border:'1px solid rgba(240,233,218,.3)',padding:'5px 16px',borderRadius:4}}>Past Event</span></div>
+                      </div>
+                      <div className="card-body">
+                        <div className="card-date">{fmtDate(ev.date)} - {fmtTime(ev.time)}</div>
+                        <div className="card-title dsp">{ev.title}</div>
+                        {venues.length > 1 && <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,fontWeight:700,marginBottom:4}}>{venues.find(v=>v.id===ev.venueId)?.name||''}</div>}
+                        <div className="card-desc">{ev.description}</div>
+                      </div>
+                    </div>
+                  ))}</div>
+                </div>}
               </>;
             })()}
           </div>
