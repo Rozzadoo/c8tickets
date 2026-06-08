@@ -2739,6 +2739,7 @@ fetch(API_BASE+'/api/send-email', {
                 <li style={{fontWeight:700,color:"var(--text)",borderTop:"1px solid var(--bg4)",paddingTop:6,marginTop:6}}><span>Total</span><span>{fmtCurrency(lastOrder.total)}</span></li>
                 </ul>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} - {lastOrder.buyer.email}<br/>{venue.name} - {venue.location}</p>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:8,lineHeight:1.6}}>A confirmation email with your QR code has been sent to <strong style={{color:"var(--text2)"}}>{lastOrder.buyer.email}</strong>. If you don't see it, check your spam or junk folder.</p>
             </div>
             {ev && <div style={{display:"flex",gap:8,marginTop:12}}>
               <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>
