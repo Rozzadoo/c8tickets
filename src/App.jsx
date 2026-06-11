@@ -3354,7 +3354,7 @@ fetch(API_BASE+'/api/send-email', {
 
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
               const avgOrderTotal=vo.length>0?vo.reduce((s,o)=>s+o.total,0)/vo.length:0;
-              const evAvgRows=vEvents.map(ev=>{const eo=vo.filter(o=>o.eventId===ev.id);if(!eo.length)return null;const capacity=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const evTotalSold=ev.tickets.reduce((s,t)=>s+(t.sold??0),0);const sellThru=capacity>0?Math.round(evTotalSold/capacity*100):0;const remaining=capacity>0?Math.max(0,capacity-evTotalSold):null;return{ev,count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru,remaining};}).filter(Boolean);
+              const evAvgRows=[...new Set(vo.map(o=>o.eventId))].map(evId=>{const ev=vEvents.find(e=>e.id===evId);const eo=vo.filter(o=>o.eventId===evId);if(!eo.length)return null;const capacity=ev?ev.tickets.reduce((s,t)=>s+(t.total??t.available),0):null;const evTotalSold=ev?ev.tickets.reduce((s,t)=>s+(t.sold??0),0):null;const sellThru=capacity?Math.round(evTotalSold/capacity*100):0;const remaining=capacity!=null?Math.max(0,capacity-evTotalSold):null;return{ev:ev||{id:evId,title:'[Deleted Event]',date:''},count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru,remaining};}).filter(Boolean);
 
               const isDoor = o => o.source==='door'||o.source==='door_cash';
               const doorOrders=vo.filter(isDoor);
