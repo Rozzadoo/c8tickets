@@ -2360,7 +2360,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               const oa = (t) => Math.max(0, t.available - (t.physicalQty ?? 0));
               const todayStr = new Date().toLocaleDateString('en-CA');
               const sorted = [...publicEvents].filter(e => e.date >= todayStr).sort((a,b) => new Date(a.date)-new Date(b.date));
-              const pastEvents = [...publicEvents].filter(e => e.date < todayStr).sort((a,b) => new Date(b.date)-new Date(a.date));
+              const allVenueEvents = venueFilter === 'All' ? events : events.filter(e => e.venueId === venueFilter);
+              const pastEvents = allVenueEvents.filter(e => e.date < todayStr).sort((a,b) => new Date(b.date)-new Date(a.date));
               const featuredEv = filter === 'All' ? (sorted.find(ev=>ev.tickets.some(t=>oa(t)>0)) ?? sorted[0] ?? null) : null;
               const upcomingFiltered = filter === 'All' ? sorted : sorted.filter(e => e.category === filter);
               const pastFiltered = filter === 'All' ? pastEvents : pastEvents.filter(e => e.category === filter);
