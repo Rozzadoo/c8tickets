@@ -366,7 +366,8 @@ main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .admin{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 61px)}
 @media(max-width:768px){.admin{grid-template-columns:1fr;align-content:start}}
 .aside{background:var(--bg2);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;gap:3px}
-@media(max-width:768px){.aside{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:10px;border-right:none;border-bottom:1px solid var(--border)}}
+@media(max-width:768px){.aside{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:8px 10px;border-right:none;border-bottom:1px solid var(--border);scrollbar-width:none;gap:2px}.aside::-webkit-scrollbar{display:none}.aside-btn{padding:8px 10px;justify-content:center}.aside-btn span.aside-label{display:none}}
+@media(max-width:480px){.aside-btn{padding:8px 6px}}
 .aside-btn{padding:9px 14px;border-radius:var(--rs);border:none;background:transparent;color:var(--text2);cursor:pointer;font-family:'Barlow',sans-serif;font-size:13px;text-align:left;transition:all .15s;white-space:nowrap;font-weight:500}
 .aside-btn:hover,.aside-btn.on{background:var(--bg3);color:var(--gold)}
 .amain{padding:28px;overflow-y:auto;overflow-x:hidden;max-width:100%}
@@ -752,6 +753,9 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
   const [buyerName, setBuyerName] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
   const [step, setStep] = useState('select');
+  const [lookupQ, setLookupQ] = useState('');
+  const [lookupResults, setLookupResults] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
   const [clientSecret, setClientSecret] = useState(null);
   const [amounts, setAmounts] = useState(null);
   const [cashAmounts, setCashAmounts] = useState(null);
@@ -1042,6 +1046,27 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
 
   const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); setIsPreSale(false); setVoidConfirm(false); };
 
+  const runLookup = async () => {
+    const q = lookupQ.trim();
+    if (!q || !selEventId) return;
+    setLookupLoading(true);
+    setLookupResults(null);
+    const isEmail = q.includes('@');
+    const filter = isEmail
+      ? `buyer_email=ilike.${encodeURIComponent('%'+q+'%')}`
+      : `buyer_name=ilike.${encodeURIComponent('%'+q+'%')}`;
+    const { data } = await supabase
+      .from('orders')
+      .select('id,buyer_name,buyer_email,status,total_amount,created_at,order_items(ticket_type_name,quantity)')
+      .eq('event_id', selEventId)
+      .or(`buyer_email.ilike.%${q}%,buyer_name.ilike.%${q}%`)
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    setLookupResults(data || []);
+    setLookupLoading(false);
+  };
+
   const handleVoidSale = async () => {
     if (!lastSale) return;
     setVoiding(true);
@@ -1073,11 +1098,32 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       {step === 'select' && <>
         <div className="fg" style={{marginBottom:16}}>
           <label className="fl">Event</label>
-          <select className="fi" value={selEventId} onChange={e => { setSelEventId(e.target.value); setDoorCart({}); }}>
+          <select className="fi" value={selEventId} onChange={e => { setSelEventId(e.target.value); setDoorCart({}); setLookupQ(''); setLookupResults(null); }}>
             <option value="">— Select Event —</option>
             {events.filter(e => e.date >= new Date().toLocaleDateString('en-CA')).map(e => <option key={e.id} value={e.id}>{e.title} — {fmtDate(e.date)}</option>)}
           </select>
         </div>
+        {selEventId && <div style={{marginBottom:20,padding:'14px 16px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--rs)'}}>
+          <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:1.5,color:'var(--text3)',marginBottom:8}}>Look Up Existing Order</div>
+          <div style={{display:'flex',gap:8}}>
+            <input className="fi" style={{flex:1,margin:0}} placeholder="Name or email…" value={lookupQ} onChange={e=>setLookupQ(e.target.value)} onKeyDown={e=>e.key==='Enter'&&runLookup()} />
+            <button className="btn" style={{flexShrink:0}} disabled={!lookupQ.trim()||lookupLoading} onClick={runLookup}>{lookupLoading?'…':'Search'}</button>
+          </div>
+          {lookupResults !== null && (lookupResults.length === 0
+            ? <p style={{fontSize:12,color:'var(--text3)',marginTop:10,marginBottom:0}}>No orders found.</p>
+            : <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
+                {lookupResults.map(r => (
+                  <div key={r.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'8px 12px',background:'var(--bg3)',borderRadius:'var(--rs)',fontSize:12}}>
+                    <div>
+                      <div style={{fontWeight:600}}>{r.buyer_name}</div>
+                      <div style={{color:'var(--text3)',fontSize:11}}>{r.buyer_email} · {(r.order_items||[]).map(i=>`${i.quantity}× ${i.ticket_type_name}`).join(', ')}</div>
+                    </div>
+                    <span className={`badge ${r.status==='checked_in'?'badge-done':'badge-ok'}`} style={{fontSize:10,flexShrink:0}}>{r.status==='checked_in'?'Checked In':'Valid'}</span>
+                  </div>
+                ))}
+              </div>
+          )}
+        </div>}
         {ev && <>
           {ev.tickets.map((t, i) => {
             const dp = t.doorPrice ?? t.price;
@@ -3193,7 +3239,7 @@ fetch(API_BASE+'/api/send-email', {
             ['reports','Reports',<svg key="r" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>],
             ['promos','Promo Codes',<svg key="p" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>],
             ...(!isVenueUser ? [['accounts','Accounts',<svg key="ac" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>]] : []),
-          ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); if(t==='accounts'&&!venueUsersLoaded) loadVenueUsers(); }} style={{display:'flex',alignItems:'center',gap:8}}>{icon}{label}</button>)}</div>
+          ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); if(t==='accounts'&&!venueUsersLoaded) loadVenueUsers(); }} style={{display:'flex',alignItems:'center',gap:8}} title={label}>{icon}<span className="aside-label">{label}</span></button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => {
               const now = new Date();
@@ -3247,7 +3293,7 @@ fetch(API_BASE+'/api/send-email', {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
@@ -3320,7 +3366,16 @@ fetch(API_BASE+'/api/send-email', {
                   </div>
                   {isExpanded&&<div style={{padding:"8px 14px 12px",borderTop:"1px solid var(--bg4)"}}>
                     {tix.length===0?<p style={{fontSize:12,color:"var(--text3)",margin:"8px 0"}}>Loading tickets…</p>
-                    :tix.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--bg4)"}}>
+                    :<>{tix.filter(t=>t.status==='valid').length>1&&<button className="ci-btn" style={{width:"100%",marginBottom:10,fontSize:12,padding:"6px 10px"}} onClick={async()=>{
+                        const now=new Date().toISOString();
+                        const unchecked=tix.filter(t=>t.status==='valid');
+                        await supabase.from('tickets').update({status:'checked_in',checked_in_at:now}).in('id',unchecked.map(t=>t.id));
+                        const newTix=tix.map(t=>t.status==='valid'?{...t,status:'checked_in',checked_in_at:now}:t);
+                        setExpandedTickets(prev=>({...prev,[o.id]:newTix}));
+                        await supabase.from('orders').update({status:'checked_in'}).eq('id',o.id);
+                        updateOrders(orders.map(ord=>ord.id===o.id?{...ord,checkedIn:true}:ord));
+                      }}>✓ Check In All ({tix.filter(t=>t.status==='valid').length} remaining)</button>}
+                    {tix.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--bg4)"}}>
                       <span style={{fontSize:12,flex:1,color:"var(--text2)"}}>#{t.ticket_number} — {t.ticket_type_name}</span>
                       <span className={`badge ${t.status==='checked_in'?'badge-done':'badge-ok'}`} style={{fontSize:10}}>{t.status==='checked_in'?'In':'Valid'}</span>
                       {t.status==='checked_in'
@@ -3343,7 +3398,7 @@ fetch(API_BASE+'/api/send-email', {
                             }
                           }}>Check In</button>
                       }
-                    </div>)}
+                    </div>)}</>}
                   </div>}
                 </div>;
               })}</div>}
