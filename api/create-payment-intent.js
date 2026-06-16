@@ -2,10 +2,11 @@ import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+// Fee structure matches src/constants.js — keep in sync
+const SALES_TAX_RATE = 0.06;
 const SERVICE_FEE_PER_TICKET = 2.00;
 const PROCESSING_FEE_RATE = 0.035;
 const PROCESSING_FEE_FLAT = 0.30;
-const SALES_TAX_RATE = 0.06; // Idaho state sales tax - confirm with accountant
 
 const intentLog = new Map();
 function isRateLimited(key, maxPerHour) {

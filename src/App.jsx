@@ -9,8 +9,8 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 // ── Logo as base64 PNG with transparency ──
-const LOGO_SRC = "/logo-simple.png";
-const LOGO_FULL = "/logo-full.png";
+const LOGO_SRC = "/logo-simple.webp";
+const LOGO_FULL = "/logo-full.webp";
 // ── Data & Storage ──
 const DEFAULT_VENUE = {
   id: TENANT_ID, name: "Crooked 8",
@@ -1625,6 +1625,18 @@ const [resetError, setResetError] = useState('');
     }
   }, [view, selId, events, venue]);
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (modal) { setModal(false); return; }
+      if (editEmailOrder) { setEditEmailOrder(null); setEditEmailValue(''); return; }
+      if (cancelTarget && !cancelling) { setCancelTarget(null); return; }
+      if (ticketSizeModal) { setTicketSizeModal(null); return; }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [modal, editEmailOrder, cancelTarget, cancelling, ticketSizeModal]);
+
 const login = async () => {
   setAuthError('');
   const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
@@ -2742,7 +2754,15 @@ fetch(API_BASE+'/api/send-email', {
               <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>{lastOrder.buyer.name} - {lastOrder.buyer.email}<br/>{venue.name} - {venue.location}</p>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:8,lineHeight:1.6}}>A confirmation email with your QR code has been sent to <strong style={{color:"var(--text2)"}}>{lastOrder.buyer.email}</strong>. If you don't see it, check your spam or junk folder.</p>
             </div>
-            {ev && <div style={{display:"flex",gap:8,marginTop:12}}>
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button className="btn" style={{flex:1}} onClick={async () => {
+                const url = `${APP_URL}/t/${lastOrder.id}`;
+                if (navigator.share) { try { await navigator.share({ title: 'Your Tickets', url }); } catch {} }
+                else { navigator.clipboard?.writeText(url); }
+              }}>Save / Share Ticket</button>
+              <button className="btn" style={{flex:1}} onClick={() => window.print()}>Print / Save PDF</button>
+            </div>
+            {ev && <div style={{display:"flex",gap:8,marginTop:8}}>
               <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>
               <button className="btn" style={{flex:1}} onClick={()=>downloadIcs(ev, venue.location)}>Download .ics</button>
             </div>}

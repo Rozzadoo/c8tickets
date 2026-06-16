@@ -28,20 +28,17 @@ export default async function handler(req, res) {
     const sig = req.headers['stripe-signature'];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+    if (!webhookSecret) {
+      console.error('Webhook: STRIPE_WEBHOOK_SECRET is not set');
+      return res.status(500).json({ error: 'Webhook secret not configured' });
+    }
+
     let event;
-    if (webhookSecret && sig) {
-      // Verify signature — preferred: prevents replay and forgery without an API round-trip
-      try {
-        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
-      } catch (err) {
-        console.error('Webhook signature verification failed:', err.message);
-        return res.status(400).json({ error: `Webhook signature error: ${err.message}` });
-      }
-    } else {
-      // Fallback: retrieve event from Stripe API to confirm it's real (used when STRIPE_WEBHOOK_SECRET not yet set)
-      const { id: eventId } = JSON.parse(rawBody || '{}');
-      if (!eventId) return res.status(400).json({ error: 'Missing event ID' });
-      event = await stripe.events.retrieve(eventId);
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+    } catch (err) {
+      console.error('Webhook signature verification failed:', err.message);
+      return res.status(400).json({ error: `Webhook signature error: ${err.message}` });
     }
 
     if (event.type !== 'payment_intent.succeeded') {
