@@ -316,8 +316,10 @@ export default async function handler(req, res) {
     return sendCancellation(res, req.body);
   }
 
-  const ok = await requireAdmin(req, res);
-  if (!ok) return;
+  // Confirmation emails are sent by the customer's browser right after payment —
+  // no admin session exists at that point. The destination email is always fetched
+  // from Supabase (not the request body), so this path cannot be used to spam
+  // arbitrary addresses.
   try {
     return await sendConfirmation(res, req.body);
   } catch (error) {
