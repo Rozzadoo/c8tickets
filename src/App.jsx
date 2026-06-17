@@ -57,6 +57,8 @@ const mapEvent = (e) => ({
     physicalQty: t.physical_qty ?? 0,
   })),
   addons: e.addons || [],
+  checkoutNotice: e.checkout_notice || '',
+  checkoutNoticeRequired: e.checkout_notice_required || false,
 });
 
 const mapVenue = (v) => ({
@@ -1519,6 +1521,12 @@ const [resetError, setResetError] = useState('');
   const [venueFormOpen, setVenueFormOpen] = useState(false);
   const [editingVenueId, setEditingVenueId] = useState(null);
   const [venueForm, setVenueForm] = useState({ name:'', address:'', contactPhone:'', contactEmail:'', website:'', ownerName:'', ownerPhone:'', notes:'' });
+  const [alreadyPurchased, setAlreadyPurchased] = useState(false);
+  const [noticeAgreed, setNoticeAgreed] = useState(false);
+  const [waitlistName, setWaitlistName] = useState('');
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
   const [venueSaving, setVenueSaving] = useState(false);
   const [venueError, setVenueError] = useState('');
   const [venueSuccess, setVenueSuccess] = useState('');
@@ -1682,6 +1690,16 @@ const [resetError, setResetError] = useState('');
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [modal, editEmailOrder, cancelTarget, cancelling, ticketSizeModal]);
+
+  useEffect(() => {
+    const email = buyer?.email?.toLowerCase().trim();
+    if (!email || !email.includes('@') || !selId || view !== 'checkout') { setAlreadyPurchased(false); return; }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from('orders').select('id').eq('event_id', selId).eq('buyer_email', email).neq('status', 'cancelled').limit(1);
+      setAlreadyPurchased(Array.isArray(data) && data.length > 0);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [buyer?.email, selId, view]);
 
 const login = async () => {
   setAuthError('');
@@ -2151,7 +2169,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     }
   };
 
-  const open = (id) => { setSelId(id); setCart({}); setAddonCart({}); setView("detail"); window.history.pushState({}, '', `/e/${id}`); };
+  const open = (id) => { setSelId(id); setCart({}); setAddonCart({}); setView("detail"); setWaitlistName(''); setWaitlistEmail(''); setWaitlistSubmitted(false); setNoticeAgreed(false); setAlreadyPurchased(false); window.history.pushState({}, '', `/e/${id}`); };
   const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
 
   const submitSellInquiry = async () => {
@@ -2277,7 +2295,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     await checkin(id);
     showMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
   };
-  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }], addons: [] });
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }], addons: [], checkoutNotice: "", checkoutNoticeRequired: false });
   const saveEvt = async (e) => {
   setIsSaving(true);
   try {
@@ -2312,6 +2330,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       focal_y: e.focalY ?? 50,
       is_published: e.published ?? true,
       addons: e.addons || [],
+      checkout_notice: e.checkoutNotice || null,
+      checkout_notice_required: e.checkoutNoticeRequired || false,
     }).eq('id', e.id);
     for (const t of e.tickets) {
       if (t.id) await supabase.from('ticket_types').update({
@@ -2337,6 +2357,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       venue_name: venue.name,
       is_published: e.published ?? true,
       addons: e.addons || [],
+      checkout_notice: e.checkoutNotice || null,
+      checkout_notice_required: e.checkoutNoticeRequired || false,
     }).select().single();
     if (error) { console.error(error); return; }
     await supabase.from('ticket_types').insert(
@@ -2554,10 +2576,51 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <div className="tkt-sec"><h3 className="dsp">Select Tickets</h3>
             {sel.tickets.map((t, i) => { const oa = Math.max(0, t.available - (t.physicalQty ?? 0)); const total = t.total ?? t.available; const lowStock = oa > 0 && total > 0 && oa / total <= 0.25; return <div className="tkt-row" key={i}><div className="tkt-info"><h4>{t.type}</h4>{oa === 0 ? <p>Sold Out</p> : lowStock ? <p style={{color:'var(--red)',fontWeight:700,fontSize:12}}>Almost Gone — Grab Yours Now!</p> : null}</div><div className="tkt-price">{fmtCurrency(t.price)}</div><div className="qty"><button className="qb" aria-label={`Remove one ${t.type}`} disabled={!cart[i]} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)-1 })}>−</button><div className="qv" aria-live="polite" aria-label={`${cart[i]||0} ${t.type} selected`}>{cart[i]||0}</div><button className="qb" aria-label={`Add one ${t.type}`} disabled={(cart[i]||0) >= oa || oa === 0} onClick={() => setCart({ ...cart, [i]: (cart[i]||0)+1 })}>+</button></div></div>; })}
             {cartN > 0 && <div className="cart-sum">{sel.tickets.map((t,i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i]*t.price)}</span></div>)}<div className="cart-tot"><span>Total</span><span>{fmtCurrency(cartTotal)}</span></div></div>}
-            <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
-              <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
-              </div>
-            <button className="buy" disabled={cartN===0} onClick={() => { if (cartN === 0) return; setSoldOutError(''); setView("checkout"); }}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
+            {(() => {
+              const allSoldOut = sel.tickets.every(t => Math.max(0, t.available - (t.physicalQty ?? 0)) === 0);
+              if (!allSoldOut) return (
+                <>
+                  <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
+                    <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
+                  </div>
+                  <button className="buy" disabled={cartN===0} onClick={() => { if (cartN === 0) return; setSoldOutError(''); setNoticeAgreed(false); setView("checkout"); }}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
+                </>
+              );
+              return (
+                <div style={{marginTop:8}}>
+                  <div style={{background:"rgba(179,58,42,.08)",border:"1px solid rgba(179,58,42,.2)",borderRadius:"var(--rs)",padding:"16px",marginBottom:16,textAlign:"center"}}>
+                    <div style={{fontSize:18,fontWeight:700,color:"var(--text)",textTransform:"uppercase",letterSpacing:2,marginBottom:4}}>Sold Out</div>
+                    <div style={{fontSize:13,color:"var(--text2)"}}>All tickets for this event have been sold.</div>
+                  </div>
+                  <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"16px",marginBottom:12}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:4}}>Already have tickets?</div>
+                    <div style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Find your tickets and QR code below.</div>
+                    <button className="btn" style={{width:"100%"}} onClick={()=>{setLookupEmail('');setLookupStep('email');setLookupError('');setView('lookup');}}>Find My Tickets →</button>
+                  </div>
+                  {!waitlistSubmitted ? (
+                    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"16px"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:4}}>Join the Waitlist</div>
+                      <div style={{fontSize:12,color:"var(--text2)",marginBottom:12}}>We'll let you know if tickets become available.</div>
+                      <div className="fg" style={{marginBottom:8}}><input className="fi" style={{margin:0}} placeholder="Your name" value={waitlistName} onChange={e=>setWaitlistName(e.target.value)} /></div>
+                      <div className="fg" style={{marginBottom:10}}><input className="fi" type="email" style={{margin:0}} placeholder="your@email.com" value={waitlistEmail} onChange={e=>setWaitlistEmail(e.target.value)} /></div>
+                      <button className="buy" disabled={!waitlistName.trim()||!waitlistEmail.includes('@')||waitlistSubmitting} onClick={async()=>{
+                        setWaitlistSubmitting(true);
+                        try {
+                          await supabase.from('waitlist_entries').insert({ event_id: sel.id, tenant_id: TENANT_ID, name: waitlistName.trim(), email: waitlistEmail.trim().toLowerCase() });
+                          setWaitlistSubmitted(true);
+                        } catch(e) { alert('Could not join waitlist. Please try again.'); }
+                        finally { setWaitlistSubmitting(false); }
+                      }}>{waitlistSubmitting ? 'Joining…' : 'Join Waitlist'}</button>
+                    </div>
+                  ) : (
+                    <div style={{background:"rgba(93,138,60,.1)",border:"1px solid rgba(93,138,60,.3)",borderRadius:"var(--rs)",padding:"16px",textAlign:"center"}}>
+                      <div style={{fontSize:15,fontWeight:700,color:"var(--green)",marginBottom:4}}>You're on the list!</div>
+                      <div style={{fontSize:12,color:"var(--text2)"}}>We'll email {waitlistEmail} if tickets open up.</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>}
 
@@ -2568,6 +2631,9 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     <p style={{ color: "var(--text2)", marginBottom: 24, fontSize: 13 }}>{sel.title} - {fmtDate(sel.date)}</p>
     {!clientSecret && (
       <>
+        {alreadyPurchased && <div style={{background:"rgba(200,146,42,.1)",border:"1px solid rgba(200,146,42,.3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:16,fontSize:13,color:"var(--gold)"}}>
+          <strong>Heads up:</strong> We found an existing order for this email at this event. Double-check before purchasing again — <button style={{background:'none',border:'none',padding:0,color:'var(--gold)',cursor:'pointer',textDecoration:'underline',fontSize:13}} onClick={()=>{setLookupEmail(buyer.email);setLookupStep('email');setView('lookup');}}>find your existing tickets here</button>.
+        </div>}
         <div className="tkt-sec" style={{ marginBottom: 20 }}>
           <h3 className="dsp">Your Info</h3>
           <div className="fg"><label className="fl" htmlFor="buyer-name">Full Name *</label><input id="buyer-name" className="fi" autoComplete="name" value={buyer.name} onChange={e => setBuyer({...buyer,name:e.target.value})} placeholder="Jane Doe" />{buyer.name.length > 0 && !nameValid && <p style={{fontSize:11,color:"var(--red)",marginTop:3}}>Please enter your full name.</p>}</div>
@@ -2641,8 +2707,15 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                   </div>
                 )}
               </div>
+              {sel.checkoutNotice && <div style={{background:"rgba(200,146,42,.08)",border:"1px solid rgba(200,146,42,.2)",borderRadius:"var(--rs)",padding:"12px 14px",marginTop:12,fontSize:13,color:"var(--text2)",lineHeight:1.6}}>
+                <strong style={{color:"var(--gold)"}}>Notice: </strong>{sel.checkoutNotice}
+                {sel.checkoutNoticeRequired && <div style={{display:'flex',alignItems:'center',gap:10,marginTop:10}}>
+                  <input type="checkbox" id="notice-agree-cb" checked={noticeAgreed} onChange={e=>setNoticeAgreed(e.target.checked)} style={{width:16,height:16,accentColor:'var(--gold)',cursor:'pointer',flexShrink:0}} />
+                  <label htmlFor="notice-agree-cb" style={{fontSize:12,cursor:'pointer',userSelect:'none'}}>I have read and understand the above</label>
+                </div>}
+              </div>}
               {soldOutError && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"12px 14px",marginTop:12,marginBottom:4,color:"var(--red)",fontSize:13}}><strong>Tickets no longer available:</strong> {soldOutError}. Please go back and choose different quantities.</div>}
-              <button className="buy" style={{ marginTop: 12 }} onClick={createPaymentIntent} disabled={creatingPayment || !!soldOutError}>
+              <button className="buy" style={{ marginTop: 12 }} onClick={createPaymentIntent} disabled={creatingPayment || !!soldOutError || (sel.checkoutNoticeRequired && !noticeAgreed)}>
                 {creatingPayment ? "Setting up payment..." : `Continue to Payment — ${fmtCurrency(grand)}`}
               </button>
             </div>
@@ -4205,6 +4278,12 @@ fetch(API_BASE+'/api/send-email', {
             </div>
           ))}
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,addons:[...(editEvt.addons||[]),{id:`ao_${Date.now().toString(36)}`,name:"",price:0,maxPerOrder:null,active:true}]})}>+ Add Add-on</button>
+          <h3 className="dsp" style={{fontSize:16,margin:"20px 0 4px"}}>Checkout Notice <span style={{fontWeight:400,fontSize:11,color:"var(--text3)"}}>shown to buyers before payment (age limits, ID required, etc.)</span></h3>
+          <div className="fg"><textarea className="fi" rows={2} value={editEvt.checkoutNotice||''} onChange={e=>setEditEvt({...editEvt,checkoutNotice:e.target.value})} placeholder="e.g. This is a 21+ event. Valid ID required at the door." /></div>
+          {(editEvt.checkoutNotice||'').trim() && <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'var(--bg3)',borderRadius:'var(--rs)'}}>
+            <input type="checkbox" id="notice-required-cb" checked={editEvt.checkoutNoticeRequired||false} onChange={e=>setEditEvt({...editEvt,checkoutNoticeRequired:e.target.checked})} style={{width:16,height:16,accentColor:'var(--gold)',cursor:'pointer',flexShrink:0}} />
+            <label htmlFor="notice-required-cb" style={{fontSize:13,cursor:'pointer',userSelect:'none'}}>Require buyers to check a box confirming they read this</label>
+          </div>}
           <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date||isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
         </div></div>}
 
