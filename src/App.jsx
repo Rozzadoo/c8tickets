@@ -1521,6 +1521,12 @@ const [resetError, setResetError] = useState('');
   const [venueFormOpen, setVenueFormOpen] = useState(false);
   const [editingVenueId, setEditingVenueId] = useState(null);
   const [venueForm, setVenueForm] = useState({ name:'', address:'', contactPhone:'', contactEmail:'', website:'', ownerName:'', ownerPhone:'', notes:'' });
+  const [refundMode, setRefundMode] = useState('full');
+  const [partialRefundAmt, setPartialRefundAmt] = useState('');
+  const [compModal, setCompModal] = useState(false);
+  const [compForm, setCompForm] = useState({ eventId: '', ticketTypeId: '', qty: 1, name: '', email: '' });
+  const [compSaving, setCompSaving] = useState(false);
+  const [ordersPage, setOrdersPage] = useState(0);
   const [alreadyPurchased, setAlreadyPurchased] = useState(false);
   const [noticeAgreed, setNoticeAgreed] = useState(false);
   const [waitlistName, setWaitlistName] = useState('');
@@ -1757,12 +1763,13 @@ const [resetError, setResetError] = useState('');
       if (e.key !== 'Escape') return;
       if (modal) { setModal(false); return; }
       if (editEmailOrder) { setEditEmailOrder(null); setEditEmailValue(''); return; }
-      if (cancelTarget && !cancelling) { setCancelTarget(null); return; }
+      if (cancelTarget && !cancelling) { setCancelTarget(null); setRefundMode('full'); setPartialRefundAmt(''); return; }
+      if (compModal) { setCompModal(false); return; }
       if (ticketSizeModal) { setTicketSizeModal(null); return; }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [modal, editEmailOrder, cancelTarget, cancelling, ticketSizeModal]);
+  }, [modal, editEmailOrder, cancelTarget, cancelling, compModal, ticketSizeModal]);
 
   useEffect(() => {
     const email = buyer?.email?.toLowerCase().trim();
@@ -1807,18 +1814,39 @@ const logout = async () => {
 const confirmCancelOrder = async () => {
   const o = cancelTarget;
   if (!o) return;
+  const hasStripe = o.stripePaymentIntentId && !o.stripePaymentIntentId.startsWith('CASH-') && !o.stripePaymentIntentId.startsWith('COMP-');
+  const isPartial = refundMode === 'partial' && hasStripe;
+  if (isPartial) {
+    const amt = parseFloat(partialRefundAmt);
+    if (isNaN(amt) || amt <= 0 || amt > o.total) {
+      alert(`Enter a valid partial refund amount between $0.01 and ${fmtCurrency(o.total)}.`);
+      return;
+    }
+  }
   setCancelling(true);
   const { data: { session: adminSession } } = await supabase.auth.getSession();
+  const adminEmail = adminSession?.user?.email || '';
   try {
-    if (o.stripePaymentIntentId && !o.stripePaymentIntentId.startsWith('CASH-')) {
+    if (hasStripe) {
+      const refundBody = {
+        action: 'refund', paymentIntentId: o.stripePaymentIntentId, orderId: o.id, cancelledBy: adminEmail,
+        ...(isPartial ? { amount: parseFloat(partialRefundAmt), partialOnly: true } : {}),
+      };
       const refundRes = await fetch(API_BASE + '/api/stripe-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
-        body: JSON.stringify({ action: 'refund', paymentIntentId: o.stripePaymentIntentId, orderId: o.id }),
+        body: JSON.stringify(refundBody),
       });
       const refundData = await refundRes.json();
       if (!refundRes.ok) {
         alert(`Refund failed: ${refundData.error || 'Unknown error'}. The order was not cancelled.`);
+        return;
+      }
+      if (isPartial) {
+        setCancelTarget(null);
+        setRefundMode('full');
+        setPartialRefundAmt('');
+        alert(`Partial refund of ${fmtCurrency(parseFloat(partialRefundAmt))} issued. The order remains valid.`);
         return;
       }
     } else {
@@ -1834,6 +1862,8 @@ const confirmCancelOrder = async () => {
         return item ? { ...t, available: t.available + item.qty } : t;
       })
     })));
+    setRefundMode('full');
+    setPartialRefundAmt('');
     setCancelTarget(null);
 
     const ev = events.find(e => e.id === o.eventId);
@@ -1856,6 +1886,60 @@ const confirmCancelOrder = async () => {
     }
   } finally {
     setCancelling(false);
+  }
+};
+
+const saveComp = async () => {
+  const ev = events.find(e => e.id === compForm.eventId);
+  const tt = ev?.tickets.find(t => t.id === compForm.ticketTypeId);
+  if (!ev || !tt || !compForm.name.trim() || compForm.qty < 1) {
+    alert('Please fill in all required fields.');
+    return;
+  }
+  setCompSaving(true);
+  try {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    const compRef = 'COMP-' + Date.now();
+    const { data: order, error: orderError } = await supabase.from('orders').insert({
+      tenant_id: TENANT_ID, event_id: compForm.eventId,
+      buyer_name: compForm.name.trim(), buyer_email: compForm.email.trim(), buyer_phone: '',
+      status: 'confirmed', total_amount: 0, ticket_subtotal: 0,
+      sales_tax: 0, service_fees: 0, processing_fee: 0,
+      stripe_payment_intent_id: compRef, source: 'comp',
+    }).select().single();
+    if (orderError) { alert('Failed to create comp order: ' + orderError.message); return; }
+    await supabase.from('order_items').insert([{
+      order_id: order.id, ticket_type_id: compForm.ticketTypeId,
+      ticket_type_name: tt.type, quantity: compForm.qty, unit_price: 0,
+    }]);
+    await supabase.rpc('increment_sold', { tid: compForm.ticketTypeId, qty: compForm.qty });
+    if (compForm.email.trim()) {
+      fetch(API_BASE + '/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
+        body: JSON.stringify({
+          order: { id: order.id, items: [{ type: tt.type, qty: compForm.qty, price: 0 }], salesTax: 0, serviceFees: 0, processingFee: 0, total: 0 },
+          event: { title: ev.title, category: ev.category || '', date: fmtDate(ev.date), time: fmtTime(ev.time), doors: fmtTime(ev.doors || '') },
+          venue: { name: venue.name, location: venue.location },
+        }),
+      }).catch(() => {});
+    }
+    updateOrders(prev => [...prev, {
+      id: order.id, eventId: compForm.eventId, venueId: venue.id,
+      buyer: { name: compForm.name.trim(), email: compForm.email.trim(), phone: '' },
+      items: [{ type: tt.type, qty: compForm.qty, price: 0, ticketTypeId: compForm.ticketTypeId }],
+      total: 0, date: new Date().toISOString(), checkedIn: false, source: 'comp',
+      stripePaymentIntentId: compRef,
+    }]);
+    updateEvents(evts => evts.map(e => e.id !== compForm.eventId ? e : {
+      ...e, tickets: e.tickets.map(t => t.id === compForm.ticketTypeId ? { ...t, available: t.available - compForm.qty } : t)
+    }));
+    setCompModal(false);
+    setCompForm({ eventId: '', ticketTypeId: '', qty: 1, name: '', email: '' });
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    setCompSaving(false);
   }
 };
 
@@ -3460,22 +3544,28 @@ fetch(API_BASE+'/api/send-email', {
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
-              const vs=orderSourceFilter==='all'?vo:vo.filter(o=>orderSourceFilter==='online'?(o.source==='online'||!o.source):o.source==='door'||o.source==='door_cash');
+              const vs=orderSourceFilter==='all'?vo:vo.filter(o=>orderSourceFilter==='online'?(o.source==='online'||!o.source):o.source==='door'||o.source==='door_cash'||o.source==='comp');
               const q=orderSearch.toLowerCase().trim();
               const fo=q?vs.filter(o=>{const ev=events.find(e=>e.id===o.eventId);return (o.buyer.name||'').toLowerCase().includes(q)||(o.buyer.email||'').toLowerCase().includes(q)||(ev?.title||'').toLowerCase().includes(q);}):vs;
+              const PAGE_SIZE=50;const sortedFo=fo.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));const totalPages=Math.ceil(sortedFo.length/PAGE_SIZE)||1;const safePage=Math.min(ordersPage,totalPages-1);const pagedFo=sortedFo.slice(safePage*PAGE_SIZE,(safePage+1)*PAGE_SIZE);
               return <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
                   <h2 className="dsp" style={{fontSize:26}}>All Orders</h2>
-                  <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
+                  <input className="fi" style={{maxWidth:260,margin:0}} placeholder="Search name, email, or event…" value={orderSearch} onChange={e=>{setOrderSearch(e.target.value);setOrdersPage(0);}} />
                 </div>
                 <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
                   {[['all','All'],['online','Online'],['door','Door']].map(([val,label])=>(
-                    <button key={val} className={`chip ${orderSourceFilter===val?'on':''}`} onClick={()=>setOrderSourceFilter(val)}>{label}</button>
+                    <button key={val} className={`chip ${orderSourceFilter===val?'on':''}`} onClick={()=>{setOrderSourceFilter(val);setOrdersPage(0);}}>{label}</button>
                   ))}
                   <span style={{fontSize:12,color:"var(--text3)",alignSelf:"center",marginLeft:4}}>{fo.length} order{fo.length!==1?'s':''}</span>
-                  {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
+                  <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+                    <button className="btn gold" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>{setCompForm({eventId:'',ticketTypeId:'',qty:1,name:'',email:''});setCompModal(true);}}>+ Comp</button>
+                    {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
+                  </div>
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{fo.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{!expandedTickets[o.id]?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No individual ticket records for this order.</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}</tbody></table></div>}
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<><div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{pagedFo.flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isComp=o.source==='comp';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}{isComp&&<div style={{color:"var(--gold)",fontSize:10,fontWeight:700}}>COMP</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{isComp?<span style={{color:"var(--gold)"}}>COMP</span>:fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{!expandedTickets[o.id]?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No individual ticket records for this order.</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}  </tbody></table></div>
+                {totalPages>1&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:14}}><button className="btn" style={{padding:"5px 14px",fontSize:12}} disabled={safePage===0} onClick={()=>setOrdersPage(p=>Math.max(0,p-1))}>← Prev</button><span style={{fontSize:12,color:"var(--text3)"}}>Page {safePage+1} of {totalPages}</span><button className="btn" style={{padding:"5px 14px",fontSize:12}} disabled={safePage>=totalPages-1} onClick={()=>setOrdersPage(p=>Math.min(totalPages-1,p+1))}>Next →</button></div>}
+                </>}
               </>; })()}
 
             {aTab === "check-in" && (()=>{ const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&(!checkInEventFilter||o.eventId===checkInEventFilter)); const ciq=orderSearch.toLowerCase().trim(); const vof=ciq?vo.filter(o=>(o.buyer.name||'').toLowerCase().includes(ciq)||(o.buyer.email||'').toLowerCase().includes(ciq)):vo; const ciCheckedIn=vof.filter(o=>o.checkedIn).length; const ciTotal=vof.length; return <>
@@ -4403,31 +4493,88 @@ fetch(API_BASE+'/api/send-email', {
           </div>
         </div>}
 
-        {cancelTarget && <div className="modal-bg" onClick={()=>{ if (!cancelling) setCancelTarget(null); }}>
+        {cancelTarget && (()=>{
+          const hasStripe = cancelTarget.stripePaymentIntentId && !cancelTarget.stripePaymentIntentId.startsWith('CASH-') && !cancelTarget.stripePaymentIntentId.startsWith('COMP-');
+          const isPartial = refundMode === 'partial' && hasStripe;
+          return <div className="modal-bg" onClick={()=>{ if (!cancelling) { setCancelTarget(null); setRefundMode('full'); setPartialRefundAmt(''); } }}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
             <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠️</span>
               <div>
-                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Warning — Refund & Cancellation</div>
+                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>{isPartial ? 'Partial Refund' : 'Warning — Refund & Cancellation'}</div>
                 <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>
-                  {cancelTarget.stripePaymentIntentId && !cancelTarget.stripePaymentIntentId.startsWith('CASH-')
-                    ? <>Cancelling this order will <strong style={{color:"var(--text)"}}>immediately issue a full refund</strong> to the buyer's original payment method via Stripe. Tickets will be returned to available inventory. This action cannot be undone.</>
-                    : <>Cancelling this order will return tickets to available inventory. <strong style={{color:"var(--text)"}}>No Stripe refund will be issued</strong> — you will need to handle any cash or manual refund separately. This action cannot be undone.</>
+                  {isPartial
+                    ? <>A partial refund will be issued to the buyer's original payment method. <strong style={{color:"var(--text)"}}>The order stays valid</strong> — tickets are not cancelled.</>
+                    : hasStripe
+                      ? <>Cancelling this order will <strong style={{color:"var(--text)"}}>immediately issue a full refund</strong> to the buyer's original payment method via Stripe. Tickets will be returned to available inventory. This action cannot be undone.</>
+                      : <>Cancelling this order will return tickets to available inventory. <strong style={{color:"var(--text)"}}>No Stripe refund will be issued</strong> — handle any cash or manual refund separately. This action cannot be undone.</>
                   }
                 </div>
               </div>
             </div>
-            <h2 className="dsp" style={{fontSize:20,marginBottom:16}}>Cancel Order</h2>
-            <div style={{marginBottom:20,padding:"10px 14px",background:"var(--bg3)",borderRadius:"var(--rs)",fontSize:12,lineHeight:1.8}}>
+            <h2 className="dsp" style={{fontSize:20,marginBottom:16}}>{isPartial ? 'Issue Partial Refund' : 'Cancel Order'}</h2>
+            <div style={{marginBottom:16,padding:"10px 14px",background:"var(--bg3)",borderRadius:"var(--rs)",fontSize:12,lineHeight:1.8}}>
               <span style={{color:"var(--text3)"}}>Order: </span><span style={{fontFamily:"monospace",color:"var(--text)"}}>{cancelTarget.id.slice(0,12).toUpperCase()}</span><br/>
               <span style={{color:"var(--text3)"}}>Buyer: </span><span style={{color:"var(--text)"}}>{cancelTarget.buyer.name}</span><br/>
               <span style={{color:"var(--text3)"}}>Email: </span><span style={{color:"var(--text)"}}>{cancelTarget.buyer.email||"—"}</span><br/>
-              <span style={{color:"var(--text3)"}}>Amount to refund: </span><span style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(cancelTarget.total)}</span>
-              {!cancelTarget.stripePaymentIntentId && <><br/><span style={{color:"var(--red)"}}>No Stripe payment on file — order will be cancelled without a refund.</span></>}
+              <span style={{color:"var(--text3)"}}>Order total: </span><span style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(cancelTarget.total)}</span>
+              {!hasStripe && <><br/><span style={{color:"var(--red)"}}>No Stripe payment on file — order will be cancelled without a refund.</span></>}
             </div>
+            {hasStripe && <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Refund Type</div>
+              <div style={{display:"flex",gap:8}}>
+                {[['full','Full Refund + Cancel'],['partial','Partial Refund Only']].map(([val,label])=>(
+                  <button key={val} onClick={()=>{setRefundMode(val);setPartialRefundAmt('');}} style={{flex:1,padding:"8px 12px",border:`2px solid ${refundMode===val?"var(--gold)":"var(--border)"}`,borderRadius:6,background:refundMode===val?"rgba(200,146,42,0.1)":"var(--card)",cursor:"pointer",color:"var(--text)",fontSize:12,fontWeight:refundMode===val?700:400}}>{label}</button>
+                ))}
+              </div>
+              {isPartial && <div style={{marginTop:10}}>
+                <label className="fl">Amount to refund ($)</label>
+                <input className="fi" type="number" min="0.01" max={cancelTarget.total} step="0.01" placeholder={`Max ${fmtCurrency(cancelTarget.total)}`} value={partialRefundAmt} onChange={e=>setPartialRefundAmt(e.target.value)} style={{marginTop:4}}/>
+                <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Order remains valid. Use for comping part of an order or correcting an overcharge.</div>
+              </div>}
+            </div>}
             <div style={{display:"flex",gap:10,marginTop:4}}>
-              <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={cancelling} onClick={confirmCancelOrder}>{cancelling ? "Processing..." : "Confirm — Cancel & Refund"}</button>
-              <button className="btn" style={{padding:"10px 20px"}} disabled={cancelling} onClick={()=>setCancelTarget(null)}>Go Back</button>
+              <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={cancelling||(isPartial&&!partialRefundAmt)} onClick={confirmCancelOrder}>
+                {cancelling ? "Processing..." : isPartial ? `Refund ${partialRefundAmt?fmtCurrency(parseFloat(partialRefundAmt)):'amount'}` : "Confirm — Cancel & Refund"}
+              </button>
+              <button className="btn" style={{padding:"10px 20px"}} disabled={cancelling} onClick={()=>{setCancelTarget(null);setRefundMode('full');setPartialRefundAmt('');}}>Go Back</button>
+            </div>
+          </div>
+        </div>;})()}
+
+        {compModal && <div className="modal-bg" onClick={()=>setCompModal(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:480}}>
+            <h2 className="dsp" style={{fontSize:20,marginBottom:4}}>Issue Comp Tickets</h2>
+            <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Generate free tickets for a guest. An email confirmation with QR code will be sent if an email address is provided.</p>
+            <div className="fg">
+              <label className="fl">Event *</label>
+              <select className="fi" value={compForm.eventId} onChange={e=>setCompForm(f=>({...f,eventId:e.target.value,ticketTypeId:''}))}>
+                <option value="">Select event…</option>
+                {events.filter(e=>e.published!==false).map(e=><option key={e.id} value={e.id}>{e.title} — {fmtDate(e.date)}</option>)}
+              </select>
+            </div>
+            {compForm.eventId && <div className="fg">
+              <label className="fl">Ticket Type *</label>
+              <select className="fi" value={compForm.ticketTypeId} onChange={e=>setCompForm(f=>({...f,ticketTypeId:e.target.value}))}>
+                <option value="">Select type…</option>
+                {(events.find(e=>e.id===compForm.eventId)?.tickets||[]).map(t=><option key={t.id} value={t.id}>{t.type} ({t.available} available)</option>)}
+              </select>
+            </div>}
+            <div className="fg">
+              <label className="fl">Quantity *</label>
+              <input className="fi" type="number" min="1" max="20" value={compForm.qty} onChange={e=>setCompForm(f=>({...f,qty:Math.max(1,parseInt(e.target.value)||1)}))}/>
+            </div>
+            <div className="fg">
+              <label className="fl">Guest Name *</label>
+              <input className="fi" placeholder="Full name" value={compForm.name} onChange={e=>setCompForm(f=>({...f,name:e.target.value}))}/>
+            </div>
+            <div className="fg">
+              <label className="fl">Guest Email (optional)</label>
+              <input className="fi" type="email" placeholder="email@example.com" value={compForm.email} onChange={e=>setCompForm(f=>({...f,email:e.target.value}))}/>
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:20}}>
+              <button className="buy" style={{flex:1}} disabled={compSaving||!compForm.eventId||!compForm.ticketTypeId||!compForm.name.trim()} onClick={saveComp}>{compSaving?"Issuing…":"Issue Comp Tickets"}</button>
+              <button className="btn" style={{padding:"10px 20px"}} disabled={compSaving} onClick={()=>setCompModal(false)}>Cancel</button>
             </div>
           </div>
         </div>}
