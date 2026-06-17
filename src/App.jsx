@@ -1683,7 +1683,12 @@ const [resetError, setResetError] = useState('');
 
     if (view === 'detail' && selTitle) { title = `${selTitle} — ${base}`; }
     else if (view === 'checkout') { title = `Checkout — ${base}`; }
-    else if (view === 'ticket' || view === 'mytickets') { title = `Your Tickets — ${base}`; }
+    else if (view === 'ticket') { title = `Your Tickets — ${base}`; }
+    else if (view === 'mytickets' && ticketOrderId) {
+      const evTitle = ticketPageData ? (events.find(e => e.id === ticketPageData.order?.event_id)?.title || '') : '';
+      title = evTitle ? `${evTitle} — Your Tickets — ${base}` : `Your Tickets — ${base}`;
+      path = `/t/${ticketOrderId}`;
+    }
     else if (view === 'admin') { title = `Admin — ${base}`; }
     else if (view === 'lookup') { title = `Find My Tickets — ${base}`; }
     else if (view === 'venue') { const vp = venues.find(v => v.id === venueProfileId); if (vp) title = `${vp.name} — ${base}`; }
@@ -1727,7 +1732,7 @@ const [resetError, setResetError] = useState('');
     if (window.location.pathname !== path) {
       window.history.replaceState(null, '', path);
     }
-  }, [view, selId, sel, selVenue, events, venue]);
+  }, [view, selId, sel, selVenue, events, venue, ticketOrderId, ticketPageData]);
 
   // Inject / remove Google Event structured data
   useEffect(() => {
@@ -2716,21 +2721,21 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <h1 className="dsp" style={{ fontSize: "clamp(26px,5vw,42px)", lineHeight: 1.1, marginBottom: 14 }}>{sel.title}</h1>
           <div className="share-row">
             {'share' in navigator
-              ? <button className="share-btn share-native" title="Share" onClick={async () => { try { await navigator.share({ title: sel.title, text: sel.title+' — grab your tickets!', url: APP_URL+'/e/'+sel.id }); } catch(e) {} }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              ? <button className="share-btn share-native" title="Share" aria-label="Share this event" onClick={async () => { try { await navigator.share({ title: sel.title, text: sel.title+' — grab your tickets!', url: APP_URL+'/e/'+sel.id }); } catch(e) {} }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                 </button>
               : <>
-                  <a className="share-btn share-fb" title="Share on Facebook" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+                  <a className="share-btn share-fb" title="Share on Facebook" aria-label="Share on Facebook" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
                   </a>
-                  <a className="share-btn share-tw" title="Share on X / Twitter" href={`https://x.com/intent/tweet?text=${encodeURIComponent(sel.title+' — grab your tickets!')}&url=${encodeURIComponent(APP_URL+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                  <a className="share-btn share-tw" title="Share on X / Twitter" aria-label="Share on X / Twitter" href={`https://x.com/intent/tweet?text=${encodeURIComponent(sel.title+' — grab your tickets!')}&url=${encodeURIComponent(APP_URL+'/e/'+sel.id)}`} target="_blank" rel="noopener noreferrer">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                   </a>
-                  <button className="share-btn share-ig" title={copiedLink ? "Copied!" : "Copy link for Instagram"} onClick={() => { navigator.clipboard.writeText(APP_URL+'/e/'+sel.id); setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); }}>
-                    {copiedLink ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>}
+                  <button className="share-btn share-ig" title={copiedLink ? "Copied!" : "Copy link for Instagram"} aria-label={copiedLink ? "Link copied!" : "Copy link for Instagram"} onClick={() => { navigator.clipboard.writeText(APP_URL+'/e/'+sel.id); setCopiedLink(true); setTimeout(()=>setCopiedLink(false),2000); }}>
+                    {copiedLink ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>}
                   </button>
-                  <a className="share-btn share-sms" title="Share via Text Message" href={`sms:?body=${encodeURIComponent(sel.title+' — get tickets: '+APP_URL+'/e/'+sel.id)}`}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <a className="share-btn share-sms" title="Share via Text Message" aria-label="Share via Text Message" href={`sms:?body=${encodeURIComponent(sel.title+' — get tickets: '+APP_URL+'/e/'+sel.id)}`}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   </a>
                 </>
             }
@@ -4408,8 +4413,8 @@ fetch(API_BASE+'/api/send-email', {
           </div>
         </div>}
 
-        {modal && editEvt && <div className="modal-bg" onClick={()=>setModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
-          <h2 className="dsp">{events.find(e=>e.id===editEvt.id)?"Edit Event":"New Event"}</h2>
+        {modal && editEvt && <div className="modal-bg" onClick={()=>setModal(false)}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-event-heading" onClick={e=>e.stopPropagation()}>
+          <h2 id="dlg-event-heading" className="dsp">{events.find(e=>e.id===editEvt.id)?"Edit Event":"New Event"}</h2>
           <div className="fg"><label className="fl">Title</label><input className="fi" value={editEvt.title} onChange={e=>setEditEvt({...editEvt,title:e.target.value})} placeholder="e.g. Neon Rodeo Night"/></div>
           <div className="fr"><div className="fg"><label className="fl">Date</label><input className="fi" type="date" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})}/></div><div className="fg"><label className="fl">Show Time</label><input className="fi" type="time" value={editEvt.time} onChange={e=>setEditEvt({...editEvt,time:e.target.value})} /></div></div>
           <div className="fr"><div className="fg"><label className="fl">Doors</label><input className="fi" type="time" value={editEvt.doors} onChange={e=>setEditEvt({...editEvt,doors:e.target.value})} /></div><div className="fg"><label className="fl">Category</label><select className="fi" value={editEvt.category} onChange={e=>setEditEvt({...editEvt,category:e.target.value})}>{["Live Music","Rodeo","Family","Other Events"].map(c=><option key={c} value={c}>{c}</option>)}</select></div></div>
@@ -4468,15 +4473,15 @@ fetch(API_BASE+'/api/send-email', {
         </div></div>}
 
         {editEmailOrder && <div className="modal-bg" onClick={()=>{setEditEmailOrder(null);setEditEmailValue('');}}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-email-heading" onClick={e=>e.stopPropagation()}>
             <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
-              <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠️</span>
+              <span style={{fontSize:20,lineHeight:1,flexShrink:0}} aria-hidden="true">⚠️</span>
               <div>
                 <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Warning — Email Change</div>
                 <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>You are changing the buyer's email address on this order. The buyer will only receive future emails (resends) at the new address. This action does not automatically resend the confirmation.</div>
               </div>
             </div>
-            <h2 className="dsp" style={{fontSize:20,marginBottom:16}}>Edit Order Email</h2>
+            <h2 id="dlg-email-heading" className="dsp" style={{fontSize:20,marginBottom:16}}>Edit Order Email</h2>
             <div style={{marginBottom:16,padding:"10px 14px",background:"var(--bg3)",borderRadius:"var(--rs)",fontSize:12,lineHeight:1.8}}>
               <span style={{color:"var(--text3)"}}>Order: </span><span style={{fontFamily:"monospace",color:"var(--text)"}}>{editEmailOrder.id.slice(0,12).toUpperCase()}</span><br/>
               <span style={{color:"var(--text3)"}}>Buyer: </span><span style={{color:"var(--text)"}}>{editEmailOrder.buyer.name}</span><br/>
@@ -4497,9 +4502,9 @@ fetch(API_BASE+'/api/send-email', {
           const hasStripe = cancelTarget.stripePaymentIntentId && !cancelTarget.stripePaymentIntentId.startsWith('CASH-') && !cancelTarget.stripePaymentIntentId.startsWith('COMP-');
           const isPartial = refundMode === 'partial' && hasStripe;
           return <div className="modal-bg" onClick={()=>{ if (!cancelling) { setCancelTarget(null); setRefundMode('full'); setPartialRefundAmt(''); } }}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-cancel-heading" onClick={e=>e.stopPropagation()}>
             <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
-              <span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠️</span>
+              <span style={{fontSize:20,lineHeight:1,flexShrink:0}} aria-hidden="true">⚠️</span>
               <div>
                 <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>{isPartial ? 'Partial Refund' : 'Warning — Refund & Cancellation'}</div>
                 <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>
@@ -4512,7 +4517,7 @@ fetch(API_BASE+'/api/send-email', {
                 </div>
               </div>
             </div>
-            <h2 className="dsp" style={{fontSize:20,marginBottom:16}}>{isPartial ? 'Issue Partial Refund' : 'Cancel Order'}</h2>
+            <h2 id="dlg-cancel-heading" className="dsp" style={{fontSize:20,marginBottom:16}}>{isPartial ? 'Issue Partial Refund' : 'Cancel Order'}</h2>
             <div style={{marginBottom:16,padding:"10px 14px",background:"var(--bg3)",borderRadius:"var(--rs)",fontSize:12,lineHeight:1.8}}>
               <span style={{color:"var(--text3)"}}>Order: </span><span style={{fontFamily:"monospace",color:"var(--text)"}}>{cancelTarget.id.slice(0,12).toUpperCase()}</span><br/>
               <span style={{color:"var(--text3)"}}>Buyer: </span><span style={{color:"var(--text)"}}>{cancelTarget.buyer.name}</span><br/>
@@ -4543,8 +4548,8 @@ fetch(API_BASE+'/api/send-email', {
         </div>;})()}
 
         {compModal && <div className="modal-bg" onClick={()=>setCompModal(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:480}}>
-            <h2 className="dsp" style={{fontSize:20,marginBottom:4}}>Issue Comp Tickets</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-comp-heading" onClick={e=>e.stopPropagation()} style={{maxWidth:480}}>
+            <h2 id="dlg-comp-heading" className="dsp" style={{fontSize:20,marginBottom:4}}>Issue Comp Tickets</h2>
             <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>Generate free tickets for a guest. An email confirmation with QR code will be sent if an email address is provided.</p>
             <div className="fg">
               <label className="fl">Event *</label>
@@ -4580,8 +4585,8 @@ fetch(API_BASE+'/api/send-email', {
         </div>}
 
         {ticketSizeModal && <div className="modal-bg" onClick={()=>setTicketSizeModal(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:540}}>
-            <h2 className="dsp" style={{fontSize:22,marginBottom:6}}>Choose Ticket Size</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-ticketsize-heading" onClick={e=>e.stopPropagation()} style={{maxWidth:540}}>
+            <h2 id="dlg-ticketsize-heading" className="dsp" style={{fontSize:22,marginBottom:6}}>Choose Ticket Size</h2>
             <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>{ticketSizeModal.mode==='photo'?'Photo PDF — event image on left panel':'Text layout — event photo as subtle background texture'}</p>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
               {TICKET_SIZES.map(s=><button key={s.id} onClick={()=>setTicketSizeSelected(s.id)} style={{padding:"14px 16px",textAlign:"left",border:`2px solid ${ticketSizeSelected===s.id?"var(--gold)":"var(--border)"}`,borderRadius:8,background:ticketSizeSelected===s.id?"rgba(200,146,42,0.1)":"var(--card)",cursor:"pointer",color:"var(--text)"}}>
