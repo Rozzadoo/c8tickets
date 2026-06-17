@@ -2937,8 +2937,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             if (orderError) {
               // 23505 = unique_violation: webhook already created this order — payment is fine, just exit
               if (orderError.code === '23505') return;
-              console.error(orderError);
-              alert(`Your payment was successful but there was a problem saving your order record. Please email support@c8tickets.com immediately and include this payment reference so we can issue your tickets manually:\n\n${paymentIntentId}`);
+              console.error('Order save error (payment succeeded, webhook will recover):', orderError);
+              alert(`Your payment went through successfully!\n\nYour confirmation email with tickets is on its way — please allow 1–2 minutes for delivery and check your spam folder if it doesn't arrive.\n\nIf you don't receive it within 10 minutes, contact support@c8tickets.com with this reference:\n${paymentIntentId}`);
               return;
             }
 
