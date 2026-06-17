@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta, promoCode, addonItems } = req.body;
+    const { items, eventId, tenantId, isDoorSale, buyer, eventMeta, venueMeta, promoCode, addonItems, utm } = req.body;
 
     // Rate limit online purchases — door sales are admin-initiated, no limit needed
     if (!isDoorSale) {
@@ -202,6 +202,11 @@ export default async function handler(req, res) {
           if (s.length > 490) throw new Error('Too many add-ons selected. Please reduce your selection.');
           return s;
         })(),
+        ...(utm && typeof utm === 'object' ? {
+          utm_source: String(utm.source || '').slice(0, 100),
+          utm_medium: String(utm.medium || '').slice(0, 100),
+          utm_campaign: String(utm.campaign || '').slice(0, 100),
+        } : {}),
       },
     });
 

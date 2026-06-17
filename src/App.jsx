@@ -1536,6 +1536,23 @@ const [resetError, setResetError] = useState('');
   const selVenue = (sel ? venues.find(v => v.id === sel.venueId) : null) || venue;
   const isGate = session?.user?.app_metadata?.role === 'gate';
   const isVenueUser = session?.user?.app_metadata?.role === 'venue';
+  const utmRef = useRef({});
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const utm = {};
+    ['source','medium','campaign','term','content'].forEach(k => { const v = p.get('utm_'+k); if (v) utm[k] = v; });
+    if (Object.keys(utm).length > 0) { utmRef.current = utm; sessionStorage.setItem('c8_utm', JSON.stringify(utm)); }
+    else { try { utmRef.current = JSON.parse(sessionStorage.getItem('c8_utm') || '{}'); } catch {} }
+    // Inject Plausible analytics if configured
+    const domain = import.meta.env.VITE_PLAUSIBLE_DOMAIN;
+    if (domain && !document.querySelector('script[data-domain]')) {
+      const s = document.createElement('script');
+      s.defer = true; s.dataset.domain = domain;
+      s.src = 'https://plausible.io/js/script.js';
+      document.head.appendChild(s);
+    }
+    window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments); };
+  }, []);
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -1674,10 +1691,66 @@ const [resetError, setResetError] = useState('');
     const metaDesc = document.querySelector('meta[name="description"]');
     if (metaDesc) metaDesc.setAttribute('content', desc);
 
+    // Update OG / Twitter meta tags for event detail pages
+    const setMeta = (sel, val) => { const el = document.querySelector(sel); if (el) el.setAttribute('content', val); };
+    const setLink = (sel, val) => { const el = document.querySelector(sel); if (el) el.setAttribute('href', val); };
+    if (view === 'detail' && sel) {
+      const evTitle = `${sel.title} — C8Tickets`;
+      const evDesc = sel.description ? sel.description.slice(0, 160) : `Get tickets for ${sel.title} on ${fmtDate(sel.date)} at ${selVenue.name} — ${selVenue.location}`;
+      const evImg = sel.image && sel.image.startsWith('http') ? sel.image : 'https://c8tickets.com/api/og-image';
+      const evUrl = `${APP_URL}/e/${sel.id}`;
+      setMeta('meta[property="og:title"]', evTitle);
+      setMeta('meta[property="og:description"]', evDesc);
+      setMeta('meta[property="og:image"]', evImg);
+      setMeta('meta[property="og:url"]', evUrl);
+      setMeta('meta[name="twitter:title"]', evTitle);
+      setMeta('meta[name="twitter:description"]', evDesc);
+      setMeta('meta[name="twitter:image"]', evImg);
+      setLink('link[rel="canonical"]', evUrl);
+    } else {
+      setMeta('meta[property="og:title"]', 'C8Tickets — Event Tickets in Boise & Treasure Valley, Idaho');
+      setMeta('meta[property="og:description"]', desc);
+      setMeta('meta[property="og:image"]', 'https://c8tickets.com/api/og-image');
+      setMeta('meta[property="og:url"]', 'https://c8tickets.com/');
+      setMeta('meta[name="twitter:title"]', 'C8Tickets — Event Tickets in Boise & Treasure Valley, Idaho');
+      setMeta('meta[name="twitter:description"]', desc);
+      setMeta('meta[name="twitter:image"]', 'https://c8tickets.com/api/og-image');
+      setLink('link[rel="canonical"]', 'https://c8tickets.com/');
+    }
+
     if (window.location.pathname !== path) {
       window.history.replaceState(null, '', path);
     }
-  }, [view, selId, events, venue]);
+  }, [view, selId, sel, selVenue, events, venue]);
+
+  // Inject / remove Google Event structured data
+  useEffect(() => {
+    let script = document.getElementById('event-ld');
+    if (view === 'detail' && sel) {
+      if (!script) {
+        script = document.createElement('script');
+        script.id = 'event-ld';
+        script.type = 'application/ld+json';
+        document.head.appendChild(script);
+      }
+      const soldOut = sel.tickets.every(t => Math.max(0, t.available - (t.physicalQty ?? 0)) === 0);
+      const minPrice = sel.tickets.length > 0 ? Math.min(...sel.tickets.map(t => t.price)) : 0;
+      script.textContent = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Event',
+        name: sel.title,
+        description: sel.description || '',
+        startDate: `${sel.date}T${sel.time || '00:00'}`,
+        location: { '@type': 'Place', name: selVenue.name, address: { '@type': 'PostalAddress', streetAddress: selVenue.location } },
+        image: sel.image && sel.image.startsWith('http') ? sel.image : undefined,
+        url: `${APP_URL}/e/${sel.id}`,
+        organizer: { '@type': 'Organization', name: selVenue.name, url: APP_URL },
+        offers: { '@type': 'Offer', url: `${APP_URL}/e/${sel.id}`, price: minPrice.toFixed(2), priceCurrency: 'USD', availability: soldOut ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock' },
+      });
+    } else if (script) {
+      script.remove();
+    }
+  }, [view, selId, sel, selVenue]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -2141,6 +2214,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           eventMeta: { title: sel.title, date: fmtDate(sel.date), time: fmtTime(sel.time), doors: fmtTime(sel.doors), category: sel.category || '' },
           venueMeta: { name: selVenue.name, address: selVenue.location },
           promoCode: promoApplied?.code || null,
+          utm: Object.keys(utmRef.current).length > 0 ? utmRef.current : undefined,
         }),
       });
       const data = await res.json();
@@ -2169,7 +2243,14 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     }
   };
 
-  const open = (id) => { setSelId(id); setCart({}); setAddonCart({}); setView("detail"); setWaitlistName(''); setWaitlistEmail(''); setWaitlistSubmitted(false); setNoticeAgreed(false); setAlreadyPurchased(false); window.history.pushState({}, '', `/e/${id}`); };
+  const open = (id) => {
+    const ev = events.find(e => e.id === id);
+    setSelId(id); setCart({}); setAddonCart({}); setView("detail");
+    setWaitlistName(''); setWaitlistEmail(''); setWaitlistSubmitted(false);
+    setNoticeAgreed(false); setAlreadyPurchased(false);
+    window.plausible?.('ViewEvent', { props: { event: ev?.title || id } });
+    window.history.pushState({}, '', `/e/${id}`);
+  };
   const goHome = () => { setView("home"); window.history.pushState({}, '', '/'); };
 
   const submitSellInquiry = async () => {
@@ -2484,7 +2565,15 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                 </div>
                 {gridEvents.length===0?(
                   sorted.length===0
-                    ? <div className="empty"><p style={{fontSize:16,color:"var(--text2)",marginBottom:8}}>No upcoming events right now.</p><p style={{fontSize:13,color:"var(--text3)"}}>Check back soon, or email us at <a href="mailto:support@c8tickets.com" style={{color:"var(--gold)"}}>support@c8tickets.com</a></p></div>
+                    ? <div style={{textAlign:'center',padding:'48px 20px'}}>
+                        <div style={{fontSize:48,marginBottom:16}}>🎵</div>
+                        <div style={{fontSize:20,fontWeight:700,color:'var(--text)',marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:'uppercase',letterSpacing:2}}>No Upcoming Events</div>
+                        <p style={{fontSize:14,color:'var(--text2)',marginBottom:24,maxWidth:360,margin:'0 auto 24px'}}>Nothing on the calendar yet — check back soon or follow {venue.name} for announcements.</p>
+                        <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+                          <a href={`mailto:${venue.email||'support@c8tickets.com'}`} className="btn" style={{textDecoration:'none'}}>✉️ Get Notified</a>
+                          {pastEvents.length>0&&<button className="btn gold" onClick={()=>document.getElementById('past-events-section')?.scrollIntoView({behavior:'smooth'})}>View Past Events ↓</button>}
+                        </div>
+                      </div>
                     : <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>
                 ):
                   <div className="grid">{gridEvents.map(ev=>{const mp=ev.tickets.length>0?Math.min(...ev.tickets.map(t=>t.price)):0;const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
@@ -2505,7 +2594,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                         <div className="card-foot"><div className="card-price">{soldOut?<span style={{color:'var(--text3)',fontWeight:600,fontSize:14,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span>:<>{fmtCurrency(mp)}{mp>0&&<small> & up</small>}</>}</div>{soldOut?null:<button className="btn gold" onClick={e=>{e.stopPropagation();open(ev.id);}}>Tickets</button>}</div>
                       </div>
                     </div>);})}</div>}
-                {pastFiltered.length > 0 && <div style={{marginTop:52}}>
+                {pastFiltered.length > 0 && <div id="past-events-section" style={{marginTop:52}}>
                   <div style={{display:'flex',alignItems:'baseline',gap:12,marginBottom:14,flexWrap:'wrap'}}>
                     <div className="sec-title dsp" style={{fontSize:'clamp(20px,3vw,26px)',letterSpacing:2,opacity:.55}}>Past Events</div>
                     <div style={{height:2,flex:1,minWidth:32,background:'linear-gradient(90deg,rgba(200,146,42,.15),transparent)',borderRadius:2,alignSelf:'center'}}/>
@@ -2816,6 +2905,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             }));
             setLastOrder(localOrder);
             setView("ticket");
+            window.plausible?.('Purchase', { props: { event: sel.title, amount: String(localOrder.total) } });
             setBuyer({ name: "", email: "", phone: "" });
             setCart({});
             setAddonCart({});
