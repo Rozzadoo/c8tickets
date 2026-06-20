@@ -1,6 +1,5 @@
 import Stripe from 'stripe';
 import { Resend } from 'resend';
-import QRCode from 'qrcode';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -159,7 +158,7 @@ export default async function handler(req, res) {
     }).catch(e => console.error('PI tag error:', e.message));
 
     // Send confirmation email
-    const qrDataUrl = await QRCode.toDataURL(order.id, { width: 200, margin: 2, color: { dark: '#1a1007', light: '#ffffff' } });
+    const qrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(order.id)}&color=1a1007&bgcolor=ffffff&margin=8`;
 
     const itemsHtml = items.map(i => `
       <tr>
