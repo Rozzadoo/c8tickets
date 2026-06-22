@@ -67,18 +67,44 @@ C8 Tickets is a single-venue ticket sales platform for **Crooked 8** (a bar/venu
 
 Set in `.env.local` locally; configure in Vercel project settings for production.
 
-## Supabase Schema (inferred)
+## Supabase Schema
 
 | Table | Key Columns |
 |---|---|
-| `tenants` | `id`, `name`, `contact_phone`, `contact_email`, `website` |
-| `events` | `id`, `tenant_id`, `title`, `description`, `category`, `event_date`, `doors_open`, `image_url`, `venue_name`, `is_published` |
-| `ticket_types` | `id`, `event_id`, `name`, `price`, `quantity_total`, `quantity_sold` |
-| `orders` | `id`, `tenant_id`, `event_id`, `buyer_name`, `buyer_email`, `buyer_phone`, `status`, `total_amount`, `stripe_payment_intent_id`, `created_at` |
+| `tenants` | `id`, `name`, `slug`, `address`, `contact_phone`, `contact_email`, `website`, `owner_name`, `active` |
+| `events` | `id`, `tenant_id`, `title`, `description`, `category`, `event_date`, `doors_open`, `image_url`, `focal_x`, `focal_y`, `venue_name`, `is_published`, `addons` (JSONB), `checkout_notice`, `checkout_notice_required` |
+| `ticket_types` | `id`, `event_id`, `name`, `price`, `door_price`, `quantity_total`, `quantity_sold`, `physical_qty` |
+| `orders` | `id`, `tenant_id`, `event_id`, `buyer_name`, `buyer_email`, `buyer_phone`, `status`, `total_amount`, `stripe_payment_intent_id`, `source`, `checked_in`, `created_at` |
 | `order_items` | `id`, `order_id`, `ticket_type_id`, `ticket_type_name`, `quantity`, `unit_price` |
+| `tickets` | `id`, `order_id`, `event_id`, `ticket_type_name`, `ticket_number`, `status`, `checked_in_at` |
+| `tenant_users` | `id`, `user_id`, `tenant_id`, `role`, `created_at` |
+| `promo_codes` | `id`, `tenant_id`, `event_id`, `code`, `discount_type`, `discount_value`, `max_uses`, `uses_count`, `expires_at`, `active` |
+| `waitlist_entries` | `id`, `event_id`, `tenant_id`, `name`, `email`, `created_at` |
+| `venue_payouts` | `id`, `tenant_id`, `amount`, `notes`, `paid_at`, `created_at` |
 
 Storage bucket: `event-images` (public URLs stored in `events.image_url`)
 RPC: `increment_sold(tid, qty)` — increments `quantity_sold` on a ticket type
+RPC: `decrement_sold(tid, qty)` — decrements `quantity_sold` on cancellation
+
+## Row Level Security
+
+RLS is enabled on all tables. Policies implemented 2026-06-22.
+
+**Helper function:** `public.get_tenant_id()` — returns the calling user's `tenant_id` from `tenant_users` by `auth.uid()`. Used in all tenant-scoped policies. Runs as SECURITY INVOKER (not DEFINER) so `auth.uid()` resolves correctly.
+
+**Policy summary per table:**
+- `tenants` — public SELECT; authenticated write scoped to own tenant
+- `events` — anon SELECT (published only); authenticated ALL scoped to own tenant
+- `ticket_types` — public SELECT; authenticated write scoped via events.tenant_id
+- `orders` — authenticated SELECT/INSERT/UPDATE scoped to own tenant; no anon access (webhook uses service role key)
+- `order_items` — authenticated SELECT/INSERT/UPDATE scoped via orders.tenant_id; no anon access
+- `tickets` — authenticated ALL scoped via orders.tenant_id; no anon access
+- `promo_codes` — authenticated ALL scoped to own tenant
+- `venue_payouts` — authenticated ALL scoped to own tenant
+- `waitlist_entries` — anon INSERT; authenticated ALL scoped to own tenant
+- `tenant_users` — users can SELECT their own row only
+
+**Important:** All staff users (admin, venue, gate roles) must have a row in `tenant_users` linking their `auth.uid()` to their `tenant_id`. Without this, they will see no data.
 
 ## Known Quirks
 

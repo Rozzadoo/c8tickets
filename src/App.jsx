@@ -1460,6 +1460,7 @@ export default function App() {
 const [resetSent, setResetSent] = useState(false);
 const [resetError, setResetError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [evtErr, setEvtErr] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [adminScan, setAdminScan] = useState(false);
@@ -2467,6 +2468,14 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   };
   const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }], addons: [], checkoutNotice: "", checkoutNoticeRequired: false });
   const saveEvt = async (e) => {
+  setEvtErr('');
+  const errs = [];
+  if (!e.title.trim()) errs.push('Event name is required.');
+  if (!e.date) errs.push('Event date is required.');
+  if (!e.time) errs.push('Show time is required.');
+  if (e.tickets.some(t => !t.type.trim())) errs.push('All ticket tiers need a name.');
+  if (e.tickets.some(t => t.available < 1)) errs.push('Each ticket tier needs a quantity of at least 1.');
+  if (errs.length) { setEvtErr(errs.join(' ')); return; }
   setIsSaving(true);
   try {
   let imageUrl = e.image;
@@ -2479,7 +2488,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       .from('event-images')
       .upload(fileName, e._imageFile, { upsert: true });
     
-    if (uploadError) { console.error('Image upload error:', uploadError); return; }
+    if (uploadError) { setEvtErr(`Image upload failed: ${uploadError.message}`); return; }
     
     const { data: urlData } = supabase.storage
       .from('event-images')
@@ -2530,7 +2539,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
       checkout_notice: e.checkoutNotice || null,
       checkout_notice_required: e.checkoutNoticeRequired || false,
     }).select().single();
-    if (error) { console.error(error); return; }
+    if (error) { setEvtErr(`Failed to save event: ${error.message}`); return; }
     await supabase.from('ticket_types').insert(
       e.tickets.map(t => ({
         event_id: newEvt.id,
@@ -4469,7 +4478,8 @@ fetch(API_BASE+'/api/send-email', {
             <input type="checkbox" id="notice-required-cb" checked={editEvt.checkoutNoticeRequired||false} onChange={e=>setEditEvt({...editEvt,checkoutNoticeRequired:e.target.checked})} style={{width:16,height:16,accentColor:'var(--gold)',cursor:'pointer',flexShrink:0}} />
             <label htmlFor="notice-required-cb" style={{fontSize:13,cursor:'pointer',userSelect:'none'}}>Require buyers to check a box confirming they read this</label>
           </div>}
-          <div style={{display:"flex",gap:10,marginTop:24}}><button className="buy" style={{flex:1}} disabled={!editEvt.title||!editEvt.date||isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>setModal(false)}>Cancel</button></div>
+          {evtErr && <div style={{marginTop:16,padding:'10px 14px',background:'rgba(220,50,50,0.12)',border:'1px solid rgba(220,50,50,0.4)',borderRadius:'var(--rs)',color:'#e05555',fontSize:13}}>{evtErr}</div>}
+          <div style={{display:"flex",gap:10,marginTop:12}}><button className="buy" style={{flex:1}} disabled={isSaving} onClick={()=>saveEvt(editEvt)}>{isSaving?"Saving…":"Save Event"}</button><button className="btn" style={{padding:"10px 20px"}} onClick={()=>{setModal(false);setEvtErr('');}}>Cancel</button></div>
         </div></div>}
 
         {editEmailOrder && <div className="modal-bg" onClick={()=>{setEditEmailOrder(null);setEditEmailValue('');}}>
