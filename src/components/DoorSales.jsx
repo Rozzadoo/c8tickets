@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import { Elements } from '@stripe/react-stripe-js';
 import { supabase } from '../lib/supabase';
 import { stripePromise } from '../lib/stripe';
-import { API_BASE, TENANT_ID, APP_URL } from '../constants';
+import { API_BASE, APP_URL } from '../constants';
 import { fmtDate, fmtTime, fmtCurrency } from '../lib/utils';
 import CheckoutForm from './CheckoutForm';
 import QRImg from './QRImg';
 
-const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
+const DoorSales = ({ events, updateOrders, updateEvents, venue, tenantId }) => {
   const [selEventId, setSelEventId] = useState('');
   const [doorCart, setDoorCart] = useState({});
   const [buyerName, setBuyerName] = useState('');
@@ -54,7 +54,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     const items = cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id }));
     const res = await fetch(API_BASE+'/api/create-payment-intent', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, eventId: selEventId, tenantId: TENANT_ID, isDoorSale: true }),
+      body: JSON.stringify({ items, eventId: selEventId, tenantId: tenantId, isDoorSale: true }),
     });
     const data = await res.json();
     setLoadingIntent(false);
@@ -135,7 +135,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
       body: JSON.stringify({
         items: cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id })),
-        eventId: selEventId, tenantId: TENANT_ID,
+        eventId: selEventId, tenantId: tenantId,
         eventMeta: { title: ev?.title || '' },
       }),
     });
@@ -173,7 +173,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     const { data: { session: doorSession } } = await supabase.auth.getSession();
     const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
     const { data: order, error: orderError } = await supabase.from('orders').insert({
-      tenant_id: TENANT_ID, event_id: selEventId,
+      tenant_id: tenantId, event_id: selEventId,
       buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
       status: isPreSale ? 'valid' : 'checked_in', total_amount: eff.grandTotal,
       ticket_subtotal: eff.ticketTotal, sales_tax: eff.salesTax,
@@ -251,7 +251,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue }) => {
     const ref = 'CASH-' + Date.now();
     const { data: { session: cashSession } } = await supabase.auth.getSession();
     const { data: order, error: orderError } = await supabase.from('orders').insert({
-      tenant_id: TENANT_ID, event_id: selEventId,
+      tenant_id: tenantId, event_id: selEventId,
       buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
       status: isPreSale ? 'valid' : 'checked_in', total_amount: cashAmounts.grandTotal,
       ticket_subtotal: cashAmounts.ticketTotal, sales_tax: cashAmounts.salesTax,

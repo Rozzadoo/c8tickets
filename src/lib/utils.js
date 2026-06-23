@@ -1,7 +1,5 @@
-import { TENANT_ID } from '../constants';
-
 export const DEFAULT_VENUE = {
-  id: TENANT_ID, name: "Crooked 8",
+  id: '2c3f53cf-929d-4484-a637-1bc31cccdbe1', name: "Crooked 8",
   tagline: "Local Events, Easy Tickets.",
   location: "1882 E King Rd, Kuna, ID 83634",
   phone: "(208) 991-0788",

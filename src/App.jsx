@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from './lib/supabase';
-import { TENANT_ID, API_BASE, APP_URL } from './constants';
+import { API_BASE, APP_URL } from './constants';
 import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs } from './lib/utils';
 import useStorage from './lib/useStorage';
 import CSS from './styles';
@@ -18,7 +18,7 @@ const LOGO_SRC = "/logo-simple.webp";
 const LOGO_FULL = "/logo-full.webp";
 
 export default function App() {
-  const { venues, events, loaded, updateEvents, updateVenues } = useStorage();
+  const { venues, events, loaded, tenantId, updateEvents, updateVenues } = useStorage();
   const [orders, setOrders] = useState([]);
   const updateOrders = useCallback((d) => setOrders(d), []);
   const [view, setView] = useState(() => window.location.pathname === '/sell' ? 'sell' : 'home');
@@ -132,7 +132,7 @@ const [resetError, setResetError] = useState('');
   const [venueError, setVenueError] = useState('');
   const [venueSuccess, setVenueSuccess] = useState('');
 
-  const venue = venues.find(v => v.id === TENANT_ID) || venues[0] || DEFAULT_VENUE;
+  const venue = venues.find(v => v.id === tenantId) || venues[0] || DEFAULT_VENUE;
   const sel = events.find(e => e.id === selId) || null;
   const selVenue = (sel ? venues.find(v => v.id === sel.venueId) : null) || venue;
   const isGate = session?.user?.app_metadata?.role === 'gate';
@@ -221,7 +221,7 @@ const [resetError, setResetError] = useState('');
     setReportTicketsLoaded(false);
     supabase.from('tickets')
       .select('order_id,ticket_type_name,status')
-      .eq('tenant_id', TENANT_ID)
+      .eq('tenant_id', tenantId)
       .then(({ data }) => { setReportTickets(data || []); setReportTicketsLoaded(true); });
   }, [aTab, session]);
 
@@ -501,7 +501,7 @@ const saveComp = async () => {
     const { data: { session: s } } = await supabase.auth.getSession();
     const compRef = 'COMP-' + Date.now();
     const { data: order, error: orderError } = await supabase.from('orders').insert({
-      tenant_id: TENANT_ID, event_id: compForm.eventId,
+      tenant_id: tenantId, event_id: compForm.eventId,
       buyer_name: compForm.name.trim(), buyer_email: compForm.email.trim(), buyer_phone: '',
       status: 'confirmed', total_amount: 0, ticket_subtotal: 0,
       sales_tax: 0, service_fees: 0, processing_fee: 0,
@@ -627,7 +627,7 @@ const applyPromo = async () => {
     const res = await fetch(API_BASE + '/api/promo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'validate', code, eventId: sel?.id, tenantId: TENANT_ID }),
+      body: JSON.stringify({ action: 'validate', code, eventId: sel?.id, tenantId: tenantId }),
     });
     const data = await res.json();
     if (!res.ok) { setPromoError(data.error || 'Invalid promo code'); return; }
@@ -642,7 +642,7 @@ const loadPromos = async () => {
   const res = await fetch(API_BASE + '/api/promo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
-    body: JSON.stringify({ action: 'list', tenantId: TENANT_ID }),
+    body: JSON.stringify({ action: 'list', tenantId: tenantId }),
   });
   const data = await res.json();
   setPromos(data.promos || []);
@@ -656,7 +656,7 @@ const savePromo = async () => {
     const res = await fetch(API_BASE + '/api/promo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
-      body: JSON.stringify({ action: 'create', tenantId: TENANT_ID, ...promoForm }),
+      body: JSON.stringify({ action: 'create', tenantId: tenantId, ...promoForm }),
     });
     const data = await res.json();
     if (!res.ok) { alert(data.error || 'Failed to create promo code'); return; }
@@ -829,7 +829,7 @@ const fetchOrCreatePhysicalOrders = async (ev) => {
   for (const tier of ev.tickets.filter(t => (t.physicalQty ?? 0) > 0)) {
     for (let n = 0; n < tier.physicalQty; n++) {
       const { data: order, error } = await supabase.from('orders').insert({
-        tenant_id: TENANT_ID, event_id: ev.id,
+        tenant_id: tenantId, event_id: ev.id,
         buyer_name: 'Walk-In', buyer_email: 'physical@c8tickets.com', buyer_phone: '',
         status: 'confirmed', total_amount: tier.price, source: 'physical',
       }).select().single();
@@ -893,7 +893,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           items,
           addonItems: addonItemsReq,
           eventId: sel.id,
-          tenantId: TENANT_ID,
+          tenantId: tenantId,
           buyer: { name: buyer.name.trim(), email: buyer.email.trim(), phone: buyer.phone.trim() },
           eventMeta: { title: sel.title, date: fmtDate(sel.date), time: fmtTime(sel.time), doors: fmtTime(sel.doors), category: sel.category || '' },
           venueMeta: { name: selVenue.name, address: selVenue.location },
@@ -1118,7 +1118,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
     updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
   } else {
     const { data: newEvt, error } = await supabase.from('events').insert({
-      tenant_id: TENANT_ID,
+      tenant_id: tenantId,
       title: e.title,
       description: e.description,
       category: e.category,
@@ -1387,7 +1387,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                       <button className="buy" disabled={!waitlistName.trim()||!waitlistEmail.includes('@')||waitlistSubmitting} onClick={async()=>{
                         setWaitlistSubmitting(true);
                         try {
-                          await supabase.from('waitlist_entries').insert({ event_id: sel.id, tenant_id: TENANT_ID, name: waitlistName.trim(), email: waitlistEmail.trim().toLowerCase() });
+                          await supabase.from('waitlist_entries').insert({ event_id: sel.id, tenant_id: tenantId, name: waitlistName.trim(), email: waitlistEmail.trim().toLowerCase() });
                           setWaitlistSubmitted(true);
                         } catch(e) { alert('Could not join waitlist. Please try again.'); }
                         finally { setWaitlistSubmitting(false); }
@@ -1519,7 +1519,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             const { data: order, error: orderError } = await supabase
               .from('orders')
               .insert({
-                tenant_id: TENANT_ID,
+                tenant_id: tenantId,
                 event_id: sel.id,
                 buyer_name: buyer.name,
                 buyer_email: buyer.email,
@@ -1549,7 +1549,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               p_order_id: order.id,
               p_items: items,
               p_event_id: sel.id,
-              p_tenant_id: TENANT_ID,
+              p_tenant_id: tenantId,
             });
 
             if (fulfillError) {
@@ -1605,7 +1605,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             if (promoApplied) {
               fetch(API_BASE + '/api/promo', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'redeem', code: promoApplied.code, tenantId: TENANT_ID }),
+                body: JSON.stringify({ action: 'redeem', code: promoApplied.code, tenantId: tenantId }),
               }).catch(() => {});
               setPromoApplied(null);
             }
@@ -2270,7 +2270,7 @@ fetch(API_BASE+'/api/send-email', {
               })}</div>}
             </>; })()}
 
-            {aTab === "door" && <DoorSales events={vEvents} updateOrders={updateOrders} updateEvents={updateEvents} venue={venue} />}
+            {aTab === "door" && <DoorSales events={vEvents} updateOrders={updateOrders} updateEvents={updateEvents} venue={venue} tenantId={tenantId} />}
 
             {aTab === "live" && <LiveDash events={vEvents} orders={orders} />}
 
