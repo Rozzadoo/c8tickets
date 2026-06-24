@@ -269,8 +269,8 @@ const [resetError, setResetError] = useState('');
   useEffect(() => {
     if (aTab !== 'dashboard' || !session) return;
     Promise.all([
-      supabase.from('registrations').select('id,amount_paid,created_at').eq('tenant_id', tenantId).eq('status', 'confirmed'),
-      supabase.from('pos_orders').select('id,total,created_at').eq('tenant_id', tenantId).eq('status', 'paid'),
+      supabase.from('registrations').select('id,name,email,amount_paid,created_at,form_id').eq('tenant_id', tenantId).eq('status', 'confirmed').order('created_at', { ascending: false }).limit(100),
+      supabase.from('pos_orders').select('id,total,payment_type,created_at').eq('tenant_id', tenantId).eq('status', 'paid').order('created_at', { ascending: false }).limit(100),
     ]).then(([{ data: regs }, { data: pos }]) => {
       setDashRegData(regs || []);
       setDashPosData(pos || []);
@@ -2214,8 +2214,15 @@ fetch(API_BASE+'/api/send-email', {
                 if(!evRows.length) return <div className="empty" style={{marginBottom:28}}><p>No event data for this period.</p></div>;
                 return <div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Orders</th><th>Tickets</th><th>Venue Rev</th>{!isVenueUser&&<><th>Svc Rev</th><th>Processing</th><th>Tax</th></>}<th>Check-in</th></tr></thead><tbody>{evRows.map(({ev,eo,etix,erev,etax,esvc,eproc,eci})=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td style={{fontSize:11}}>{fmtDate(ev.date)}</td><td>{eo.length}</td><td>{etix}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(erev)}</td>{!isVenueUser&&<><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(esvc)}</td><td style={{fontSize:12}}>{fmtCurrency(eproc)}</td><td style={{fontSize:12}}>{fmtCurrency(etax)}</td></>}<td style={{fontSize:12}}>{eo.length>0?Math.round(eci/eo.length*100):0}%</td></tr>)}</tbody></table></div>;
               })()}
-              <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>Recent Orders</h3>
-              {vo.length===0?<div className="empty"><div className="ic">📭</div><p>No orders yet.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Order</th><th>Buyer</th><th>Event</th><th>Total</th><th>Status</th></tr></thead><tbody>{vo.slice(-10).reverse().map(o=>{const ev=events.find(e=>e.id===o.eventId);return <tr key={o.id}><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}</td><td>{o.buyer.name}</td><td>{ev?.title||"—"}</td><td style={{fontWeight:700}}>{fmtCurrency(o.total)}</td><td><span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`}>{o.checkedIn?"Checked In":"Valid"}</span></td></tr>})}</tbody></table></div>}
+              <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>Recent Activity</h3>
+              {(()=>{
+                const ticketFeed=vo.slice(-20).reverse().map(o=>({ts:new Date(o.date||o.created_at),type:'ticket',label:o.buyer?.name||'Customer',sub:events.find(e=>e.id===o.eventId)?.title||'Ticket Sale',amount:o.total,badge:'badge-ok',icon:'🎫'}));
+                const regFeed=dashRegData.filter(r=>inRangeDate(r.created_at)).slice(0,20).map(r=>({ts:new Date(r.created_at),type:'reg',label:r.name||r.email||'Registrant',sub:'Registration',amount:parseFloat(r.amount_paid)||0,badge:'badge-info',icon:'📋'}));
+                const posFeed=dashPosData.filter(p=>inRangeDate(p.created_at)).slice(0,20).map(p=>({ts:new Date(p.created_at),type:'pos',label:p.payment_type==='cash'?'Cash Sale':'Card Sale',sub:'POS Transaction',amount:parseFloat(p.total)||0,badge:'badge-ok',icon:'🛒'}));
+                const feed=[...ticketFeed,...regFeed,...posFeed].sort((a,b)=>b.ts-a.ts).slice(0,15);
+                if(!feed.length) return <div className="empty"><div className="ic">📭</div><p>No activity for this period.</p></div>;
+                return <div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Time</th><th>Type</th><th>Name</th><th>Details</th><th>Amount</th></tr></thead><tbody>{feed.map((f,i)=><tr key={i}><td style={{fontSize:11,whiteSpace:'nowrap'}}>{f.ts.toLocaleDateString('en-US',{month:'short',day:'numeric'})}<br/><span style={{color:'var(--text3)'}}>{f.ts.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span></td><td>{f.icon}</td><td style={{fontWeight:600}}>{f.label}</td><td style={{fontSize:12,color:'var(--text3)'}}>{f.sub}</td><td style={{fontWeight:700}}>{f.amount>0?fmtCurrency(f.amount):'—'}</td></tr>)}</tbody></table></div>;
+              })()}
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>

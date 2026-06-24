@@ -1,0 +1,38 @@
+{
+  "name": "C8 Tickets",
+  "short_name": "C8 Tickets",
+  "description": "Event ticketing, registration, and point-of-sale for local venues.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0a07",
+  "theme_color": "#c8922a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/logo-simple.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-simple.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "POS Terminal",
+      "short_name": "POS",
+      "description": "Open the point-of-sale terminal",
+      "url": "/?admin=pos"
+    },
+    {
+      "name": "Check-In",
+      "short_name": "Check-In",
+      "description": "Scan tickets at the door",
+      "url": "/?admin=check-in"
+    }
+  ]
+}
