@@ -3,14 +3,16 @@ import { useState, useEffect } from 'react';
 const LOGO = '/logo-full.png';
 
 const VENUE_TYPES = [
-  'Bars & Taprooms',
-  'Concert Venues',
-  'Sports Leagues',
-  'Event Spaces',
-  'Bowling & Recreation',
+  'Bars & Taverns',
+  'Live Music Venues',
+  'Breweries & Taprooms',
+  'Sports Leagues & Tournaments',
+  'Bowling Alleys',
+  'Comedy & Trivia Nights',
   'Civic Organizations',
-  'Theaters',
-  'Restaurants & Breweries',
+  'Theaters & Event Spaces',
+  'Rodeos & Community Fairs',
+  'Banquet Halls',
 ];
 
 const PRODUCTS = [
@@ -98,6 +100,10 @@ const FAQS = [
     q: 'Is there a contract or minimum commitment?',
     a: 'No long-term contracts. We believe if the platform is working for you, you\'ll stick around.',
   },
+  {
+    q: 'Is C8 Tickets cheaper than Eventbrite?',
+    a: 'For most small venues, yes. Eventbrite charges a percentage of every ticket plus a per-ticket fee, and holds your payout until after the event. C8 Tickets has no monthly fee and payments go directly to your Stripe account as tickets sell. Contact us and we\'ll run the numbers for your specific event size.',
+  },
 ];
 
 export default function MarketingPage() {
@@ -108,7 +114,7 @@ export default function MarketingPage() {
 
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = 'C8 Tickets — Venue Management Platform | Ticketing, Registration & POS';
+    document.title = 'C8 Tickets — Ticketing Software for Bars & Independent Venues | No Monthly Fee';
 
     const setMeta = (sel, attr, val) => {
       let el = document.querySelector(sel);
@@ -116,27 +122,48 @@ export default function MarketingPage() {
       el.setAttribute(attr, val);
     };
     const prevDesc = document.querySelector('meta[name="description"]')?.getAttribute('content');
-    setMeta('meta[name="description"]', 'content', 'C8 Tickets is an all-in-one venue management platform for bars, venues, and event spaces. Sell tickets online, run registration forms, and manage bar sales — all in one place. Built for independent venues in Idaho and beyond.');
-    setMeta('meta[property="og:title"]', 'content', 'C8 Tickets — Venue Management Platform');
-    setMeta('meta[property="og:description"]', 'content', 'Ticketing, event registration, and point-of-sale for independent venues. Get set up and selling in under 24 hours.');
+    setMeta('meta[name="description"]', 'content', 'C8 Tickets is all-in-one ticketing software for bars, breweries, and independent venues. Sell tickets online and at the door, run league registrations, and manage your bar POS — one platform, no monthly fee. The Eventbrite alternative built for local venues.');
+    setMeta('meta[property="og:title"]', 'content', 'C8 Tickets — Ticketing Software for Bars & Independent Venues');
+    setMeta('meta[property="og:description"]', 'content', 'Sell tickets, run registrations, and manage bar sales from one platform. No monthly fee. Built for independent bars, breweries, and small venues.');
     setMeta('meta[property="og:url"]', 'content', 'https://platform.c8tickets.com');
-    setMeta('meta[name="keywords"]', 'content', 'venue ticketing software, event ticketing platform, small venue ticketing, bar event ticketing, venue management software, event registration software, venue POS system, independent venue ticketing, Idaho event ticketing, Stripe terminal venue');
+    setMeta('meta[name="keywords"]', 'content', 'ticketing software for bars, bar event ticketing, Eventbrite alternative for small venues, venue ticketing software, small venue ticketing, event ticketing platform, league registration software, venue POS system, ticketing and POS for venues, event management software for bars, Idaho venue ticketing, independent venue ticketing, no monthly fee ticketing, trivia night ticketing, brewery event ticketing');
 
     const ld = document.createElement('script');
     ld.type = 'application/ld+json';
     ld.id = 'mkt-ld';
-    ld.text = JSON.stringify({
-      '@context': 'https://schema.org',
-      '@type': 'SoftwareApplication',
-      name: 'C8 Tickets',
-      applicationCategory: 'BusinessApplication',
-      operatingSystem: 'Web',
-      url: 'https://platform.c8tickets.com',
-      description: 'All-in-one venue management platform: event ticketing, registration forms, and point-of-sale for bars, venues, and event spaces.',
-      offers: { '@type': 'Offer', availability: 'https://schema.org/InStock' },
-      provider: { '@type': 'Organization', name: 'C8 Tickets', url: 'https://platform.c8tickets.com', email: 'hello@c8tickets.com' },
-      featureList: ['Event Ticketing', 'Registration Forms', 'Point of Sale', 'QR Code Check-in', 'Stripe Payments', 'Offline Mode'],
-    });
+    ld.text = JSON.stringify([
+      {
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: 'C8 Tickets',
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        url: 'https://platform.c8tickets.com',
+        description: 'All-in-one ticketing software for bars, breweries, and independent venues. Event ticketing, league registration, and point-of-sale — no monthly fee.',
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', description: 'No monthly fee — pay per ticket sold' },
+        provider: { '@type': 'Organization', name: 'C8 Tickets', url: 'https://platform.c8tickets.com', email: 'hello@c8tickets.com' },
+        featureList: ['Event Ticketing', 'Door Sales', 'QR Code Check-In', 'League Registration', 'Point of Sale', 'Stripe Terminal', 'Offline Mode', 'Promo Codes'],
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        name: 'C8 Tickets',
+        url: 'https://platform.c8tickets.com',
+        email: 'hello@c8tickets.com',
+        description: 'Venue management software for independent bars, breweries, and event organizers.',
+        areaServed: { '@type': 'State', name: 'Idaho' },
+        serviceType: ['Event Ticketing', 'League Registration', 'Point of Sale'],
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: FAQS.map(f => ({
+          '@type': 'Question',
+          name: f.q,
+          acceptedAnswer: { '@type': 'Answer', text: f.a },
+        })),
+      },
+    ]);
     document.head.appendChild(ld);
 
     return () => {
@@ -207,11 +234,12 @@ export default function MarketingPage() {
           All-in-One Venue Platform
         </div>
         <h1 style={{ fontSize: 'clamp(38px,7vw,72px)', fontWeight: 800, lineHeight: 1.08, marginBottom: 24, letterSpacing: -1.5 }}>
-          Run your venue.<br /><span style={{ color: gold }}>Not your software.</span>
+          Ticketing software<br />built for <span style={{ color: gold }}>your venue.</span>
         </h1>
-        <p style={{ fontSize: 'clamp(17px,2.2vw,21px)', color: text2, maxWidth: 600, margin: '0 auto 44px', lineHeight: 1.65 }}>
-          Event ticketing, registration forms, and point-of-sale — purpose-built for bars, venues, and independent event spaces. Set up in under 24 hours.
+        <p style={{ fontSize: 'clamp(17px,2.2vw,21px)', color: text2, maxWidth: 620, margin: '0 auto 20px', lineHeight: 1.65 }}>
+          Sell tickets online and at the door, run league registrations, and manage your bar POS — all in one platform. No monthly fee. Set up in under 24 hours.
         </p>
+        <p style={{ fontSize: 14, color: text3, marginBottom: 44 }}>The Eventbrite alternative built for independent bars, breweries, and local venues.</p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           <a href="#contact" className="mkt-btn mkt-btn-gold">Talk to Us</a>
           <a href="#features" className="mkt-btn mkt-btn-outline">See What's Included</a>
@@ -274,6 +302,28 @@ export default function MarketingPage() {
                   <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{s.title}</h3>
                   <p style={{ fontSize: 14, color: text2, lineHeight: 1.65 }}>{s.desc}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Why not Eventbrite */}
+      <div style={{ borderTop: `1px solid ${border}`, background: 'rgba(200,146,42,.04)' }}>
+        <div className="mkt-w mkt-section" style={{ maxWidth: 860 }}>
+          <h2 style={{ fontSize: 'clamp(24px,3.5vw,36px)', fontWeight: 800, textAlign: 'center', marginBottom: 12, letterSpacing: -0.5 }}>Why not just use Eventbrite?</h2>
+          <p style={{ textAlign: 'center', color: text2, fontSize: 16, maxWidth: 560, margin: '0 auto 40px', lineHeight: 1.6 }}>Eventbrite is built for large-scale consumer discovery. C8 Tickets is built for venue operators who want to own their customer relationships and keep more of their revenue.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 16 }}>
+            {[
+              ['Your customer data, always', 'Every buyer\'s name, email, and purchase history belongs to you — not to a marketplace that can market competing events to your customers.'],
+              ['No holding your money', 'Eventbrite holds payouts until after your event. C8 Tickets payments go directly to your Stripe account as they come in.'],
+              ['Built for bars, not big arenas', 'Eventbrite\'s UX is designed for large events and festival promoters. C8 Tickets is designed for bar owners managing live music, trivia nights, and leagues.'],
+              ['Ticketing + registration + POS', 'Eventbrite only does tickets. C8 Tickets also handles league sign-ups and your bar\'s point-of-sale system — one login, one dashboard.'],
+            ].map(([t, d]) => (
+              <div key={t} style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: gold, marginBottom: 14 }} />
+                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>{t}</h3>
+                <p style={{ fontSize: 13, color: text2, lineHeight: 1.65, margin: 0 }}>{d}</p>
               </div>
             ))}
           </div>
