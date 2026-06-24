@@ -38,6 +38,9 @@ export default function App() {
   const [reportCustomEnd, setReportCustomEnd] = useState('');
   const [reportTickets, setReportTickets] = useState([]);
   const [reportTicketsLoaded, setReportTicketsLoaded] = useState(false);
+  const [reportRegs, setReportRegs] = useState([]);
+  const [reportForms, setReportForms] = useState([]);
+  const [reportRegsLoaded, setReportRegsLoaded] = useState(false);
   const [holdbackPct, setHoldbackPct] = useState(() => Number(localStorage.getItem('c8_holdbackPct') ?? 10) || 10);
   const [platformFeePct, setPlatformFeePct] = useState(() => Number(localStorage.getItem('c8_platformFeePct') ?? 2.5) || 2.5);
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
@@ -232,6 +235,19 @@ const [resetError, setResetError] = useState('');
     if (aTab !== 'reports' || !session) return;
     supabase.from('venue_payouts').select('*').order('paid_at', { ascending: false })
       .then(({ data }) => setVenuePayouts(data || []));
+  }, [aTab, session]);
+
+  useEffect(() => {
+    if (aTab !== 'reports' || !session) return;
+    setReportRegsLoaded(false);
+    Promise.all([
+      supabase.from('registrations').select('id,form_id,status,amount_paid,created_at,name,email,team_name').eq('tenant_id', tenantId),
+      supabase.from('registration_forms').select('id,title,price_per_entry,capacity,status,category').eq('tenant_id', tenantId),
+    ]).then(([{ data: regs }, { data: forms }]) => {
+      setReportRegs(regs || []);
+      setReportForms(forms || []);
+      setReportRegsLoaded(true);
+    });
   }, [aTab, session]);
 
   useEffect(() => {
@@ -2648,6 +2664,45 @@ fetch(API_BASE+'/api/send-email', {
                   ?<div className="empty" style={{marginBottom:28}}><p>No repeat buyers yet.</p></div>
                   :<div style={{overflowX:"auto",marginBottom:28}}><table className="dt"><thead><tr><th>Buyer</th><th>Email</th><th>Orders</th><th>Tickets</th><th>Total Spent</th><th>Last Purchase</th></tr></thead><tbody>{repeatBuyers.map((b,i)=><tr key={i}><td style={{fontWeight:600}}>{b.name}</td><td style={{fontSize:12}}>{b.email}</td><td style={{color:"var(--gold)",fontWeight:700}}>{b.orders}</td><td>{b.tix}</td><td style={{fontWeight:700}}>{fmtCurrency(b.total)}</td><td style={{fontSize:12,color:'var(--text3)'}}>{b.lastPurchase?new Date(b.lastPurchase).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</td></tr>)}</tbody></table></div>
                 }
+
+                {(() => {
+                  const inRangeReg = r => {
+                    const d = new Date(r.created_at);
+                    if (reportFilter==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+                    if (reportFilter==='prev_month') { const p=new Date(now.getFullYear(),now.getMonth()-1,1); return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear(); }
+                    if (reportFilter==='ytd') return d.getFullYear()===now.getFullYear();
+                    if (reportFilter==='last_year') return d.getFullYear()===now.getFullYear()-1;
+                    if (reportFilter==='custom') { const s=reportCustomStart?new Date(reportCustomStart+'T00:00:00'):null; const e=reportCustomEnd?new Date(reportCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
+                    return true;
+                  };
+                  const vr = reportRegs.filter(inRangeReg);
+                  const vrConfirmed = vr.filter(r=>r.status==='confirmed');
+                  const vrWaitlisted = vr.filter(r=>r.status==='waitlisted');
+                  const regRevenue = vrConfirmed.reduce((s,r)=>s+(parseFloat(r.amount_paid)||0),0);
+                  const formRows = reportForms.map(f=>{
+                    const fRegs = vr.filter(r=>r.form_id===f.id);
+                    const conf=fRegs.filter(r=>r.status==='confirmed').length;
+                    const wait=fRegs.filter(r=>r.status==='waitlisted').length;
+                    const rev=fRegs.filter(r=>r.status==='confirmed').reduce((s,r)=>s+(parseFloat(r.amount_paid)||0),0);
+                    const cap=f.capacity||null;
+                    const fill=cap?Math.min(100,Math.round(conf/cap*100)):null;
+                    return{f,conf,wait,rev,cap,fill,total:fRegs.length};
+                  }).filter(r=>r.total>0).sort((a,b)=>b.conf-a.conf);
+                  if(!reportRegsLoaded&&reportForms.length===0) return null;
+                  return <>
+                    <h3 className="dsp" style={{fontSize:18,marginBottom:12,marginTop:4}}>Registration Activity</h3>
+                    <div className="sg" style={{marginBottom:reportForms.length===0?32:20}}>
+                      <div className="sc"><div className="l">Confirmed</div><div className="v gd">{vrConfirmed.length}</div><div className="s">Period total</div></div>
+                      <div className="sc"><div className="l">Waitlisted</div><div className="v" style={{color:'var(--gold)'}}>{vrWaitlisted.length}</div><div className="s">Period total</div></div>
+                      <div className="sc"><div className="l">Reg Revenue</div><div className="v gd">{regRevenue===0?'$0':fmtCurrency(regRevenue)}</div><div className="s">Confirmed only</div></div>
+                      <div className="sc"><div className="l">Active Forms</div><div className="v">{reportForms.filter(f=>f.status==='published').length}</div></div>
+                    </div>
+                    {formRows.length===0
+                      ?<div className="empty" style={{marginBottom:28}}><p>{reportRegsLoaded?'No registration activity in this period.':'Loading…'}</p></div>
+                      :<div style={{overflowX:'auto',marginBottom:32}}><table className="dt"><thead><tr><th>Form</th><th>Confirmed</th><th>Waitlisted</th><th>Revenue</th><th>Capacity</th><th>Fill Rate</th></tr></thead><tbody>{formRows.map(({f,conf,wait,rev,cap,fill})=><tr key={f.id}><td style={{fontWeight:600}}>{f.title}</td><td style={{color:'var(--green)',fontWeight:700}}>{conf}</td><td style={{color:'var(--gold)',fontWeight:700}}>{wait||'—'}</td><td style={{color:'var(--gold)',fontWeight:700}}>{rev>0?fmtCurrency(rev):'Free'}</td><td style={{color:'var(--text2)'}}>{cap||'—'}</td><td>{fill!==null?<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{flex:1,height:6,background:'var(--bg4)',borderRadius:99,minWidth:80}}><div style={{height:'100%',width:fill+'%',background:fill>=80?'var(--green)':fill>=50?'var(--gold)':'var(--red)',borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:'right',color:fill>=80?'var(--green)':fill>=50?'var(--gold)':'var(--red)',fontWeight:700}}>{fill}%</span></div>:'—'}</td></tr>)}</tbody></table></div>
+                    }
+                  </>;
+                })()}
 
                 <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:8,marginBottom:isVenueUser?0:28}}>
                   <button className="btn gold" onClick={downloadSalesCSV} disabled={vo.length===0}>Download Sales Report CSV</button>
