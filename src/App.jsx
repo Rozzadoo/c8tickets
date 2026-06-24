@@ -3109,19 +3109,25 @@ fetch(API_BASE+'/api/send-email', {
 
         {cancelTarget && (()=>{
           const hasStripe = cancelTarget.stripePaymentIntentId && !cancelTarget.stripePaymentIntentId.startsWith('CASH-') && !cancelTarget.stripePaymentIntentId.startsWith('COMP-');
+          const isCash = cancelTarget.source === 'door_cash';
+          const isComp = cancelTarget.stripePaymentIntentId?.startsWith('COMP-');
           const isPartial = refundMode === 'partial' && hasStripe;
           return <div className="modal-bg" onClick={()=>{ if (!cancelling) { setCancelTarget(null); setRefundMode('full'); setPartialRefundAmt(''); } }}>
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-cancel-heading" onClick={e=>e.stopPropagation()}>
             <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{fontSize:20,lineHeight:1,flexShrink:0}} aria-hidden="true">⚠️</span>
               <div>
-                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>{isPartial ? 'Partial Refund' : 'Warning — Refund & Cancellation'}</div>
+                <div style={{fontWeight:700,color:"var(--red)",fontSize:13,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>
+                  {isPartial ? 'Partial Refund' : isCash ? 'Warning — Cash Cancellation' : 'Warning — Refund & Cancellation'}
+                </div>
                 <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>
                   {isPartial
                     ? <>A partial refund will be issued to the buyer's original payment method. <strong style={{color:"var(--text)"}}>The order stays valid</strong> — tickets are not cancelled.</>
                     : hasStripe
                       ? <>Cancelling this order will <strong style={{color:"var(--text)"}}>immediately issue a full refund</strong> to the buyer's original payment method via Stripe. Tickets will be returned to available inventory. This action cannot be undone.</>
-                      : <>Cancelling this order will return tickets to available inventory. <strong style={{color:"var(--text)"}}>No Stripe refund will be issued</strong> — handle any cash or manual refund separately. This action cannot be undone.</>
+                      : isCash
+                        ? <>This was a <strong style={{color:"var(--text)"}}>cash sale</strong>. Cancelling will return tickets to available inventory. <strong style={{color:"var(--text)"}}>Return the cash to the customer before confirming.</strong> This action cannot be undone.</>
+                        : <>Cancelling this order will return tickets to available inventory. No payment was collected — this was a complimentary order. This action cannot be undone.</>
                   }
                 </div>
               </div>
@@ -3132,7 +3138,8 @@ fetch(API_BASE+'/api/send-email', {
               <span style={{color:"var(--text3)"}}>Buyer: </span><span style={{color:"var(--text)"}}>{cancelTarget.buyer.name}</span><br/>
               <span style={{color:"var(--text3)"}}>Email: </span><span style={{color:"var(--text)"}}>{cancelTarget.buyer.email||"—"}</span><br/>
               <span style={{color:"var(--text3)"}}>Order total: </span><span style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(cancelTarget.total)}</span>
-              {!hasStripe && <><br/><span style={{color:"var(--red)"}}>No Stripe payment on file — order will be cancelled without a refund.</span></>}
+              {isCash && <><br/><span style={{color:"var(--gold)",fontWeight:600}}>Cash sale — remember to return ${cancelTarget.total?.toFixed(2)} to the customer.</span></>}
+              {isComp && <><br/><span style={{color:"var(--text3)"}}>Complimentary order — no refund needed.</span></>}
             </div>
             {hasStripe && <div style={{marginBottom:16}}>
               <div style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Refund Type</div>
@@ -3149,7 +3156,7 @@ fetch(API_BASE+'/api/send-email', {
             </div>}
             <div style={{display:"flex",gap:10,marginTop:4}}>
               <button className="buy" style={{flex:1,background:"var(--red)",borderColor:"var(--red)"}} disabled={cancelling||(isPartial&&!partialRefundAmt)} onClick={confirmCancelOrder}>
-                {cancelling ? "Processing..." : isPartial ? `Refund ${partialRefundAmt?fmtCurrency(parseFloat(partialRefundAmt)):'amount'}` : "Confirm — Cancel & Refund"}
+                {cancelling ? "Processing..." : isPartial ? `Refund ${partialRefundAmt?fmtCurrency(parseFloat(partialRefundAmt)):'amount'}` : isCash ? "Confirm — Cancel Order" : "Confirm — Cancel & Refund"}
               </button>
               <button className="btn" style={{padding:"10px 20px"}} disabled={cancelling} onClick={()=>{setCancelTarget(null);setRefundMode('full');setPartialRefundAmt('');}}>Go Back</button>
             </div>

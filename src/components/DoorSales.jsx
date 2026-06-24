@@ -241,8 +241,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue, tenantId }) => {
   const startCash = () => {
     if (!ev || cartN === 0) return;
     const salesTax = Math.round(cartTotal * 0.06 * 100) / 100;
-    const serviceFees = cartN * 2.00;
-    setCashAmounts({ ticketTotal: cartTotal, salesTax, serviceFees, processingFee: 0, grandTotal: Math.round((cartTotal + salesTax + serviceFees) * 100) / 100 });
+    setCashAmounts({ ticketTotal: cartTotal, salesTax, serviceFees: 0, processingFee: 0, grandTotal: Math.round((cartTotal + salesTax) * 100) / 100 });
     setStep('cash');
   };
 
@@ -465,7 +464,6 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue, tenantId }) => {
           <div className="tkt-sec" style={{marginBottom:20}}>
             <div className="cart-ln"><span>Ticket Subtotal</span><span>{fmtCurrency(cashAmounts.ticketTotal)}</span></div>
             <div className="cart-ln"><span>Sales Tax (6%)</span><span>${cashAmounts.salesTax.toFixed(2)}</span></div>
-            <div className="cart-ln"><span>Service Fee ({cartN} × $2.00)</span><span>{fmtCurrency(cashAmounts.serviceFees)}</span></div>
             <div className="cart-tot"><span>Collect From Customer</span><span>{fmtCurrency(cashAmounts.grandTotal)}</span></div>
           </div>
           <p style={{fontSize:12,color:'var(--text3)',marginBottom:16}}>No card processing fee — cash only.</p>
