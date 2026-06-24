@@ -6,7 +6,7 @@ import { fmtCurrency } from '../lib/utils';
 const CAT_LABELS = { food: 'Food', beverage: 'Beverage', merchandise: 'Merch', ticket: 'Ticket', other: 'Other' };
 const CAT_COLORS = { food: 'var(--green)', beverage: '#4a9eff', merchandise: 'var(--gold)', ticket: 'var(--red)', other: 'var(--text3)' };
 
-export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
+export default function POSTerminal({ tenantId, venue, events = [], onClose, shift, onCloseShift }) {
   const [items, setItems] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [catFilter, setCatFilter] = useState('all');
@@ -16,10 +16,20 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
   const [modModal, setModModal] = useState(null);
   const [selectedMods, setSelectedMods] = useState({});
 
-  const [step, setStep] = useState('sell'); // sell | payment | confirm
+  const [step, setStep] = useState('sell');
   const [tendered, setTendered] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
+
+  // 3.4 Offline mode
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [offlineQueue, setOfflineQueue] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`pos_queue_${tenantId}`) || '[]'); } catch { return []; }
+  });
+  const [syncing, setSyncing] = useState(false);
+
+  // 3.5 Cash tracking (accumulates within this terminal session)
+  const [cashSalesThisSession, setCashSalesThisSession] = useState(0);
 
   // Stripe Terminal
   const [terminal, setTerminal] = useState(null);
@@ -33,20 +43,53 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
 
   useEffect(() => { loadItems(); }, []);
 
+  useEffect(() => {
+    const up = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  }, []);
+
+  useEffect(() => {
+    if (isOnline && offlineQueue.length > 0) syncQueue();
+  }, [isOnline]);
+
   async function loadItems() {
     setLoaded(false);
-    const q = supabase
+    const { data } = await supabase
       .from('pos_items')
       .select('*, pos_modifiers(*)')
       .eq('tenant_id', tenantId)
       .eq('available', true)
       .order('sort_order').order('name');
-    const { data } = await q;
     setItems(data || []);
     setLoaded(true);
   }
 
-  // ── Cart helpers ──────────────────────────────────────────────────────
+  // ── Offline queue sync ───────────────────────────────────────────────
+  async function syncQueue() {
+    setSyncing(true);
+    const remaining = [];
+    for (const entry of offlineQueue) {
+      try {
+        const { data: order } = await supabase.from('pos_orders').insert(entry.orderPayload).select().single();
+        if (order) {
+          await supabase.from('pos_order_items').insert(
+            entry.items.map(i => ({ ...i, pos_order_id: order.id }))
+          );
+          for (const u of (entry.inventoryUpdates || [])) {
+            await supabase.from('pos_items').update({ inventory_qty: u.inventory_qty }).eq('id', u.id);
+          }
+        }
+      } catch { remaining.push(entry); }
+    }
+    setOfflineQueue(remaining);
+    localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(remaining));
+    setSyncing(false);
+  }
+
+  // ── Cart helpers ─────────────────────────────────────────────────────
   function openModModal(item) {
     const mods = item.pos_modifiers || [];
     if (mods.length === 0) { addToCart(item, [], 0); return; }
@@ -92,10 +135,9 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
   const cartTax = cart.reduce((s, c) => s + Math.round(c.unitPrice * c.qty * parseFloat(c.item.tax_rate || 0.06) * 100) / 100, 0);
   const cartTotal = Math.round((cartSubtotal + cartTax) * 100) / 100;
 
-  // ── Save POS order ────────────────────────────────────────────────────
+  // ── Save POS order (online + offline paths) ──────────────────────────
   async function savePosOrder(paymentType, paymentIntentId = null, cashData = null) {
-    setSaving(true);
-    const { data: order, error } = await supabase.from('pos_orders').insert({
+    const orderPayload = {
       tenant_id: tenantId,
       event_id: eventFilter || null,
       payment_type: paymentType,
@@ -107,37 +149,52 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
       cash_tendered: cashData?.tendered ?? null,
       change_due: cashData?.change ?? null,
       status: 'paid',
-    }).select().single();
+    };
+    const itemsPayload = cart.map(c => ({
+      item_id: c.item.id,
+      item_name: c.item.name,
+      category: c.item.category,
+      modifier_summary: c.selectedMods.length > 0
+        ? c.selectedMods.map(m => `${m.name}: ${m.label}`).join(', ')
+        : null,
+      quantity: c.qty,
+      unit_price: c.unitPrice,
+      tax_rate: parseFloat(c.item.tax_rate) || 0.06,
+    }));
+    const inventoryUpdates = cart
+      .filter(c => c.item.track_inventory && c.item.inventory_qty != null)
+      .map(c => ({ id: c.item.id, inventory_qty: Math.max(0, c.item.inventory_qty - c.qty) }));
 
+    if (!isOnline) {
+      const entry = {
+        id: `offline_${Date.now()}`,
+        orderPayload,
+        items: itemsPayload,
+        inventoryUpdates,
+        queuedAt: new Date().toISOString(),
+      };
+      const newQueue = [...offlineQueue, entry];
+      setOfflineQueue(newQueue);
+      localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(newQueue));
+      if (paymentType === 'cash') setCashSalesThisSession(p => p + cartTotal);
+      setLastOrder({ id: entry.id, paymentType, total: cartTotal, items: [...cart], cashData, offline: true });
+      setStep('confirm');
+      return;
+    }
+
+    setSaving(true);
+    const { data: order, error } = await supabase.from('pos_orders').insert(orderPayload).select().single();
     if (error || !order) {
       setSaving(false);
       alert('Order save failed. Please try again.');
       return;
     }
 
-    await supabase.from('pos_order_items').insert(
-      cart.map(c => ({
-        pos_order_id: order.id,
-        item_id: c.item.id,
-        item_name: c.item.name,
-        category: c.item.category,
-        modifier_summary: c.selectedMods.length > 0
-          ? c.selectedMods.map(m => `${m.name}: ${m.label}`).join(', ')
-          : null,
-        quantity: c.qty,
-        unit_price: c.unitPrice,
-        tax_rate: parseFloat(c.item.tax_rate) || 0.06,
-      }))
-    );
-
-    // Decrement inventory for tracked items
-    for (const c of cart) {
-      if (c.item.track_inventory && c.item.inventory_qty != null) {
-        await supabase.from('pos_items').update({
-          inventory_qty: Math.max(0, c.item.inventory_qty - c.qty),
-        }).eq('id', c.item.id);
-      }
+    await supabase.from('pos_order_items').insert(itemsPayload.map(i => ({ ...i, pos_order_id: order.id })));
+    for (const u of inventoryUpdates) {
+      await supabase.from('pos_items').update({ inventory_qty: u.inventory_qty }).eq('id', u.id);
     }
+    if (paymentType === 'cash') setCashSalesThisSession(p => p + cartTotal);
 
     setSaving(false);
     setLastOrder({ id: order.id, paymentType, total: cartTotal, items: [...cart], cashData });
@@ -177,7 +234,7 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
       const result = await term.discoverReaders({ simulated: false, discoveryMethod: 'internet' });
       setReaderDiscovering(false);
       if (result.error) setReaderError(result.error.message);
-      else if (result.discoveredReaders.length === 0) setReaderError('No readers found. Make sure the reader is powered on and connected to the same network.');
+      else if (result.discoveredReaders.length === 0) setReaderError('No readers found. Make sure the reader is powered on and connected.');
       else setReaders(result.discoveredReaders);
     } catch (err) {
       setReaderDiscovering(false);
@@ -221,16 +278,11 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
     const collectResult = await terminal.collectPaymentMethod(data.clientSecret);
     if (collectResult.error) {
       if (collectResult.error.code !== 'canceled') alert(collectResult.error.message);
-      setTerminalStatus('idle');
-      return;
+      setTerminalStatus('idle'); return;
     }
     setTerminalStatus('processing');
     const processResult = await terminal.processPayment(collectResult.paymentIntent);
-    if (processResult.error) {
-      alert(processResult.error.message);
-      setTerminalStatus('idle');
-      return;
-    }
+    if (processResult.error) { alert(processResult.error.message); setTerminalStatus('idle'); return; }
     setTerminalStatus('idle');
     await savePosOrder('card', processResult.paymentIntent.id);
   };
@@ -245,7 +297,7 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
     setTerminalStatus('idle'); loadItems();
   };
 
-  // ── Filtered items ────────────────────────────────────────────────────
+  // ── Filtered items ───────────────────────────────────────────────────
   const filteredItems = items.filter(item => {
     if (catFilter !== 'all' && item.category !== catFilter) return false;
     if (eventFilter && item.event_id && item.event_id !== eventFilter) return false;
@@ -253,17 +305,21 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
   });
   const categories = [...new Set(items.map(i => i.category))];
 
-  // ── Confirmation screen ───────────────────────────────────────────────
+  // Cash drawer total (shift opening + all cash sales this session)
+  const drawerTotal = shift ? (parseFloat(shift.opening_cash || 0) + cashSalesThisSession) : null;
+
+  // ── Confirmation ─────────────────────────────────────────────────────
   if (step === 'confirm' && lastOrder) {
     return (
       <div style={{ textAlign: 'center', padding: '40px 20px', maxWidth: 420, margin: '0 auto' }}>
         <div style={{ fontSize: 56, marginBottom: 12, color: 'var(--green)' }}>✓</div>
         <h2 className="dsp" style={{ fontSize: 28, marginBottom: 6, color: 'var(--green)' }}>Sale Complete</h2>
-        <p style={{ color: 'var(--text2)', marginBottom: 24, fontSize: 16 }}>
+        <p style={{ color: 'var(--text2)', marginBottom: lastOrder.cashData ? 12 : 24, fontSize: 16 }}>
           {lastOrder.paymentType === 'cash' ? '💵 Cash' : '💳 Card'} · {fmtCurrency(lastOrder.total)}
+          {lastOrder.offline && <span style={{ fontSize: 12, color: 'var(--gold)', marginLeft: 8 }}>saved offline</span>}
         </p>
         {lastOrder.cashData && lastOrder.cashData.change > 0 && (
-          <div style={{ background: 'rgba(93,138,60,.15)', borderRadius: 'var(--rs)', padding: '12px 20px', marginBottom: 20, fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>
+          <div style={{ background: 'rgba(93,138,60,.15)', borderRadius: 'var(--rs)', padding: '12px 20px', marginBottom: 20, fontSize: 22, fontWeight: 700, color: 'var(--green)' }}>
             Change: {fmtCurrency(lastOrder.cashData.change)}
           </div>
         )}
@@ -278,8 +334,7 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
             </div>
           ))}
           <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 16 }}>
-            <span>Total</span>
-            <span style={{ color: 'var(--gold)' }}>{fmtCurrency(lastOrder.total)}</span>
+            <span>Total</span><span style={{ color: 'var(--gold)' }}>{fmtCurrency(lastOrder.total)}</span>
           </div>
         </div>
         <button className="buy" style={{ width: '100%', maxWidth: 280, margin: '0 auto', display: 'block', fontSize: 18, padding: '14px 20px' }} onClick={newSale}>
@@ -293,7 +348,13 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
   if (step === 'payment') {
     const t = parseFloat(tendered);
     const change = !isNaN(t) ? Math.round((t - cartTotal) * 100) / 100 : null;
+
     const ReaderPanel = () => {
+      if (!isOnline) return (
+        <div style={{ padding: '12px 14px', background: 'rgba(179,58,42,.1)', borderRadius: 'var(--rs)', fontSize: 13, color: 'var(--red)' }}>
+          Card payments unavailable while offline.
+        </div>
+      );
       if (terminalStatus === 'waiting_for_card') return (
         <div style={{ textAlign: 'center', padding: '16px 0' }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>💳</div>
@@ -347,7 +408,6 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
           <button className="btn" onClick={() => setStep('sell')}>← Back</button>
           <h2 className="dsp" style={{ fontSize: 22, margin: 0 }}>Collect Payment</h2>
         </div>
-
         <div style={{ background: 'var(--bg3)', borderRadius: 'var(--rs)', padding: 16, marginBottom: 24 }}>
           {cart.map((c, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
@@ -374,7 +434,7 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
         <h3 className="dsp" style={{ fontSize: 16, marginBottom: 10 }}>💵 Cash</h3>
         <div className="fg" style={{ marginBottom: 8 }}>
           <label className="fl">Amount Tendered</label>
-          <input className="fi" type="number" min="0" step="0.01" value={tendered} onChange={e => setTendered(e.target.value)} placeholder={cartTotal.toFixed(2)} />
+          <input className="fi" type="number" min="0" step="0.01" value={tendered} onChange={e => setTendered(e.target.value)} placeholder={cartTotal.toFixed(2)} autoFocus />
         </div>
         {change !== null && change >= 0 && (
           <div style={{ padding: '10px 14px', borderRadius: 'var(--rs)', background: 'rgba(93,138,60,.15)', color: 'var(--green)', fontWeight: 700, fontSize: 22, textAlign: 'center', marginBottom: 10 }}>
@@ -401,9 +461,28 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
     );
   }
 
-  // ── Main sell screen ──────────────────────────────────────────────────
+  // ── Main sell screen ─────────────────────────────────────────────────
   return (
     <div>
+      {/* Offline banner */}
+      {!isOnline && (
+        <div style={{ background: 'rgba(179,58,42,.15)', border: '1px solid rgba(179,58,42,.4)', borderRadius: 'var(--rs)', padding: '8px 14px', marginBottom: 12, fontSize: 13, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>⚠</span>
+          <span><strong>Offline</strong> — cash sales are queued locally and will sync when you reconnect. Card payments unavailable.</span>
+        </div>
+      )}
+      {isOnline && syncing && (
+        <div style={{ background: 'rgba(200,146,42,.12)', border: '1px solid rgba(200,146,42,.3)', borderRadius: 'var(--rs)', padding: '8px 14px', marginBottom: 12, fontSize: 13, color: 'var(--gold)' }}>
+          🔄 Syncing offline orders…
+        </div>
+      )}
+      {isOnline && !syncing && offlineQueue.length > 0 && (
+        <div style={{ background: 'rgba(200,146,42,.12)', border: '1px solid rgba(200,146,42,.3)', borderRadius: 'var(--rs)', padding: '8px 14px', marginBottom: 12, fontSize: 13, color: 'var(--gold)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{offlineQueue.length} offline order{offlineQueue.length !== 1 ? 's' : ''} pending sync</span>
+          <button className="btn" style={{ fontSize: 12, padding: '3px 8px' }} onClick={syncQueue}>Sync Now</button>
+        </div>
+      )}
+
       {/* Modifier modal */}
       {modModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -448,7 +527,6 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
       <div style={{ display: 'flex', height: 'calc(100vh - 160px)', minHeight: 500, gap: 0, overflow: 'hidden' }}>
         {/* Left: item grid */}
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 16 }}>
-          {/* Filters */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
             {['all', ...categories].map(cat => (
               <button
@@ -473,7 +551,6 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
             )}
           </div>
 
-          {/* Grid */}
           {!loaded
             ? <div className="empty"><p>Loading items…</p></div>
             : filteredItems.length === 0
@@ -501,7 +578,7 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
                         transition: 'border-color .12s, background .12s',
                       }}
                       onMouseEnter={e => { if (!outOfStock) { e.currentTarget.style.borderColor = 'var(--gold)'; e.currentTarget.style.background = 'var(--bg4)'; } }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = outOfStock ? 'var(--bg3)' : 'var(--bg3)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg3)'; }}
                     >
                       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: CAT_COLORS[item.category] || 'var(--text3)' }}>
                         {CAT_LABELS[item.category] || item.category}
@@ -522,9 +599,18 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
 
         {/* Right: cart */}
         <div style={{ width: 272, flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Shift status */}
+          {shift && (
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--rs)', padding: '8px 12px', marginBottom: 12, fontSize: 12, flexShrink: 0 }}>
+              <div style={{ color: 'var(--text3)', marginBottom: 2 }}>Cash in drawer</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--green)' }}>{fmtCurrency(drawerTotal)}</div>
+            </div>
+          )}
+
           <h3 className="dsp" style={{ fontSize: 16, marginBottom: 12, flexShrink: 0 }}>Cart</h3>
+
           {cart.length === 0
-            ? <div style={{ color: 'var(--text3)', fontSize: 13, flex: 1, paddingTop: 8 }}>Tap an item to add it.</div>
+            ? <div style={{ color: 'var(--text3)', fontSize: 13, flex: 1, paddingTop: 4 }}>Tap an item to add it.</div>
             : <>
                 <div style={{ flex: 1, overflowY: 'auto', marginBottom: 12 }}>
                   {cart.map(c => (
@@ -563,6 +649,17 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose }) {
                 </div>
               </>
           }
+
+          {/* Close shift button */}
+          {shift && onCloseShift && (
+            <button
+              className="btn"
+              style={{ marginTop: 'auto', paddingTop: 12, fontSize: 11, color: 'var(--text3)', borderTop: '1px solid var(--border)', marginLeft: -16, paddingLeft: 16, borderRadius: 0, textAlign: 'left', flexShrink: 0 }}
+              onClick={() => onCloseShift(cashSalesThisSession)}
+            >
+              Close Shift
+            </button>
+          )}
         </div>
       </div>
     </div>

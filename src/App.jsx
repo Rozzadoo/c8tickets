@@ -42,6 +42,8 @@ export default function App() {
   const [reportRegs, setReportRegs] = useState([]);
   const [reportForms, setReportForms] = useState([]);
   const [reportRegsLoaded, setReportRegsLoaded] = useState(false);
+  const [reportPosOrders, setReportPosOrders] = useState([]);
+  const [reportPosLoaded, setReportPosLoaded] = useState(false);
   const [holdbackPct, setHoldbackPct] = useState(() => Number(localStorage.getItem('c8_holdbackPct') ?? 10) || 10);
   const [platformFeePct, setPlatformFeePct] = useState(() => Number(localStorage.getItem('c8_platformFeePct') ?? 2.5) || 2.5);
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
@@ -249,6 +251,16 @@ const [resetError, setResetError] = useState('');
       setReportForms(forms || []);
       setReportRegsLoaded(true);
     });
+  }, [aTab, session]);
+
+  useEffect(() => {
+    if (aTab !== 'reports' || !session) return;
+    setReportPosLoaded(false);
+    supabase.from('pos_orders')
+      .select('id,payment_type,subtotal,tax,total,status,created_at,event_id,pos_order_items(item_name,category,quantity,unit_price)')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'paid')
+      .then(({ data }) => { setReportPosOrders(data || []); setReportPosLoaded(true); });
   }, [aTab, session]);
 
   useEffect(() => {
@@ -2704,6 +2716,44 @@ fetch(API_BASE+'/api/send-email', {
                       ?<div className="empty" style={{marginBottom:28}}><p>{reportRegsLoaded?'No registration activity in this period.':'Loading…'}</p></div>
                       :<div style={{overflowX:'auto',marginBottom:32}}><table className="dt"><thead><tr><th>Form</th><th>Confirmed</th><th>Waitlisted</th><th>Revenue</th><th>Capacity</th><th>Fill Rate</th></tr></thead><tbody>{formRows.map(({f,conf,wait,rev,cap,fill})=><tr key={f.id}><td style={{fontWeight:600}}>{f.title}</td><td style={{color:'var(--green)',fontWeight:700}}>{conf}</td><td style={{color:'var(--gold)',fontWeight:700}}>{wait||'—'}</td><td style={{color:'var(--gold)',fontWeight:700}}>{rev>0?fmtCurrency(rev):'Free'}</td><td style={{color:'var(--text2)'}}>{cap||'—'}</td><td>{fill!==null?<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{flex:1,height:6,background:'var(--bg4)',borderRadius:99,minWidth:80}}><div style={{height:'100%',width:fill+'%',background:fill>=80?'var(--green)':fill>=50?'var(--gold)':'var(--red)',borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:'right',color:fill>=80?'var(--green)':fill>=50?'var(--gold)':'var(--red)',fontWeight:700}}>{fill}%</span></div>:'—'}</td></tr>)}</tbody></table></div>
                     }
+                  </>;
+                })()}
+
+                {(() => {
+                  if (reportPosOrders.length === 0 && !reportPosLoaded) return null;
+                  const inRangePos = o => {
+                    const d = new Date(o.created_at);
+                    if (reportFilter==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+                    if (reportFilter==='prev_month') { const p=new Date(now.getFullYear(),now.getMonth()-1,1); return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear(); }
+                    if (reportFilter==='ytd') return d.getFullYear()===now.getFullYear();
+                    if (reportFilter==='last_year') return d.getFullYear()===now.getFullYear()-1;
+                    if (reportFilter==='custom') { const s=reportCustomStart?new Date(reportCustomStart+'T00:00:00'):null; const e=reportCustomEnd?new Date(reportCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
+                    return true;
+                  };
+                  const vp = reportPosOrders.filter(inRangePos);
+                  const posRevCard = vp.filter(o=>o.payment_type==='card').reduce((s,o)=>s+parseFloat(o.total||0),0);
+                  const posRevCash = vp.filter(o=>o.payment_type==='cash').reduce((s,o)=>s+parseFloat(o.total||0),0);
+                  const posRevTotal = Math.round((posRevCard+posRevCash)*100)/100;
+                  const itemMap = {};
+                  for (const o of vp) {
+                    for (const li of (o.pos_order_items||[])) {
+                      const key = li.item_name;
+                      if (!itemMap[key]) itemMap[key]={qty:0,rev:0,cat:li.category};
+                      itemMap[key].qty+=li.quantity;
+                      itemMap[key].rev+=li.quantity*parseFloat(li.unit_price||0);
+                    }
+                  }
+                  const topItems = Object.entries(itemMap).sort((a,b)=>b[1].rev-a[1].rev).slice(0,10);
+                  if (vp.length===0&&reportPosLoaded) return null;
+                  return <>
+                    <h3 className="dsp" style={{fontSize:18,marginBottom:12,marginTop:4}}>POS Sales</h3>
+                    <div className="sg" style={{marginBottom:topItems.length===0?32:20}}>
+                      <div className="sc"><div className="l">POS Revenue</div><div className="v gd">{posRevTotal===0?'$0':fmtCurrency(posRevTotal)}</div><div className="s">Period total</div></div>
+                      <div className="sc"><div className="l">Transactions</div><div className="v">{vp.length}</div><div className="s">Period total</div></div>
+                      <div className="sc"><div className="l">Card</div><div className="v gd">{fmtCurrency(posRevCard)}</div><div className="s">{vp.length>0?Math.round(vp.filter(o=>o.payment_type==='card').length/vp.length*100):0}% of txns</div></div>
+                      <div className="sc"><div className="l">Cash</div><div className="v gd">{fmtCurrency(posRevCash)}</div><div className="s">{vp.length>0?Math.round(vp.filter(o=>o.payment_type==='cash').length/vp.length*100):0}% of txns</div></div>
+                    </div>
+                    {topItems.length>0&&<div style={{overflowX:'auto',marginBottom:32}}><table className="dt"><thead><tr><th>Item</th><th>Qty Sold</th><th>Revenue</th></tr></thead><tbody>{topItems.map(([name,d])=><tr key={name}><td style={{fontWeight:600}}>{name}</td><td>{d.qty}</td><td style={{color:'var(--gold)',fontWeight:700}}>{fmtCurrency(d.rev)}</td></tr>)}</tbody></table></div>}
                   </>;
                 })()}
 

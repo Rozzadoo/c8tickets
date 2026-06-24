@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import POSTerminal from './POSTerminal';
+import POSShift from './POSShift';
 
 const CATEGORIES = ['food', 'beverage', 'merchandise', 'ticket', 'other'];
 const CAT_LABELS = { food: 'Food', beverage: 'Beverage', merchandise: 'Merch', ticket: 'Ticket', other: 'Other' };
@@ -246,7 +246,7 @@ export default function POSAdmin({ tenantId, venue, events = [] }) {
   const filteredItems = catFilter === 'all' ? items : items.filter(i => i.category === catFilter);
 
   if (posView === 'terminal') {
-    return <POSTerminal tenantId={tenantId} venue={venue} events={events} onClose={() => setPosView('catalog')} />;
+    return <POSShift tenantId={tenantId} venue={venue} events={events} onClose={() => setPosView('catalog')} />;
   }
 
   return (
