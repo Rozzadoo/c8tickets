@@ -11,6 +11,7 @@ import LiveDash from './components/LiveDash';
 import DoorSales from './components/DoorSales';
 import GateView from './components/GateView';
 import RegistrationAdmin from './components/RegistrationAdmin';
+import RegistrationPublic from './components/RegistrationPublic';
 import { Elements } from '@stripe/react-stripe-js';
 import { stripePromise } from './lib/stripe';
 
@@ -24,6 +25,7 @@ export default function App() {
   const updateOrders = useCallback((d) => setOrders(d), []);
   const [view, setView] = useState(() => window.location.pathname === '/sell' ? 'sell' : 'home');
   const [selId, setSelId] = useState(null);
+  const [regFormId, setRegFormId] = useState(null);
   const [cart, setCart] = useState({});
   const [buyer, setBuyer] = useState({ name: "", email: "", phone: "" });
   const [lastOrder, setLastOrder] = useState(null);
@@ -255,6 +257,8 @@ const [resetError, setResetError] = useState('');
       const slugMatch = venues.find(v => v.slug === venueMatch[1]);
       if (slugMatch) { setVenueProfileId(slugMatch.id); setView('venue'); }
     }
+    const regMatch = window.location.pathname.match(/^\/r\/([0-9a-f-]{36})$/i);
+    if (regMatch) { setRegFormId(regMatch[1]); setView('register'); }
   }, [loaded, venues]);
 
   useEffect(() => {
@@ -288,6 +292,7 @@ const [resetError, setResetError] = useState('');
     else if (view === 'admin') { title = `Admin — ${base}`; }
     else if (view === 'lookup') { title = `Find My Tickets — ${base}`; }
     else if (view === 'venue') { const vp = venues.find(v => v.id === venueProfileId); if (vp) title = `${vp.name} — ${base}`; }
+    else if (view === 'register') { title = `Register — ${base}`; path = `/r/${regFormId}`; }
     else if (view === 'sell') {
       title = 'Sell Event Tickets Online — Treasure Valley & Idaho | C8Tickets';
       desc = 'C8Tickets is the local ticketing platform built for bars, venues, and event organizers in Boise, Nampa, Meridian, Kuna, and across the Treasure Valley. Online sales, door sales, QR check-in, and real-time dashboards — no setup fees.';
@@ -2083,6 +2088,12 @@ fetch(API_BASE+'/api/send-email', {
   </div>
 </div>}
         {view === "gate" && <GateView events={events} onLogout={logout} />}
+
+        {view === "register" && regFormId && (
+          <div className="sec fade" style={{maxWidth:620,paddingTop:32,paddingBottom:48}}>
+            <RegistrationPublic formId={regFormId} tenantId={tenantId} venue={venue} onHome={goHome} />
+          </div>
+        )}
 
         {view === "admin" && <div className="admin fade">
           <div className="aside">

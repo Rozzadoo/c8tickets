@@ -293,6 +293,90 @@ async function sendReminder(res, { eventId }) {
   return res.status(200).json({ sent, total: orders.length });
 }
 
+async function sendRegistrationConfirmation(res, { registrationId, venueName }) {
+  if (!registrationId || !/^[0-9a-f-]{36}$/i.test(registrationId)) {
+    return res.status(400).json({ error: 'Invalid registration ID' });
+  }
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const base = process.env.VITE_SUPABASE_URL;
+  const headers = { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
+
+  const regRes = await fetch(
+    `${base}/rest/v1/registrations?id=eq.${registrationId}&select=id,registrant_name,registrant_email,team_name,status,total_amount,form_id&limit=1`,
+    { headers }
+  );
+  const regRows = await regRes.json();
+  const reg = regRows?.[0];
+  if (!reg || !reg.registrant_email) return res.status(200).json({ success: true });
+
+  const formRes = await fetch(
+    `${base}/rest/v1/registration_forms?id=eq.${reg.form_id}&select=title,category&limit=1`,
+    { headers }
+  );
+  const formRows = await formRes.json();
+  const form = formRows?.[0];
+
+  const responsesRes = await fetch(
+    `${base}/rest/v1/registration_responses?registration_id=eq.${registrationId}&select=field_label,response_value`,
+    { headers }
+  );
+  const responses = await responsesRes.json() || [];
+
+  const membersRes = await fetch(
+    `${base}/rest/v1/registration_members?registration_id=eq.${registrationId}&select=member_name,member_email`,
+    { headers }
+  );
+  const members = await membersRes.json() || [];
+
+  const isWaitlist = reg.status === 'waitlisted';
+  const formTitle = escHtml(form?.title || 'Registration');
+  const qrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registrationId)}&color=1a1007&bgcolor=ffffff&margin=8`;
+
+  const responsesHtml = responses.length > 0
+    ? responses.map(r => `<tr><td style="padding:6px 0;border-bottom:1px solid #2f271c;color:#b5a78a">${escHtml(r.field_label)}</td><td style="padding:6px 0;border-bottom:1px solid #2f271c;color:#e8dcc8;text-align:right">${escHtml(r.response_value || '—')}</td></tr>`).join('')
+    : '';
+
+  const membersHtml = members.length > 0
+    ? `<p style="color:#b5a78a;font-size:13px;margin:16px 0 6px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Team Members</p>
+       ${members.map(m => `<p style="color:#e8dcc8;font-size:13px;margin:4px 0">${escHtml(m.member_name)}${m.member_email ? ` &lt;${escHtml(m.member_email)}&gt;` : ''}</p>`).join('')}`
+    : '';
+
+  const subject = isWaitlist
+    ? `Waitlist confirmation — ${form?.title || 'Registration'}`
+    : `Registration confirmed — ${form?.title || 'Registration'}`;
+
+  const { error } = await resend.emails.send({
+    from: 'C8Tickets <noreply@c8tickets.com>',
+    to: reg.registrant_email,
+    subject,
+    html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#0c0a07;font-family:'Helvetica Neue',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
+  <tr><td align="center" style="padding-bottom:24px">
+    <span style="font-size:28px;font-weight:900;letter-spacing:2px;color:#c8922a;text-transform:uppercase">${escHtml(venueName || 'C8Tickets')}</span>
+  </td></tr>
+  <tr><td style="background:#161310;border:1px solid #2f271c;border-radius:8px;padding:28px">
+    <p style="color:${isWaitlist ? '#c8922a' : '#4caf7d'};font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;margin:0 0 16px">${isWaitlist ? '⏳ You\'re on the waitlist' : '✓ Registration Confirmed'}</p>
+    <h1 style="color:#e8dcc8;font-size:22px;font-weight:700;margin:0 0 8px">${formTitle}</h1>
+    ${reg.team_name ? `<p style="color:#c8922a;font-size:14px;font-weight:700;margin:0 0 16px">Team: ${escHtml(reg.team_name)}</p>` : ''}
+    <p style="color:#b5a78a;font-size:13px;margin:0 0 20px">${isWaitlist ? "We'll email you if a spot opens up." : "You're all set. Bring this confirmation or your registration ID to the event."}</p>
+    ${!isWaitlist ? `<div style="text-align:center;margin:20px 0"><img src="${qrDataUrl}" width="180" height="180" alt="Registration QR Code" style="border-radius:8px"/><p style="color:#b5a78a;font-size:11px;margin:8px 0 0">Scan at check-in</p></div>` : ''}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0">
+      <tr><td style="padding:6px 0;border-bottom:1px solid #2f271c;color:#b5a78a">Registrant</td><td style="padding:6px 0;border-bottom:1px solid #2f271c;color:#e8dcc8;text-align:right">${escHtml(reg.registrant_name)}</td></tr>
+      ${responsesHtml}
+      ${parseFloat(reg.total_amount) > 0 ? `<tr><td style="padding:6px 0;color:#b5a78a">Amount Paid</td><td style="padding:6px 0;color:#c8922a;font-weight:700;text-align:right">$${parseFloat(reg.total_amount).toFixed(2)}</td></tr>` : ''}
+    </table>
+    ${membersHtml}
+    <p style="color:#5a5040;font-size:11px;margin:20px 0 0">Registration ID: ${escHtml(registrationId)}</p>
+  </td></tr>
+  <tr><td align="center" style="padding-top:20px"><p style="color:#5a5040;font-size:11px;margin:0">Powered by <a href="https://c8tickets.com" style="color:#c8922a;text-decoration:none">C8Tickets</a></p></td></tr>
+</table></td></tr></table></body></html>`,
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ success: true });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
@@ -313,6 +397,11 @@ export default async function handler(req, res) {
     const ok = await requireAdmin(req, res);
     if (!ok) return;
     return sendCancellation(res, req.body);
+  }
+
+  if (type === 'registration') {
+    try { return await sendRegistrationConfirmation(res, req.body); }
+    catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
   // Confirmation emails are sent by the customer's browser right after payment —
