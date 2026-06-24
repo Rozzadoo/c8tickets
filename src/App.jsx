@@ -13,6 +13,7 @@ import GateView from './components/GateView';
 import RegistrationAdmin from './components/RegistrationAdmin';
 import RegistrationPublic from './components/RegistrationPublic';
 import POSAdmin from './components/POSAdmin';
+import MarketingPage from './components/MarketingPage';
 import { Elements } from '@stripe/react-stripe-js';
 import { stripePromise } from './lib/stripe';
 
@@ -44,6 +45,8 @@ export default function App() {
   const [reportRegsLoaded, setReportRegsLoaded] = useState(false);
   const [reportPosOrders, setReportPosOrders] = useState([]);
   const [reportPosLoaded, setReportPosLoaded] = useState(false);
+  const [dashRegData, setDashRegData] = useState([]);
+  const [dashPosData, setDashPosData] = useState([]);
   const [holdbackPct, setHoldbackPct] = useState(() => Number(localStorage.getItem('c8_holdbackPct') ?? 10) || 10);
   const [platformFeePct, setPlatformFeePct] = useState(() => Number(localStorage.getItem('c8_platformFeePct') ?? 2.5) || 2.5);
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
@@ -261,6 +264,17 @@ const [resetError, setResetError] = useState('');
       .eq('tenant_id', tenantId)
       .eq('status', 'paid')
       .then(({ data }) => { setReportPosOrders(data || []); setReportPosLoaded(true); });
+  }, [aTab, session]);
+
+  useEffect(() => {
+    if (aTab !== 'dashboard' || !session) return;
+    Promise.all([
+      supabase.from('registrations').select('id,amount_paid,created_at').eq('tenant_id', tenantId).eq('status', 'confirmed'),
+      supabase.from('pos_orders').select('id,total,created_at').eq('tenant_id', tenantId).eq('status', 'paid'),
+    ]).then(([{ data: regs }, { data: pos }]) => {
+      setDashRegData(regs || []);
+      setDashPosData(pos || []);
+    });
   }, [aTab, session]);
 
   useEffect(() => {
@@ -1214,6 +1228,9 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
 
   if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0c0a07" }}><img src={LOGO_FULL} alt="C8 Tickets" style={{ width: 'clamp(240px,70vw,480px)', height: 'auto', opacity: .95, animation: "fi .6s ease" }} /></div>;
 
+  const _host = window.location.hostname;
+  if (_host === 'c8tickets.com' || _host === 'www.c8tickets.com') return <MarketingPage />;
+
   return (
     <><style>{CSS}</style>
       <div className="app">
@@ -2162,6 +2179,10 @@ fetch(API_BASE+'/api/send-email', {
               const salesTax=Math.round(venueRev*0.06*100)/100;
               const serviceFees=tix*2;
               const processingFees=Math.max(0,Math.round((vo.reduce((s,o)=>s+o.total,0)-venueRev-salesTax-serviceFees)*100)/100);
+              const inRangeDate=dateStr=>{const d=new Date(dateStr);if(dashFilter==='month')return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();if(dashFilter==='prev_month'){const p=new Date(now.getFullYear(),now.getMonth()-1,1);return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear();}if(dashFilter==='ytd')return d.getFullYear()===now.getFullYear();if(dashFilter==='last_year')return d.getFullYear()===now.getFullYear()-1;if(dashFilter==='custom'){const s=dashCustomStart?new Date(dashCustomStart+'T00:00:00'):null;const e=dashCustomEnd?new Date(dashCustomEnd+'T23:59:59'):null;if(s&&d<s)return false;if(e&&d>e)return false;return true;}return true;};
+              const regRev=Math.round(dashRegData.filter(r=>inRangeDate(r.created_at)).reduce((s,r)=>s+(parseFloat(r.amount_paid)||0),0)*100)/100;
+              const posRev=Math.round(dashPosData.filter(p=>inRangeDate(p.created_at)).reduce((s,p)=>s+(parseFloat(p.total)||0),0)*100)/100;
+              const platformRev=Math.round((venueRev+regRev+posRev)*100)/100;
               const filterLabels={month:'This Month',prev_month:'Prev Month',ytd:'Year to Date',last_year:'Last Year',all:'All Time',custom:'Custom Range'};
               return <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
@@ -2174,7 +2195,12 @@ fetch(API_BASE+'/api/send-email', {
                 <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>From</label><input className="fi" type="date" value={dashCustomStart} onChange={e=>setDashCustomStart(e.target.value)} style={{width:160,margin:0}} /></div>
                 <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>To</label><input className="fi" type="date" value={dashCustomEnd} onChange={e=>setDashCustomEnd(e.target.value)} style={{width:160,margin:0}} /></div>
               </div>}
-              <div className="sg"><div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div>{!isVenueUser&&<><div className="sc"><div className="l">Service Revenue</div><div className="v gd">{serviceFees===0?"$0":"$"+serviceFees.toFixed(2)}</div><div className="s">Service fees</div></div><div className="sc"><div className="l">Processing Fees</div><div className="v">{processingFees===0?"$0":"$"+processingFees.toFixed(2)}</div><div className="s">Remit to Stripe</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
+              <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+                <button className="btn gold" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button>
+                <button className="btn" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>setATab('registrations')}>Registration Forms</button>
+                <button className="btn" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>setATab('pos')}>Open POS</button>
+              </div>
+              <div className="sg">{platformRev>0&&<div className="sc" style={{gridColumn:'span 2'}}><div className="l">Platform Revenue</div><div className="v gd" style={{fontSize:28}}>{fmtCurrency(platformRev)}</div><div className="s">Tickets + Registrations + POS</div></div>}{regRev>0&&<div className="sc"><div className="l">Registration Revenue</div><div className="v gd">{fmtCurrency(regRev)}</div><div className="s">Registration fees collected</div></div>}{posRev>0&&<div className="sc"><div className="l">POS Revenue</div><div className="v gd">{fmtCurrency(posRev)}</div><div className="s">Point-of-sale total</div></div>}<div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div>{!isVenueUser&&<><div className="sc"><div className="l">Service Revenue</div><div className="v gd">{serviceFees===0?"$0":"$"+serviceFees.toFixed(2)}</div><div className="s">Service fees</div></div><div className="sc"><div className="l">Processing Fees</div><div className="v">{processingFees===0?"$0":"$"+processingFees.toFixed(2)}</div><div className="s">Remit to Stripe</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
               <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>By Event</h3>
               {(()=>{
                 const evRows=vEvents.map(ev=>{
