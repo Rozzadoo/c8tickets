@@ -3,20 +3,20 @@ import { useState, useEffect } from 'react';
 const LOGO = '/logo-full.png';
 
 const VENUE_TYPES = [
-  { icon: '🍺', label: 'Bars & Taprooms' },
-  { icon: '🎸', label: 'Concert Venues' },
-  { icon: '🏆', label: 'Sports Leagues' },
-  { icon: '🎪', label: 'Event Spaces' },
-  { icon: '🎳', label: 'Bowling & Recreation' },
-  { icon: '🏛️', label: 'Civic Organizations' },
-  { icon: '🎭', label: 'Theaters' },
-  { icon: '🍕', label: 'Restaurants & Breweries' },
+  'Bars & Taprooms',
+  'Concert Venues',
+  'Sports Leagues',
+  'Event Spaces',
+  'Bowling & Recreation',
+  'Civic Organizations',
+  'Theaters',
+  'Restaurants & Breweries',
 ];
 
 const PRODUCTS = [
   {
     id: 'ticketing',
-    icon: '🎫',
+    label: 'T',
     title: 'Event Ticketing',
     tagline: 'Sell tickets online and at the door — without the big-platform fees.',
     desc: 'Set up an event in minutes. Customers buy online with instant QR-code confirmation emails. Staff scan tickets at the door from any phone or tablet. Watch check-ins happen in real time from the back office.',
@@ -33,7 +33,7 @@ const PRODUCTS = [
   },
   {
     id: 'registration',
-    icon: '📋',
+    label: 'R',
     title: 'Registration Forms',
     tagline: 'Run structured sign-ups for leagues, tournaments, and community events.',
     desc: 'Build custom registration forms in minutes — per-person or per-team, paid or free. Set capacity limits, collect custom fields, and let the system handle waitlists automatically when spots fill up.',
@@ -50,7 +50,7 @@ const PRODUCTS = [
   },
   {
     id: 'pos',
-    icon: '🛒',
+    label: 'P',
     title: 'Point of Sale',
     tagline: 'A tablet-friendly POS built for busy event nights and beer gardens.',
     desc: 'Manage your item catalog, ring up orders, and take card or cash payments — all from a tablet. Built-in shift management tracks your cash drawer from open to close. Keeps working even when your wifi doesn\'t.',
@@ -84,7 +84,7 @@ const FAQS = [
   },
   {
     q: 'Does the POS require special hardware?',
-    a: 'The POS interface runs on any tablet or laptop. For card payments you\'ll need a Stripe Terminal reader (the Stripe Reader M2 is $59, the WisePOS E countertop unit is $249). Cash payments work without any additional hardware.',
+    a: 'The POS interface runs on any tablet or laptop. For card payments you\'ll need a Stripe Terminal WisePOS E reader ($249). Cash payments work without any additional hardware.',
   },
   {
     q: 'Can I use just one product, or do I need all three?',
@@ -224,8 +224,8 @@ export default function MarketingPage() {
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: text3, textAlign: 'center', marginBottom: 20 }}>Built for venues like yours</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
             {VENUE_TYPES.map(v => (
-              <div key={v.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 20, border: `1px solid ${border}`, fontSize: 13, color: text2, background: card }}>
-                <span>{v.icon}</span> {v.label}
+              <div key={v} style={{ padding: '7px 16px', borderRadius: 20, border: `1px solid ${border}`, fontSize: 13, color: text2, background: card }}>
+                {v}
               </div>
             ))}
           </div>
@@ -242,7 +242,7 @@ export default function MarketingPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 2 }}>
             {PRODUCTS.map(p => (
               <div key={p.id} style={{ background: card, border: `1px solid ${border}`, padding: '36px 32px' }}>
-                <div style={{ fontSize: 40, marginBottom: 20 }}>{p.icon}</div>
+                <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(200,146,42,.15)', border: `1px solid rgba(200,146,42,.25)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: gold, marginBottom: 20 }}>{p.label}</div>
                 <h3 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>{p.title}</h3>
                 <p style={{ fontSize: 14, color: gold, fontWeight: 600, marginBottom: 16 }}>{p.tagline}</p>
                 <p style={{ fontSize: 14, color: text2, lineHeight: 1.7, marginBottom: 24 }}>{p.desc}</p>
@@ -276,25 +276,6 @@ export default function MarketingPage() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Testimonial */}
-      <div className="mkt-section">
-        <div className="mkt-w" style={{ maxWidth: 760 }}>
-          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, padding: 'clamp(28px,5vw,52px)', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 24, opacity: 0.4 }}>"</div>
-            <p style={{ fontSize: 'clamp(18px,2.5vw,24px)', lineHeight: 1.6, fontWeight: 500, marginBottom: 32, color: text }}>
-              C8 Tickets completely changed how we run events. We went from juggling spreadsheets and a generic Square terminal to having one system that handles tickets, league sign-ups, and bar sales. Setup was painless and we were live the next day.
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: '50%', background: gold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: bg }}>C8</div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>Crooked 8</div>
-                <div style={{ fontSize: 13, color: text2 }}>Bar & Event Venue — Kuna, Idaho</div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
