@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>C8 Tickets — Ticketing Software for Bars &amp; Independent Venues | No Monthly Fee</title>
+  <meta name="description" content="C8 Tickets is all-in-one ticketing software for bars, breweries, and independent venues. Sell tickets online and at the door, run league registrations, and manage your bar POS — one platform, no monthly fee. The Eventbrite alternative built for local venues." />
+  <meta name="keywords" content="ticketing software for bars, bar event ticketing, Eventbrite alternative for small venues, venue ticketing software, small venue ticketing, event ticketing platform, league registration software, venue POS system, ticketing and POS for venues, event management software for bars, Idaho venue ticketing, independent venue ticketing, no monthly fee ticketing, trivia night ticketing, brewery event ticketing" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://platform.c8tickets.com/" />
+  <meta property="og:title" content="C8 Tickets — Ticketing Software for Bars &amp; Independent Venues" />
+  <meta property="og:description" content="Sell tickets, run registrations, and manage bar sales from one platform. No monthly fee. Built for independent bars, breweries, and small venues." />
+  <meta property="og:image" content="https://c8tickets.com/api/og-image" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="C8 Tickets — Ticketing Software for Bars &amp; Independent Venues" />
+  <meta name="twitter:description" content="Sell tickets, run registrations, and manage bar sales from one platform. No monthly fee." />
+  <link rel="canonical" href="https://platform.c8tickets.com/" />
+  <link rel="icon" type="image/png" href="/logo-simple.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script type="application/ld+json">
+  [
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "C8 Tickets",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "url": "https://platform.c8tickets.com",
+      "description": "All-in-one ticketing software for bars, breweries, and independent venues. Event ticketing, league registration, and point-of-sale — no monthly fee.",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "No monthly fee — pay per ticket sold" },
+      "provider": { "@type": "Organization", "name": "C8 Tickets", "url": "https://platform.c8tickets.com", "email": "hello@c8tickets.com" },
+      "featureList": ["Event Ticketing", "Door Sales", "QR Code Check-In", "League Registration", "Point of Sale", "Stripe Terminal", "Offline Mode", "Promo Codes"]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "C8 Tickets",
+      "url": "https://platform.c8tickets.com",
+      "email": "hello@c8tickets.com",
+      "description": "Venue management software for independent bars, breweries, and event organizers.",
+      "areaServed": { "@type": "State", "name": "Idaho" },
+      "serviceType": ["Event Ticketing", "League Registration", "Point of Sale"]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Do I need my own Stripe account?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — payments go directly to your Stripe account, so you get paid instantly without any holding periods. If you don't already have one, it takes about five minutes to set up at stripe.com." } },
+        { "@type": "Question", "name": "How long does it take to go live?", "acceptedAnswer": { "@type": "Answer", "text": "For most venues, under 24 hours. We handle the initial setup — you give us your event details, ticket types, and pricing and we take it from there." } },
+        { "@type": "Question", "name": "Does the POS require special hardware?", "acceptedAnswer": { "@type": "Answer", "text": "The POS interface runs on any tablet or laptop. For card payments you'll need a Stripe Terminal WisePOS E reader ($249). Cash payments work without any additional hardware." } },
+        { "@type": "Question", "name": "Can I use just one product, or do I need all three?", "acceptedAnswer": { "@type": "Answer", "text": "Use as much or as little as you need. Some venues just need event ticketing. Others add registration forms for leagues and tournaments. The POS is an add-on for venues that also want to manage bar or merch sales." } },
+        { "@type": "Question", "name": "What does it cost?", "acceptedAnswer": { "@type": "Answer", "text": "We tailor pricing to your venue's size and which products you need. Reach out and we'll put together a proposal based on your specific situation." } },
+        { "@type": "Question", "name": "Is there a contract or minimum commitment?", "acceptedAnswer": { "@type": "Answer", "text": "No long-term contracts. We believe if the platform is working for you, you'll stick around." } },
+        { "@type": "Question", "name": "Is C8 Tickets cheaper than Eventbrite?", "acceptedAnswer": { "@type": "Answer", "text": "For most small venues, yes. Eventbrite charges a percentage of every ticket plus a per-ticket fee, and holds your payout until after the event. C8 Tickets has no monthly fee and payments go directly to your Stripe account as tickets sell. Contact us and we'll run the numbers for your specific event size." } }
+      ]
+    }
+  ]
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0c0a07;
+      --gold: #c8922a;
+      --text: #e8e0d0;
+      --text2: rgba(232,224,208,.65);
+      --text3: rgba(232,224,208,.35);
+      --border: rgba(255,255,255,.08);
+      --card: rgba(255,255,255,.04);
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+
+    .w { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+    .w-sm { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+    .w-md { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+    .w-form { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+    section { padding: 80px 0; }
+
+    /* Nav */
+    nav { border-bottom: 1px solid var(--border); position: sticky; top: 0; background: rgba(12,10,7,.92); backdrop-filter: blur(12px); z-index: 100; }
+    .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-link { font-size: 14px; color: var(--text2); transition: color .15s; }
+    .nav-link:hover { color: var(--text); }
+
+    /* Buttons */
+    .btn { display: inline-block; padding: 13px 26px; border-radius: 8px; font-weight: 700; font-size: 15px; cursor: pointer; border: none; text-decoration: none; transition: opacity .15s; line-height: 1; }
+    .btn:hover { opacity: .85; }
+    .btn-gold { background: var(--gold); color: var(--bg); }
+    .btn-outline { background: transparent; color: var(--text); border: 2px solid rgba(232,224,208,.2); }
+    .btn-sm { padding: 8px 18px; font-size: 13px; }
+
+    /* Hero */
+    .hero { padding: 96px 24px 80px; text-align: center; border-bottom: 1px solid var(--border); }
+    .badge { display: inline-block; background: rgba(200,146,42,.12); color: var(--gold); border-radius: 20px; padding: 5px 16px; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 28px; }
+    .hero h1 { font-size: clamp(38px,7vw,72px); font-weight: 800; line-height: 1.08; margin-bottom: 24px; letter-spacing: -1.5px; }
+    .hero h1 span { color: var(--gold); }
+    .hero p { font-size: clamp(17px,2.2vw,21px); color: var(--text2); max-width: 620px; margin: 0 auto 16px; line-height: 1.65; }
+    .hero-sub { font-size: 14px; color: var(--text3); margin-bottom: 44px; }
+    .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* Venue types */
+    .venues-bar { border-bottom: 1px solid var(--border); padding: 36px 24px; }
+    .venues-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); text-align: center; margin-bottom: 20px; }
+    .venues-chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+    .chip { padding: 7px 16px; border-radius: 20px; border: 1px solid var(--border); font-size: 13px; color: var(--text2); background: var(--card); }
+
+    /* Section headers */
+    .sec-head { text-align: center; margin-bottom: 52px; }
+    .sec-head h2 { font-size: clamp(28px,4vw,42px); font-weight: 800; letter-spacing: -.5px; margin-bottom: 14px; }
+    .sec-head p { font-size: 17px; color: var(--text2); max-width: 520px; margin: 0 auto; line-height: 1.6; }
+
+    /* Products grid */
+    .products { background: transparent; }
+    .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap: 2px; }
+    .product-card { background: var(--card); border: 1px solid var(--border); padding: 36px 32px; }
+    .product-label { width: 44px; height: 44px; border-radius: 10px; background: rgba(200,146,42,.15); border: 1px solid rgba(200,146,42,.25); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; color: var(--gold); margin-bottom: 20px; }
+    .product-card h3 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+    .product-tagline { font-size: 14px; color: var(--gold); font-weight: 600; margin-bottom: 16px; }
+    .product-desc { font-size: 14px; color: var(--text2); line-height: 1.7; margin-bottom: 24px; }
+    .feature-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .feature-list li { font-size: 13px; color: rgba(232,224,208,.8); display: flex; align-items: flex-start; gap: 10px; }
+    .check { color: var(--gold); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+    /* How it works */
+    .how { background: rgba(255,255,255,.025); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap: 40px; }
+    .step { display: flex; gap: 20px; }
+    .step-num { width: 44px; height: 44px; border-radius: 50%; background: var(--gold); color: var(--bg); font-weight: 800; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .step h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+    .step p { font-size: 14px; color: var(--text2); line-height: 1.65; }
+
+    /* Why not Eventbrite */
+    .eventbrite { background: rgba(200,146,42,.04); border-top: 1px solid var(--border); }
+    .compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 16px; }
+    .compare-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+    .compare-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin-bottom: 14px; }
+    .compare-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .compare-card p { font-size: 13px; color: var(--text2); line-height: 1.65; }
+
+    /* FAQ */
+    .faq-list { display: flex; flex-direction: column; gap: 2px; }
+    details { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: transparent; transition: background .15s; }
+    details[open] { background: rgba(255,255,255,.05); border-radius: 12px; }
+    summary { padding: 20px 24px; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; list-style: none; gap: 16px; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: '+'; font-size: 22px; color: var(--gold); flex-shrink: 0; transition: transform .2s; }
+    details[open] summary::after { transform: rotate(45deg); }
+    .faq-answer { padding: 0 24px 20px; font-size: 15px; color: var(--text2); line-height: 1.7; }
+
+    /* Contact */
+    .contact { border-top: 1px solid var(--border); background: rgba(255,255,255,.015); }
+    .contact-head { text-align: center; margin-bottom: 44px; }
+    .contact-head h2 { font-size: clamp(28px,4vw,42px); font-weight: 800; letter-spacing: -.5px; margin-bottom: 14px; }
+    .contact-head p { font-size: 17px; color: var(--text2); line-height: 1.6; }
+    .form-box { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: clamp(24px,4vw,40px); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .fi { width: 100%; padding: 12px 14px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; color: var(--text); font-size: 15px; outline: none; margin-bottom: 12px; font-family: inherit; }
+    .fi:focus { border-color: var(--gold); }
+    .fi::placeholder { color: rgba(232,224,208,.3); }
+    textarea.fi { resize: vertical; min-height: 110px; }
+    .form-note { font-size: 12px; color: var(--text3); text-align: center; margin-top: 14px; }
+    .success-box { text-align: center; padding: 48px 32px; background: rgba(93,138,60,.08); border: 1px solid rgba(93,138,60,.2); border-radius: 16px; display: none; }
+    .success-box.show { display: block; }
+    .form-error { font-size: 12px; color: #b33a2a; margin-bottom: 12px; display: none; }
+    .form-error.show { display: block; }
+
+    /* Footer */
+    footer { border-top: 1px solid var(--border); padding: 36px 24px; }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .footer-logo { height: 22px; object-fit: contain; opacity: .5; }
+    .footer-copy { font-size: 12px; color: var(--text3); }
+    .footer-email { font-size: 12px; color: var(--text3); }
+
+    @media (max-width: 700px) {
+      section { padding: 52px 0; }
+      .nav-links .nav-link { display: none; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .product-card { padding: 28px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="w nav-inner">
+      <img src="/logo-full.png" alt="C8 Tickets" style="height:30px;object-fit:contain;" />
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#how-it-works" class="nav-link">How It Works</a>
+        <a href="#faq" class="nav-link">FAQ</a>
+        <a href="#contact" class="btn btn-gold btn-sm">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="badge">All-in-One Venue Platform</div>
+    <h1>Ticketing software<br>built for <span>your venue.</span></h1>
+    <p>Sell tickets online and at the door, run league registrations, and manage your bar POS — all in one platform. No monthly fee. Set up in under 24 hours.</p>
+    <p class="hero-sub">The Eventbrite alternative built for independent bars, breweries, and local venues.</p>
+    <div class="hero-btns">
+      <a href="#contact" class="btn btn-gold">Talk to Us</a>
+      <a href="#features" class="btn btn-outline">See What's Included</a>
+    </div>
+  </div>
+
+  <!-- Venue types -->
+  <div class="venues-bar">
+    <div class="w">
+      <p class="venues-label">Built for venues like yours</p>
+      <div class="venues-chips">
+        <span class="chip">Bars &amp; Taverns</span>
+        <span class="chip">Live Music Venues</span>
+        <span class="chip">Breweries &amp; Taprooms</span>
+        <span class="chip">Sports Leagues &amp; Tournaments</span>
+        <span class="chip">Bowling Alleys</span>
+        <span class="chip">Comedy &amp; Trivia Nights</span>
+        <span class="chip">Civic Organizations</span>
+        <span class="chip">Theaters &amp; Event Spaces</span>
+        <span class="chip">Rodeos &amp; Community Fairs</span>
+        <span class="chip">Banquet Halls</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Products -->
+  <section id="features" class="products">
+    <div class="w">
+      <div class="sec-head">
+        <h2>Three products. One platform.</h2>
+        <p>Use what you need. Add more as your venue grows. Everything shares the same dashboard and reporting.</p>
+      </div>
+      <div class="products-grid">
+
+        <div class="product-card">
+          <div class="product-label">T</div>
+          <h3>Event Ticketing</h3>
+          <p class="product-tagline">Sell tickets online and at the door — without the big-platform fees.</p>
+          <p class="product-desc">Set up an event in minutes. Customers buy online with instant QR-code confirmation emails. Staff scan tickets at the door from any phone or tablet. Watch check-ins happen in real time.</p>
+          <ul class="feature-list">
+            <li><span class="check">✓</span> Online presale + door sales from one dashboard</li>
+            <li><span class="check">✓</span> QR-code tickets delivered instantly by email</li>
+            <li><span class="check">✓</span> Ticket scanning from any phone — no dedicated hardware</li>
+            <li><span class="check">✓</span> Real-time inventory and check-in tracking</li>
+            <li><span class="check">✓</span> Promo codes and percentage or flat-rate discounts</li>
+            <li><span class="check">✓</span> Multiple ticket types per event (GA, VIP, early bird)</li>
+            <li><span class="check">✓</span> Door price vs. presale price per ticket type</li>
+            <li><span class="check">✓</span> CSV export for any event or date range</li>
+          </ul>
+        </div>
+
+        <div class="product-card">
+          <div class="product-label">R</div>
+          <h3>Registration Forms</h3>
+          <p class="product-tagline">Run structured sign-ups for leagues, tournaments, and community events.</p>
+          <p class="product-desc">Build custom registration forms in minutes — per-person or per-team, paid or free. Set capacity limits, collect custom fields, and let the system handle waitlists automatically when spots fill up.</p>
+          <ul class="feature-list">
+            <li><span class="check">✓</span> Individual or team-based registrations</li>
+            <li><span class="check">✓</span> Custom fields: text, dropdowns, checkboxes, and more</li>
+            <li><span class="check">✓</span> Automatic waitlist with promotion notifications</li>
+            <li><span class="check">✓</span> Paid registrations via Stripe or free sign-ups</li>
+            <li><span class="check">✓</span> Capacity management with fill-rate tracking</li>
+            <li><span class="check">✓</span> Duplicate detection prevents double sign-ups</li>
+            <li><span class="check">✓</span> Registrant management: search, filter, cancel, promote</li>
+            <li><span class="check">✓</span> Full CSV export with all form responses</li>
+          </ul>
+        </div>
+
+        <div class="product-card">
+          <div class="product-label">P</div>
+          <h3>Point of Sale</h3>
+          <p class="product-tagline">A tablet-friendly POS built for busy event nights and beer gardens.</p>
+          <p class="product-desc">Manage your item catalog, ring up orders, and take card or cash payments — all from a tablet. Built-in shift management tracks your cash drawer from open to close. Keeps working even when your wifi doesn't.</p>
+          <ul class="feature-list">
+            <li><span class="check">✓</span> Large-touch tablet interface optimized for speed</li>
+            <li><span class="check">✓</span> Card payments via Stripe Terminal reader</li>
+            <li><span class="check">✓</span> Cash payments with change calculation</li>
+            <li><span class="check">✓</span> Item modifiers (sizes, add-ons, customizations)</li>
+            <li><span class="check">✓</span> Shift management: opening cash, closing count, discrepancy report</li>
+            <li><span class="check">✓</span> Offline mode — queues orders when wifi drops, syncs on reconnect</li>
+            <li><span class="check">✓</span> Per-item tax rates and category organization</li>
+            <li><span class="check">✓</span> Sales reports by item, category, and payment type</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section id="how-it-works" class="how">
+    <div class="w">
+      <div class="sec-head">
+        <h2>Up and running in a day</h2>
+        <p>No IT team required. No weeks-long onboarding. We do the setup, you do the selling.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <h3>Tell us about your venue</h3>
+            <p>Fill out the contact form. We'll reach out within one business day to learn about your events and what you need.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div>
+            <h3>We configure everything</h3>
+            <p>We set up your venue page, events, ticket types, and POS items. You're live and selling in under 24 hours.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div>
+            <h3>Sell and get paid</h3>
+            <p>Revenue from ticket and registration sales goes directly to your connected Stripe account. No waiting, no holding periods.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why not Eventbrite -->
+  <section class="eventbrite">
+    <div class="w-md">
+      <div class="sec-head">
+        <h2>Why not just use Eventbrite?</h2>
+        <p>Eventbrite is built for large-scale consumer discovery. C8 Tickets is built for venue operators who want to own their customer relationships and keep more of their revenue.</p>
+      </div>
+      <div class="compare-grid">
+        <div class="compare-card">
+          <div class="compare-dot"></div>
+          <h3>Your customer data, always</h3>
+          <p>Every buyer's name, email, and purchase history belongs to you — not to a marketplace that can market competing events to your customers.</p>
+        </div>
+        <div class="compare-card">
+          <div class="compare-dot"></div>
+          <h3>No holding your money</h3>
+          <p>Eventbrite holds payouts until after your event. C8 Tickets payments go directly to your Stripe account as they come in.</p>
+        </div>
+        <div class="compare-card">
+          <div class="compare-dot"></div>
+          <h3>Built for bars, not big arenas</h3>
+          <p>Eventbrite's UX is designed for large events and festival promoters. C8 Tickets is designed for bar owners managing live music, trivia nights, and leagues.</p>
+        </div>
+        <div class="compare-card">
+          <div class="compare-dot"></div>
+          <h3>Ticketing + registration + POS</h3>
+          <p>Eventbrite only does tickets. C8 Tickets also handles league sign-ups and your bar's point-of-sale system — one login, one dashboard.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="w-sm">
+      <div class="sec-head">
+        <h2>Common questions</h2>
+      </div>
+      <div class="faq-list">
+        <details>
+          <summary>Do I need my own Stripe account?</summary>
+          <p class="faq-answer">Yes — payments go directly to your Stripe account, so you get paid instantly without any holding periods. If you don't already have one, it takes about five minutes to set up at stripe.com.</p>
+        </details>
+        <details>
+          <summary>How long does it take to go live?</summary>
+          <p class="faq-answer">For most venues, under 24 hours. We handle the initial setup — you give us your event details, ticket types, and pricing and we take it from there.</p>
+        </details>
+        <details>
+          <summary>Does the POS require special hardware?</summary>
+          <p class="faq-answer">The POS interface runs on any tablet or laptop. For card payments you'll need a Stripe Terminal WisePOS E reader ($249). Cash payments work without any additional hardware.</p>
+        </details>
+        <details>
+          <summary>Can I use just one product, or do I need all three?</summary>
+          <p class="faq-answer">Use as much or as little as you need. Some venues just need event ticketing. Others add registration forms for leagues and tournaments. The POS is an add-on for venues that also want to manage bar or merch sales.</p>
+        </details>
+        <details>
+          <summary>Is C8 Tickets cheaper than Eventbrite?</summary>
+          <p class="faq-answer">For most small venues, yes. Eventbrite charges a percentage of every ticket plus a per-ticket fee, and holds your payout until after the event. C8 Tickets has no monthly fee and payments go directly to your Stripe account as tickets sell. Contact us and we'll run the numbers for your specific event size.</p>
+        </details>
+        <details>
+          <summary>What does it cost?</summary>
+          <p class="faq-answer">We tailor pricing to your venue's size and which products you need. Reach out and we'll put together a proposal based on your specific situation.</p>
+        </details>
+        <details>
+          <summary>Is there a contract or minimum commitment?</summary>
+          <p class="faq-answer">No long-term contracts. We believe if the platform is working for you, you'll stick around.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section id="contact" class="contact">
+    <div class="w-form">
+      <div class="contact-head">
+        <h2>Ready to get started?</h2>
+        <p>Tell us about your venue. We'll reach out within one business day with next steps.</p>
+      </div>
+      <div id="success-box" class="success-box">
+        <div style="font-size:48px;margin-bottom:16px;">✓</div>
+        <h3 style="font-size:22px;font-weight:700;margin-bottom:10px;">Message received!</h3>
+        <p style="color:var(--text2);font-size:15px;line-height:1.6;">We'll be in touch within one business day. In the meantime, feel free to email us directly at <a href="mailto:hello@c8tickets.com" style="color:var(--gold);">hello@c8tickets.com</a>.</p>
+      </div>
+      <form id="contact-form" class="form-box" onsubmit="handleSubmit(event)">
+        <div class="form-row">
+          <input class="fi" style="margin:0;" type="text" name="name" placeholder="Your name" required />
+          <input class="fi" style="margin:0;" type="email" name="email" placeholder="Email address" required />
+        </div>
+        <input class="fi" type="text" name="venue" placeholder="Venue name" />
+        <textarea class="fi" name="message" placeholder="Tell us about your venue — what kinds of events do you run, how often, and what challenges are you trying to solve?"></textarea>
+        <p id="form-error" class="form-error">Something went wrong. Please try again or email <a href="mailto:hello@c8tickets.com" style="color:var(--gold);">hello@c8tickets.com</a>.</p>
+        <button type="submit" id="submit-btn" class="btn btn-gold" style="width:100%;font-size:16px;padding:16px 28px;">Send Message</button>
+        <p class="form-note">We respond within one business day. No sales pressure.</p>
+      </form>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="w footer-inner">
+      <img src="/logo-full.png" alt="C8 Tickets" class="footer-logo" />
+      <p class="footer-copy">© <span id="yr"></span> C8 Tickets. All rights reserved.</p>
+      <a href="mailto:hello@c8tickets.com" class="footer-email">hello@c8tickets.com</a>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('yr').textContent = new Date().getFullYear();
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      const err = document.getElementById('form-error');
+      const form = document.getElementById('contact-form');
+      const success = document.getElementById('success-box');
+      const data = Object.fromEntries(new FormData(form));
+
+      btn.textContent = 'Sending…';
+      btn.disabled = true;
+      err.classList.remove('show');
+
+      try {
+        await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        form.style.display = 'none';
+        success.classList.add('show');
+      } catch (_) {
+        err.classList.add('show');
+        btn.textContent = 'Send Message';
+        btn.disabled = false;
+      }
+    }
+  </script>
+
+</body>
+</html>

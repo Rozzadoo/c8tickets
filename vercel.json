@@ -3,6 +3,11 @@
     { "path": "/api/promo", "schedule": "0 16 * * 1" }
   ],
   "rewrites": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "platform.c8tickets.com" }],
+      "destination": "/platform.html"
+    },
     { "source": "/sitemap.xml", "destination": "/api/sitemap-xml" },
     { "source": "/e/:id", "destination": "/api/event-preview?id=:id" },
     { "source": "/t/:id", "destination": "/index.html" },
