@@ -1228,9 +1228,6 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
 
   if (!loaded) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0c0a07" }}><img src={LOGO_FULL} alt="C8 Tickets" style={{ width: 'clamp(240px,70vw,480px)', height: 'auto', opacity: .95, animation: "fi .6s ease" }} /></div>;
 
-  const _host = window.location.hostname;
-  if (_host === 'c8tickets.com' || _host === 'www.c8tickets.com') return <MarketingPage />;
-
   return (
     <><style>{CSS}</style>
       <div className="app">
