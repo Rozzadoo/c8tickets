@@ -109,5 +109,68 @@ export default async function handler(req, res) {
     }
   }
 
+  if (action === 'pos-payment-intent') {
+    try {
+      const { cartItems, tenantId } = req.body;
+      if (!Array.isArray(cartItems) || cartItems.length === 0)
+        return res.status(400).json({ error: 'Empty cart' });
+
+      const ids = [...new Set(cartItems.map(i => i.itemId).filter(Boolean))];
+      if (ids.length === 0) return res.status(400).json({ error: 'Invalid items' });
+
+      const inClause = ids.map(id => `"${id}"`).join(',');
+      const itemRes = await fetch(
+        `${process.env.VITE_SUPABASE_URL}/rest/v1/pos_items?id=in.(${inClause})&select=id,name,price,tax_rate,available`,
+        { headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` } }
+      );
+      const dbItems = await itemRes.json();
+      if (!Array.isArray(dbItems)) return res.status(500).json({ error: 'Item lookup failed' });
+
+      const dbMap = Object.fromEntries(dbItems.map(i => [i.id, i]));
+      let subtotal = 0, tax = 0;
+
+      for (const ci of cartItems) {
+        if (!Number.isInteger(ci.qty) || ci.qty < 1 || ci.qty > 99)
+          return res.status(400).json({ error: 'Invalid quantity' });
+        const db = dbMap[ci.itemId];
+        if (!db) return res.status(400).json({ error: 'Unknown item' });
+        if (!db.available) return res.status(400).json({ error: `"${db.name}" is not currently available` });
+        const modDelta = Math.max(0, parseFloat(ci.modifierDelta) || 0);
+        const unitPrice = parseFloat(db.price) + modDelta;
+        const lineTotal = unitPrice * ci.qty;
+        subtotal += lineTotal;
+        tax += lineTotal * parseFloat(db.tax_rate || 0.06);
+      }
+
+      subtotal = Math.round(subtotal * 100) / 100;
+      tax = Math.round(tax * 100) / 100;
+      const total = Math.round((subtotal + tax) * 100) / 100;
+
+      if (total < 0.50) return res.status(400).json({ error: 'Total is below the minimum charge amount ($0.50)' });
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(total * 100),
+        currency: 'usd',
+        payment_method_types: ['card_present'],
+        capture_method: 'automatic',
+        metadata: {
+          type: 'pos',
+          tenant_id: tenantId || '',
+          item_count: String(cartItems.reduce((s, i) => s + i.qty, 0)),
+        },
+      });
+
+      return res.json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        subtotal,
+        tax,
+        total,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Invalid action' });
 }

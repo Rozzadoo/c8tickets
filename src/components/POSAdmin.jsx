@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import POSTerminal from './POSTerminal';
 
 const CATEGORIES = ['food', 'beverage', 'merchandise', 'ticket', 'other'];
 const CAT_LABELS = { food: 'Food', beverage: 'Beverage', merchandise: 'Merch', ticket: 'Ticket', other: 'Other' };
@@ -10,6 +11,7 @@ function blankItem() {
 }
 
 export default function POSAdmin({ tenantId, venue, events = [] }) {
+  const [posView, setPosView] = useState('catalog'); // 'catalog' | 'terminal'
   const [view, setView] = useState('catalog');
   const [items, setItems] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -243,11 +245,21 @@ export default function POSAdmin({ tenantId, venue, events = [] }) {
   for (const item of items) catCounts[item.category] = (catCounts[item.category] || 0) + 1;
   const filteredItems = catFilter === 'all' ? items : items.filter(i => i.category === catFilter);
 
+  if (posView === 'terminal') {
+    return <POSTerminal tenantId={tenantId} venue={venue} events={events} onClose={() => setPosView('catalog')} />;
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 className="dsp" style={{ fontSize: 26 }}>Item Catalog</h2>
-        <button className="btn gold" onClick={openNew}>+ New Item</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn gold" style={{ fontSize: 14, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setPosView('terminal')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Open POS Terminal
+          </button>
+          <button className="btn" onClick={openNew}>+ New Item</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
