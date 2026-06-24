@@ -337,8 +337,8 @@ const [resetError, setResetError] = useState('');
     else if (view === 'venue') { const vp = venues.find(v => v.id === venueProfileId); if (vp) title = `${vp.name} — ${base}`; }
     else if (view === 'register') { title = `Register — ${base}`; path = `/r/${regFormId}`; }
     else if (view === 'sell') {
-      title = 'Sell Event Tickets Online — Treasure Valley & Idaho | C8Tickets';
-      desc = 'C8Tickets is the local ticketing platform built for bars, venues, and event organizers in Boise, Nampa, Meridian, Kuna, and across the Treasure Valley. Online sales, door sales, QR check-in, and real-time dashboards — no setup fees.';
+      title = 'Sell Event Tickets Online | C8Tickets — Idaho\'s Local Venue Platform';
+      desc = 'C8Tickets is the all-in-one platform for bars, venues, and event organizers across Idaho\'s Treasure Valley. Sell tickets online and at the door, run registration forms, and manage bar sales — all from one dashboard. No setup fees. Get live in under 24 hours.';
       path = '/sell';
     }
 
@@ -1954,62 +1954,93 @@ fetch(API_BASE+'/api/send-email', {
 
         {view === "sell" && <div className="fade">
           <div className="back" onClick={() => setView("home")}>← Back</div>
-          <div className="about-hero">
-            <img src={LOGO_FULL} alt="C8 Tickets" style={{width:'clamp(280px,80vw,560px)',height:'auto',opacity:.97,marginBottom:12}} />
-            <h1 className="dsp">Sell Event Tickets<br/>in the Treasure Valley</h1>
-            <p>The local ticketing platform built for bars, venues, and event organizers in Boise, Nampa, Meridian, Kuna, and across Idaho. Get your event live in minutes.</p>
+
+          {/* Hero */}
+          <div className="about-hero" style={{paddingTop:48,paddingBottom:48}}>
+            <div style={{display:'inline-block',background:'rgba(200,146,42,.1)',color:'var(--gold)',borderRadius:20,padding:'4px 16px',fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:20}}>Idaho's Local Venue Platform</div>
+            <h1 className="dsp" style={{fontSize:'clamp(36px,7vw,64px)',marginBottom:16}}>Run your events.<br/>Sell more tickets.</h1>
+            <p style={{maxWidth:560,margin:'0 auto 32px'}}>The all-in-one platform for bars, venues, and event organizers across the Treasure Valley. Online presale, door sales, league registration, and bar POS — all from one dashboard.</p>
+            <a href="#inquire" className="btn gold" style={{display:'inline-block',padding:'12px 28px',fontSize:15,fontWeight:700,textDecoration:'none',borderRadius:'var(--rs)'}}>Get Started — It's Free to Set Up</a>
           </div>
-          <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',borderBottom:'1px solid var(--border)',padding:'56px 20px'}}>
-            <div style={{maxWidth:820,margin:'0 auto'}}>
-              <h2 className="dsp" style={{fontSize:'clamp(20px,3.5vw,30px)',marginBottom:8,textAlign:'center'}}>Everything You Need to Sell Tickets</h2>
-              <div className="about-divider" style={{marginBottom:28}}></div>
-              <div className="about-grid">
+
+          {/* Features */}
+          <div style={{background:'var(--bg2)',borderTop:'1px solid var(--border)',borderBottom:'1px solid var(--border)',padding:'64px 20px'}}>
+            <div style={{maxWidth:900,margin:'0 auto'}}>
+              <h2 className="dsp" style={{fontSize:'clamp(22px,3.5vw,32px)',textAlign:'center',marginBottom:8}}>Everything your venue needs</h2>
+              <div className="about-divider" style={{marginBottom:36}}></div>
+              <div className="about-grid" style={{gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))'}}>
                 {[
-                  ['Fast Setup','Create your event, set ticket tiers and pricing, and go live — all in minutes. No waiting on approvals or account reps.'],
-                  ['Online & Door Sales','Customers buy in advance from any device. Staff sell at the door using a card reader or manual entry, all through the same system.'],
-                  ['Automatic QR Tickets','Every buyer gets an instant confirmation email with their QR code the moment their payment clears. No manual follow-up needed.'],
-                  ['Gate Check-In','Scan QR codes at the entrance from any phone or tablet. No paper lists, no spreadsheets — works for groups too.'],
-                  ['Real-Time Sales Dashboard','Track ticket sales, revenue, and check-in counts as they come in, from any device, at any time.'],
-                  ['No Setup Fees','You pay nothing to get started. Fees are transparently shown to buyers at checkout — no surprise deductions from your payout.'],
-                ].map(([title,desc])=>(
-                  <div className="about-card" key={title}><h3>{title}</h3><p>{desc}</p></div>
+                  ['Event Ticketing','Online presale + door sales from one dashboard. Set ticket tiers, pricing, and capacity — go live in minutes.'],
+                  ['QR Code Tickets','Every buyer gets an instant confirmation email with their QR code. No manual follow-up, no printed lists.'],
+                  ['Door Scanning','Scan tickets at the entrance from any phone or tablet. Works for groups and walk-ups too.'],
+                  ['Registration Forms','Run leagues, tournaments, and structured sign-ups with per-person or per-team forms, waitlists, and payment collection.'],
+                  ['Point of Sale','Tablet-friendly POS for food, drinks, and merch. Card and cash payments with shift and drawer management.'],
+                  ['Real-Time Dashboard','Track sales, revenue, and check-ins as they happen — from anywhere, on any device.'],
+                  ['Promo Codes','Offer percentage or flat-rate discounts. Set usage limits and expiry dates per code.'],
+                  ['Offline Mode','The POS keeps working when your wifi doesn\'t. Orders queue locally and sync when you\'re back online.'],
+                  ['No Setup Fees','Nothing to pay upfront. Fees are shown transparently to buyers at checkout — no surprise deductions from your payout.'],
+                ].map(([t,d])=>(
+                  <div className="about-card" key={t}><h3>{t}</h3><p>{d}</p></div>
                 ))}
               </div>
             </div>
           </div>
-          <div className="about-sec" style={{maxWidth:580}}>
-            <h2 className="dsp" style={{textAlign:'center'}}>Built for Treasure Valley Venues</h2>
-            <div className="about-divider" style={{marginBottom:20}}></div>
-            <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,marginBottom:28,textAlign:'center'}}>Whether you're running a concert at a Boise bar, a rodeo in Nampa, a community event in Meridian, or anything in between — C8Tickets was built for exactly this. Fill out the form and we'll have you set up fast.</p>
-            {sellStatus === 'sent' ? (
-              <div style={{textAlign:'center',padding:'40px 20px',background:'var(--bg2)',border:'1px solid rgba(200,146,42,.2)',borderRadius:'var(--r)'}}>
-                <div style={{fontSize:17,fontWeight:700,color:'var(--text)',marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Inquiry Received</div>
-                <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,margin:0}}>Thanks, {sellForm.name.split(' ')[0]}. We'll be in touch at {sellForm.email} shortly.</p>
-              </div>
-            ) : (<>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-                <div className="fg"><label className="fl" htmlFor="sell-name">Your Name *</label><input id="sell-name" className="fi" value={sellForm.name} onChange={e=>setSellForm(p=>({...p,name:e.target.value}))} placeholder="Jane Smith" /></div>
-                <div className="fg"><label className="fl" htmlFor="sell-phone">Phone Number</label><input id="sell-phone" className="fi" type="tel" value={sellForm.phone} onChange={e=>setSellForm(p=>({...p,phone:e.target.value}))} placeholder="(208) 555-1234" /></div>
-              </div>
-              <div className="fg"><label className="fl" htmlFor="sell-email">Email Address *</label><input id="sell-email" className="fi" type="email" value={sellForm.email} onChange={e=>setSellForm(p=>({...p,email:e.target.value}))} placeholder="jane@youremail.com" /></div>
-              <div className="fg"><label className="fl" htmlFor="sell-event-name">Event Name / Type *</label><input id="sell-event-name" className="fi" value={sellForm.eventName} onChange={e=>setSellForm(p=>({...p,eventName:e.target.value}))} placeholder="e.g. Summer Concert, Charity Gala, Rodeo Night" /></div>
-              <div className="fg"><label className="fl" htmlFor="sell-location">Event Location</label><input id="sell-location" className="fi" value={sellForm.location} onChange={e=>setSellForm(p=>({...p,location:e.target.value}))} placeholder="Venue name and/or address" /></div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-                <div className="fg"><label className="fl" htmlFor="sell-date">Event Date</label><input id="sell-date" className="fi" type="date" value={sellForm.date} onChange={e=>setSellForm(p=>({...p,date:e.target.value}))} /></div>
-                <div className="fg"><label className="fl" htmlFor="sell-attendance">Expected Attendance</label><input id="sell-attendance" className="fi" value={sellForm.attendance} onChange={e=>setSellForm(p=>({...p,attendance:e.target.value}))} placeholder="e.g. 150–200" /></div>
-              </div>
-              <div className="fg">
-                <label className="fl">How Will You Sell Tickets?</label>
-                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {[['online','Online only'],['door','At the door only'],['both','Online and at the door']].map(([val,label])=>(
-                    <button key={val} type="button" className={`btn${sellForm.channel===val?' on':''}`} style={{fontSize:12,padding:'8px 14px'}} onClick={()=>setSellForm(p=>({...p,channel:val}))}>{label}</button>
-                  ))}
+
+          {/* How it works */}
+          <div className="about-sec" style={{maxWidth:820}}>
+            <h2 className="dsp" style={{textAlign:'center',fontSize:'clamp(22px,3.5vw,32px)',marginBottom:8}}>Up and running in a day</h2>
+            <div className="about-divider" style={{marginBottom:36}}></div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:32}}>
+              {[
+                ['1','Tell us about your venue','Fill out the form below. We\'ll reach out the same business day to learn about your events and what you need.'],
+                ['2','We configure everything','We set up your events, ticket types, and pricing. You\'re live and selling within 24 hours — no technical work on your end.'],
+                ['3','Sell and get paid','Revenue goes directly to your connected Stripe account. No holding periods, no waiting on payouts.'],
+              ].map(([n,t,d])=>(
+                <div key={n} style={{display:'flex',gap:16}}>
+                  <div style={{width:40,height:40,borderRadius:'50%',background:'var(--gold)',color:'var(--bg)',fontWeight:800,fontSize:17,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{n}</div>
+                  <div><h3 style={{fontSize:15,fontWeight:700,marginBottom:6,color:'var(--text)'}}>{t}</h3><p style={{fontSize:13,color:'var(--text2)',lineHeight:1.7,margin:0}}>{d}</p></div>
                 </div>
-              </div>
-              <div className="fg"><label className="fl" htmlFor="sell-notes">Anything Else?</label><textarea id="sell-notes" className="fi" rows={4} style={{resize:'vertical'}} value={sellForm.notes} onChange={e=>setSellForm(p=>({...p,notes:e.target.value}))} placeholder="Ticket tiers, special requirements, questions, or anything else we should know…" /></div>
-              {sellStatus === 'error' && <p style={{fontSize:12,color:'var(--red)',marginBottom:12}}>Something went wrong. Please try again or email support@c8tickets.com directly.</p>}
-              <button className="buy" disabled={!sellForm.name||!sellForm.email||sellStatus==='sending'} onClick={submitSellInquiry}>{sellStatus==='sending'?'Sending…':'Send Inquiry'}</button>
-            </>)}
+              ))}
+            </div>
+          </div>
+
+          {/* Form */}
+          <div id="inquire" style={{background:'var(--bg2)',borderTop:'1px solid var(--border)'}}>
+            <div className="about-sec" style={{maxWidth:620}}>
+              <h2 className="dsp" style={{textAlign:'center',fontSize:'clamp(22px,3.5vw,32px)',marginBottom:8}}>Tell us about your event</h2>
+              <div className="about-divider" style={{marginBottom:8}}></div>
+              <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,marginBottom:28,textAlign:'center'}}>Whether you're running a concert, a league, a festival, or a one-night event — fill out the form and we'll get back to you fast.</p>
+              {sellStatus === 'sent' ? (
+                <div style={{textAlign:'center',padding:'40px 20px',background:'var(--bg3)',border:'1px solid rgba(200,146,42,.2)',borderRadius:'var(--r)'}}>
+                  <div style={{fontSize:17,fontWeight:700,color:'var(--text)',marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Inquiry Received</div>
+                  <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,margin:0}}>Thanks, {sellForm.name.split(' ')[0]}. We'll be in touch at {sellForm.email} shortly.</p>
+                </div>
+              ) : (<>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+                  <div className="fg"><label className="fl" htmlFor="sell-name">Your Name *</label><input id="sell-name" className="fi" value={sellForm.name} onChange={e=>setSellForm(p=>({...p,name:e.target.value}))} placeholder="Jane Smith" /></div>
+                  <div className="fg"><label className="fl" htmlFor="sell-phone">Phone Number</label><input id="sell-phone" className="fi" type="tel" value={sellForm.phone} onChange={e=>setSellForm(p=>({...p,phone:e.target.value}))} placeholder="(208) 555-1234" /></div>
+                </div>
+                <div className="fg"><label className="fl" htmlFor="sell-email">Email Address *</label><input id="sell-email" className="fi" type="email" value={sellForm.email} onChange={e=>setSellForm(p=>({...p,email:e.target.value}))} placeholder="jane@youremail.com" /></div>
+                <div className="fg"><label className="fl" htmlFor="sell-event-name">Event or Venue Name *</label><input id="sell-event-name" className="fi" value={sellForm.eventName} onChange={e=>setSellForm(p=>({...p,eventName:e.target.value}))} placeholder="e.g. Crooked 8, Summer Concert Series, Kuna Rodeo" /></div>
+                <div className="fg"><label className="fl" htmlFor="sell-location">Location</label><input id="sell-location" className="fi" value={sellForm.location} onChange={e=>setSellForm(p=>({...p,location:e.target.value}))} placeholder="City or venue address" /></div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+                  <div className="fg"><label className="fl" htmlFor="sell-date">First Event Date</label><input id="sell-date" className="fi" type="date" value={sellForm.date} onChange={e=>setSellForm(p=>({...p,date:e.target.value}))} /></div>
+                  <div className="fg"><label className="fl" htmlFor="sell-attendance">Expected Attendance</label><input id="sell-attendance" className="fi" value={sellForm.attendance} onChange={e=>setSellForm(p=>({...p,attendance:e.target.value}))} placeholder="e.g. 150–200" /></div>
+                </div>
+                <div className="fg">
+                  <label className="fl">How Will You Sell?</label>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {[['online','Online only'],['door','At the door only'],['both','Online and at the door']].map(([val,label])=>(
+                      <button key={val} type="button" className={`btn${sellForm.channel===val?' on':''}`} style={{fontSize:12,padding:'8px 14px'}} onClick={()=>setSellForm(p=>({...p,channel:val}))}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="fg"><label className="fl" htmlFor="sell-notes">Anything Else?</label><textarea id="sell-notes" className="fi" rows={4} style={{resize:'vertical'}} value={sellForm.notes} onChange={e=>setSellForm(p=>({...p,notes:e.target.value}))} placeholder="Tell us about your events, how often you run them, and what you're trying to solve…" /></div>
+                {sellStatus === 'error' && <p style={{fontSize:12,color:'var(--red)',marginBottom:12}}>Something went wrong. Please try again or email support@c8tickets.com directly.</p>}
+                <button className="buy" style={{width:'100%'}} disabled={!sellForm.name||!sellForm.email||sellStatus==='sending'} onClick={submitSellInquiry}>{sellStatus==='sending'?'Sending…':'Send Inquiry'}</button>
+                <p style={{fontSize:11,color:'var(--text3)',textAlign:'center',marginTop:12}}>We respond within one business day. No sales pressure.</p>
+              </>)}
+            </div>
           </div>
         </div>}
 
