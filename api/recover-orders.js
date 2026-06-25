@@ -87,9 +87,18 @@ export default async function handler(req, res) {
     let addonItems = [];
     try { addonItems = JSON.parse(m.addons_json || '[]'); } catch {}
 
-    const salesTax = Number(m.sales_tax || 0);
-    const serviceFees = Number(m.service_fees || 0);
-    const processingFee = Number(m.processing_fee || 0);
+    // For door sales, fees aren't in metadata — recalculate from items
+    let salesTax = Number(m.sales_tax || 0);
+    let serviceFees = Number(m.service_fees || 0);
+    let processingFee = Number(m.processing_fee || 0);
+    if (m.is_door_sale === 'true' && items.length > 0) {
+      const ticketTotal = items.reduce((s, i) => s + i.qty * i.price, 0);
+      const totalTickets = items.reduce((s, i) => s + i.qty, 0);
+      salesTax = Math.round(ticketTotal * 0.06 * 100) / 100;
+      serviceFees = totalTickets * 2.00;
+      const subtotal = ticketTotal + salesTax + serviceFees;
+      processingFee = Math.round((subtotal * 0.035 + 0.30) * 100) / 100;
+    }
     const ticketSubtotal = pi.amount / 100 - salesTax - serviceFees - processingFee;
 
     const orderRes = await fetch(`${supaUrl}/rest/v1/orders`, {
@@ -119,12 +128,20 @@ export default async function handler(req, res) {
       continue;
     }
 
+    // Insert order_items directly — don't call fulfill_order since the event/ticket_types
+    // may be deleted, which would cause the increment_sold step to fail
     if (items.length > 0) {
-      await fetch(`${supaUrl}/rest/v1/rpc/fulfill_order`, {
+      await fetch(`${supaUrl}/rest/v1/order_items`, {
         method: 'POST',
-        headers: h,
-        body: JSON.stringify({ p_order_id: order.id, p_items: items, p_event_id: m.event_id || null, p_tenant_id: m.tenant_id }),
-      });
+        headers: { ...h, Prefer: 'return=minimal' },
+        body: JSON.stringify(items.map(i => ({
+          order_id: order.id,
+          ticket_type_id: null, // ticket_type may be deleted — store name only
+          ticket_type_name: i.type,
+          quantity: i.qty,
+          unit_price: i.price,
+        }))),
+      }).catch(e => console.error('recover order_items error:', e.message));
     }
 
     if (addonItems.length > 0) {
