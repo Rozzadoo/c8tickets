@@ -1210,13 +1210,11 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   const target = events.find(e => e.id === id);
   const orderCount = orders.filter(o => o.eventId === id).length;
   const msg = orderCount > 0
-    ? `Delete "${target?.title}"?\n\nThis event has ${orderCount} order${orderCount !== 1 ? 's' : ''} on record. Order history and revenue data will be preserved in your reports — only the event listing itself will be removed.\n\nIf you want to hide this event from customers while keeping it in your event list, use Unpublish instead.\n\nThis cannot be undone.`
-    : `Delete "${target?.title}"?\n\nThis will permanently remove the event and all its ticket types. This cannot be undone.`;
+    ? `Archive "${target?.title}"?\n\nThis event has ${orderCount} order${orderCount !== 1 ? 's' : ''} on record. All order history, revenue data, and ticket records will be fully preserved in your reports.\n\nThe event will be removed from your event list and hidden from customers.\n\nIf you want to keep it visible in your list, use Unpublish instead.`
+    : `Archive "${target?.title}"?\n\nThis will remove the event from your list and hide it from customers. All data is preserved and recoverable.\n\nUse Unpublish instead if you may want to reuse this event.`;
   if (!window.confirm(msg)) return;
-  await supabase.from('tickets').delete().eq('event_id', id);
-  await supabase.from('ticket_types').delete().eq('event_id', id);
-  const { error } = await supabase.from('events').delete().eq('id', id);
-  if (error) { alert(`Failed to delete event: ${error.message}`); return; }
+  const { error } = await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  if (error) { alert(`Failed to archive event: ${error.message}`); return; }
   updateEvents(events.filter(e => e.id !== id));
 };
   const togglePublish = async (ev) => {

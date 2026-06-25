@@ -34,6 +34,7 @@ const useStorage = () => {
         .from('events')
         .select('*, ticket_types(*)')
         .eq('tenant_id', resolvedId)
+        .is('deleted_at', null)
         .order('event_date', { ascending: true });
 
       if (eventsError) console.error(eventsError);
