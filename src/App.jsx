@@ -1218,7 +1218,6 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   const { error } = await supabase.from('events').delete().eq('id', id);
   if (error) { alert(`Failed to delete event: ${error.message}`); return; }
   updateEvents(events.filter(e => e.id !== id));
-  reloadOrders();
 };
   const togglePublish = async (ev) => {
   if (togglingPublish.has(ev.id)) return;
