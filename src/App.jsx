@@ -1210,7 +1210,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
   const target = events.find(e => e.id === id);
   const orderCount = orders.filter(o => o.eventId === id).length;
   const msg = orderCount > 0
-    ? `Delete "${target?.title}"?\n\n⚠️ This event has ${orderCount} order${orderCount !== 1 ? 's' : ''} on record. Deleting it will remove those orders from all reports and analytics — this data cannot be recovered.\n\nIf you want to hide this event without losing report data, use Unpublish instead.\n\nThis cannot be undone.`
+    ? `Delete "${target?.title}"?\n\nThis event has ${orderCount} order${orderCount !== 1 ? 's' : ''} on record. Order history and revenue data will be preserved in your reports — only the event listing itself will be removed.\n\nIf you want to hide this event from customers while keeping it in your event list, use Unpublish instead.\n\nThis cannot be undone.`
     : `Delete "${target?.title}"?\n\nThis will permanently remove the event and all its ticket types. This cannot be undone.`;
   if (!window.confirm(msg)) return;
   await supabase.from('tickets').delete().eq('event_id', id);
