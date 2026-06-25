@@ -14,6 +14,7 @@ import RegistrationAdmin from './components/RegistrationAdmin';
 import RegistrationPublic from './components/RegistrationPublic';
 import POSAdmin from './components/POSAdmin';
 import MarketingPage from './components/MarketingPage';
+import SuperAdminDashboard from './components/SuperAdminDashboard';
 import { Elements } from '@stripe/react-stripe-js';
 import { stripePromise } from './lib/stripe';
 
@@ -149,6 +150,7 @@ const [resetError, setResetError] = useState('');
   const selVenue = (sel ? venues.find(v => v.id === sel.venueId) : null) || venue;
   const isGate = session?.user?.app_metadata?.role === 'gate';
   const isVenueUser = session?.user?.app_metadata?.role === 'venue';
+  const isSuperAdmin = session?.user?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
   const utmRef = useRef({});
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -2144,6 +2146,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             ['registration','Registration',<svg key="reg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>],
             ['pos','POS',<svg key="pos" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>],
             ...(!isVenueUser ? [['accounts','Accounts',<svg key="ac" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>]] : []),
+            ...(isSuperAdmin ? [['platform','Platform',<svg key="plat" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>]] : []),
           ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); if(t==='accounts'&&!venueUsersLoaded) loadVenueUsers(); }} style={{display:'flex',alignItems:'center',gap:8}} title={label}>{icon}<span className="aside-label">{label}</span></button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => {
@@ -3058,6 +3061,8 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                     </tbody></table></div>
               }
             </div>}
+
+            {aTab === 'platform' && isSuperAdmin && <SuperAdminDashboard session={session} />}
 
             {aTab === 'accounts' && !isVenueUser && <div>
 
