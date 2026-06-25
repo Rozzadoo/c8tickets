@@ -31,7 +31,7 @@ export default async function handler(req, res) {
 
   const [tenantsRes, ordersRes, regsRes, posRes] = await Promise.all([
     fetch(`${supaUrl}/rest/v1/tenants?select=id,name,slug,active&order=name.asc`, { headers: h }),
-    fetch(`${supaUrl}/rest/v1/orders?status=eq.confirmed&select=tenant_id,total_amount,service_fees,ticket_subtotal,created_at${dateFilter}&limit=5000`, { headers: h }),
+    fetch(`${supaUrl}/rest/v1/orders?status=eq.confirmed&select=tenant_id,total_amount,ticket_subtotal,service_fees,processing_fee,sales_tax,created_at${dateFilter}&limit=5000`, { headers: h }),
     fetch(`${supaUrl}/rest/v1/registrations?status=eq.confirmed&select=tenant_id,amount_paid,created_at${dateFilter}&limit=5000`, { headers: h }),
     fetch(`${supaUrl}/rest/v1/pos_orders?status=eq.paid&select=tenant_id,total,payment_type,created_at${dateFilter}&limit=5000`, { headers: h }),
   ]);
@@ -51,7 +51,11 @@ export default async function handler(req, res) {
   }
   for (const o of (Array.isArray(orders) ? orders : [])) {
     if (!vm[o.tenant_id]) continue;
-    vm[o.tenant_id].ticketRev += parseFloat(o.ticket_subtotal || 0);
+    // Use ticket_subtotal if stored; fall back to deriving it from total minus fees
+    const ticketRev = o.ticket_subtotal != null
+      ? parseFloat(o.ticket_subtotal)
+      : parseFloat(o.total_amount || 0) - parseFloat(o.service_fees || 0) - parseFloat(o.processing_fee || 0) - parseFloat(o.sales_tax || 0);
+    vm[o.tenant_id].ticketRev += ticketRev;
     vm[o.tenant_id].serviceFees += parseFloat(o.service_fees || 0);
     vm[o.tenant_id].orders++;
   }

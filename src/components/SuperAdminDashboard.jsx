@@ -32,7 +32,7 @@ function TypeBadge({ type }) {
 }
 
 export default function SuperAdminDashboard({ session }) {
-  const [period, setPeriod] = useState('30d');
+  const [period, setPeriod] = useState('mtd');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
