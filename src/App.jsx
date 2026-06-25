@@ -23,7 +23,8 @@ const LOGO_SRC = "/logo-simple.webp";
 const LOGO_FULL = "/logo-full.webp";
 
 export default function App() {
-  const { venues, events, loaded, tenantId, updateEvents, updateVenues } = useStorage();
+  const { venues, events, loaded, tenantId, updateEvents, updateVenues, switchVenue } = useStorage();
+  const [allTenants, setAllTenants] = useState([]);
   const [orders, setOrders] = useState([]);
   const updateOrders = useCallback((d) => setOrders(d), []);
   const [view, setView] = useState(() => window.location.pathname === '/sell' ? 'sell' : 'home');
@@ -151,6 +152,12 @@ const [resetError, setResetError] = useState('');
   const isGate = session?.user?.app_metadata?.role === 'gate';
   const isVenueUser = session?.user?.app_metadata?.role === 'venue';
   const isSuperAdmin = session?.user?.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    supabase.from('tenants').select('id,name').order('name').then(({ data }) => { if (data) setAllTenants(data); });
+  }, [isSuperAdmin]);
+
   const utmRef = useRef({});
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -196,7 +203,7 @@ const [resetError, setResetError] = useState('');
   useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
 
   const reloadOrders = useCallback(async () => {
-    const { data, error } = await supabase.from('orders').select('*, order_items(*)');
+    const { data, error } = await supabase.from('orders').select('*, order_items(*)').eq('tenant_id', tenantId);
     if (error) { console.error(error); return; }
     setOrders((data || []).map(o => ({
       id: o.id,
@@ -215,7 +222,7 @@ const [resetError, setResetError] = useState('');
       stripePaymentIntentId: o.stripe_payment_intent_id || null,
       source: o.source || 'online',
     })));
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     if (!session) { setOrders([]); return; }
@@ -2130,7 +2137,16 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <div className="aside">
             <div className="aside-venue">
               <div className="aside-venue-label">Venue</div>
-              <div className="aside-venue-name">{venue.name}</div>
+              {isSuperAdmin && allTenants.length > 1
+                ? <select
+                    value={tenantId}
+                    onChange={e => { switchVenue(e.target.value); reloadOrders(); }}
+                    style={{ background: 'var(--bg3)', color: 'var(--gold)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontWeight: 700, width: '100%', cursor: 'pointer' }}
+                  >
+                    {allTenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                : <div className="aside-venue-name">{venue.name}</div>
+              }
             </div>
             {[
             ['dashboard','Dashboard',<svg key="d" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>],
