@@ -1567,71 +1567,25 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             const items = sel.tickets
               .map((t, i) => ({ type: t.type, qty: cart[i] || 0, price: t.price, ticketTypeId: t.id }))
               .filter(i => i.qty > 0);
-
-            const { data: order, error: orderError } = await supabase
-              .from('orders')
-              .insert({
-                tenant_id: tenantId,
-                event_id: sel.id,
-                buyer_name: buyer.name,
-                buyer_email: buyer.email,
-                buyer_phone: buyer.phone,
-                status: 'confirmed',
-                total_amount: paymentAmounts.grandTotal,
-                ticket_subtotal: paymentAmounts.ticketTotal,
-                sales_tax: paymentAmounts.salesTax,
-                service_fees: paymentAmounts.serviceFees,
-                processing_fee: paymentAmounts.processingFee,
-                stripe_payment_intent_id: paymentIntentId,
-                source: 'online',
-                promo_code_id: promoApplied?.id || null,
-              })
-              .select()
-              .single();
-
-            if (orderError) {
-              // 23505 = unique_violation: webhook already created this order — payment is fine, just exit
-              if (orderError.code === '23505') return;
-              console.error('Order save error (payment succeeded, webhook will recover):', orderError);
-              alert(`Your payment went through successfully!\n\nYour confirmation email with tickets is on its way — please allow 1–2 minutes for delivery and check your spam folder if it doesn't arrive.\n\nIf you don't receive it within 10 minutes, contact support@c8tickets.com with this reference:\n${paymentIntentId}`);
-              return;
-            }
-
-            const { error: fulfillError } = await supabase.rpc('fulfill_order', {
-              p_order_id: order.id,
-              p_items: items,
-              p_event_id: sel.id,
-              p_tenant_id: tenantId,
-            });
-
-            if (fulfillError) {
-              console.error(fulfillError);
-              const msg = fulfillError.message?.includes('remaining')
-                ? `Sorry, some tickets in your order are no longer available. Your payment was captured — please email support@c8tickets.com with your payment reference: ${paymentIntentId}`
-                : `There was a problem saving your order. Your payment was captured — please email support@c8tickets.com with payment reference: ${paymentIntentId}`;
-              alert(msg);
-              return;
-            }
-
             const currentAddonItems = (sel.addons || [])
               .filter(a => a.active !== false && (addonCart[a.id] || 0) > 0)
               .map(a => ({ addonId: a.id, name: a.name, qty: addonCart[a.id], price: a.price }));
 
-            if (currentAddonItems.length > 0) {
-              await supabase.from('order_items').insert(
-                currentAddonItems.map(ai => ({
-                  order_id: order.id,
-                  ticket_type_id: null,
-                  ticket_type_name: ai.name,
-                  quantity: ai.qty,
-                  unit_price: ai.price,
-                  is_addon: true,
-                }))
-              );
+            const saveRes = await fetch(API_BASE + '/api/save-order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ paymentIntentId }),
+            });
+            const saveData = await saveRes.json().catch(() => ({}));
+
+            if (!saveRes.ok || !saveData.orderId) {
+              console.error('save-order failed:', saveData);
+              alert(`Your payment went through successfully!\n\nYour confirmation email with tickets is on its way — please allow 1–2 minutes for delivery and check your spam folder if it doesn't arrive.\n\nIf you don't receive it within 10 minutes, contact support@c8tickets.com with this reference:\n${paymentIntentId}`);
+              return;
             }
 
             const localOrder = {
-              id: order.id, eventId: sel.id, venueId: venue.id,
+              id: saveData.orderId, eventId: sel.id, venueId: venue.id,
               buyer: { ...buyer },
               items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId })),
               addonItems: currentAddonItems,
@@ -1663,24 +1617,24 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             }
             setPromoInput('');
 
-fetch(API_BASE+'/api/send-email', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    order: { ...localOrder, discountAmount: paymentAmounts.discountAmount || 0 },
-    event: {
-      title: sel.title,
-      date: fmtDate(sel.date),
-      time: fmtTime(sel.time),
-      doors: fmtTime(sel.doors),
-      category: sel.category,
-    },
-    venue: {
-      name: venue.name,
-      location: venue.location,
-    },
-  }),
-}).catch(err => console.error('Email error:', err));
+            fetch(API_BASE + '/api/send-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                order: { ...localOrder, discountAmount: paymentAmounts.discountAmount || 0 },
+                event: {
+                  title: sel.title,
+                  date: fmtDate(sel.date),
+                  time: fmtTime(sel.time),
+                  doors: fmtTime(sel.doors),
+                  category: sel.category,
+                },
+                venue: {
+                  name: venue.name,
+                  location: venue.location,
+                },
+              }),
+            }).catch(err => console.error('Email error:', err));
           }}
         />
       </Elements>
