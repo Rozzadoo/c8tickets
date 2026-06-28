@@ -102,6 +102,8 @@ const [resetError, setResetError] = useState('');
   const [ticketPageLoading, setTicketPageLoading] = useState(false);
   const [ticketReceiptMode, setTicketReceiptMode] = useState(false);
   const [ticketFilterId, setTicketFilterId] = useState(null);
+  const [ticketCopiedId, setTicketCopiedId] = useState(null);
+  const [allTicketsCopied, setAllTicketsCopied] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [expandedTickets, setExpandedTickets] = useState({});
   const [togglingPublish, setTogglingPublish] = useState(new Set());
@@ -1702,18 +1704,18 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               const hasReceipt = ticketReceiptMode && order.ticket_subtotal != null;
               const shareAll = async () => {
                 const url = `${APP_URL}/t/${ticketOrderId}`;
-                if (navigator.share) { try { await navigator.share({ title: `${evTitle} — Tickets`, url }); } catch {} }
-                else { navigator.clipboard?.writeText(url); }
+                if (navigator.share) { try { await navigator.share({ title: `${evTitle} — Tickets`, url }); return; } catch {} }
+                try { await navigator.clipboard.writeText(url); setAllTicketsCopied(true); setTimeout(() => setAllTicketsCopied(false), 2000); } catch {}
               };
               return <>
                 <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>{evTitle}{evDate ? ` — ${evDate}` : ''}</p>
                 {order.status === 'cancelled' && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,color:"var(--red)",fontSize:13,fontWeight:600}}>This order has been cancelled and refunded.</div>}
                 <div id="ticket-print-area">
-                  {displayTickets.map((t, idx) => {
+                  {displayTickets.map((t) => {
                     const shareTicket = async () => {
                       const url = `${APP_URL}/t/${ticketOrderId}?ticket=${t.id}`;
-                      if (navigator.share) { try { await navigator.share({ title: `${evTitle} — Ticket ${t.ticket_number}`, url }); } catch {} }
-                      else { navigator.clipboard?.writeText(url); }
+                      if (navigator.share) { try { await navigator.share({ title: `${evTitle} — Ticket ${t.ticket_number}`, url }); return; } catch {} }
+                      try { await navigator.clipboard.writeText(url); setTicketCopiedId(t.id); setTimeout(() => setTicketCopiedId(null), 2000); } catch {}
                     };
                     return (
                       <div key={t.id} className="tkt-disp" style={{marginBottom:20,pageBreakInside:'avoid'}}>
@@ -1744,7 +1746,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                               : t.status==='cancelled'?'Cancelled':'Valid'}
                           </span>
                         </div>
-                        <button className="btn" style={{width:"100%",marginTop:10,fontSize:12}} onClick={shareTicket}>Save / Share Ticket {t.ticket_number}</button>
+                        <button className="btn" style={{width:"100%",marginTop:10,fontSize:12,background:ticketCopiedId===t.id?"var(--green)":undefined,color:ticketCopiedId===t.id?"#fff":undefined}} onClick={shareTicket}>{ticketCopiedId===t.id?"Link Copied!":"Save / Share Ticket "+t.ticket_number}</button>
                       </div>
                     );
                   })}
@@ -1782,7 +1784,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                 )}
                 {!ticketFilterId && order.status !== 'cancelled' && <div style={{marginBottom:16,display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button className="btn" style={{flex:1}} onClick={() => window.print()}>Print All</button>
-                  <button className="btn" style={{flex:1}} onClick={shareAll}>Share All Tickets</button>
+                  <button className="btn" style={{flex:1,background:allTicketsCopied?"var(--green)":undefined,color:allTicketsCopied?"#fff":undefined}} onClick={shareAll}>{allTicketsCopied?"Link Copied!":"Share All Tickets"}</button>
                   {ev && <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>}
                   {ev && <button className="btn" style={{flex:1}} onClick={() => downloadIcs(ev, venue.location)}>Download .ics</button>}
                 </div>}

@@ -20,6 +20,10 @@ function fmtTime(str) {
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
 
+  // Wrap everything so a missing cert / misconfigured env returns a helpful page
+  // instead of crashing Vercel with a generic 500.
+  try {
+
   const { id } = req.query;
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
     return res.status(400).json({ error: 'Invalid order ID' });
@@ -156,4 +160,10 @@ export default async function handler(req, res) {
   res.setHeader('Content-Disposition', `attachment; filename="ticket-${order.id.slice(0, 8)}.pkpass"`);
   res.setHeader('Cache-Control', 'no-store');
   return res.send(passBuffer);
+
+  } catch (err) {
+    console.error('wallet-pass error:', err.message);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(503).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wallet Pass Unavailable</title></head><body style="margin:0;padding:40px 20px;background:#0c0a07;font-family:'Helvetica Neue',Arial,sans-serif;text-align:center;color:#f0e9da"><div style="max-width:420px;margin:0 auto"><div style="font-size:28px;font-weight:700;color:#c8922a;margin-bottom:16px">C8TICKETS</div><h1 style="font-size:20px;margin-bottom:12px">Apple Wallet Unavailable</h1><p style="color:#b5a78a;font-size:14px;line-height:1.6;margin-bottom:24px">Wallet pass generation is temporarily unavailable. Screenshot your QR code from the ticket page to show at the door — it works just as well!</p><a href="javascript:history.back()" style="display:inline-block;background:#c8922a;color:#0c0a07;font-weight:700;font-size:14px;text-decoration:none;padding:12px 28px;border-radius:8px">← Back to My Tickets</a></div></body></html>`);
+  }
 }
