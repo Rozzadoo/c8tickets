@@ -86,6 +86,7 @@ const [resetError, setResetError] = useState('');
   const [ticketResendEmail, setTicketResendEmail] = useState('');
   const [ticketResendSending, setTicketResendSending] = useState(false);
   const [ticketResendSent, setTicketResendSent] = useState(false);
+  const [showResendForm, setShowResendForm] = useState(false);
   const [generatingPhysical, setGeneratingPhysical] = useState(false);
   const [ticketSizeModal, setTicketSizeModal] = useState(null);
   const [ticketSizeSelected, setTicketSizeSelected] = useState('strip');
@@ -1690,7 +1691,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
         {view === "mytickets" && (
           <div className="sec fade" style={{maxWidth:520}}>
             <div className="back" onClick={goHome}>← Back to Events</div>
-            <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>{ticketFilterId ? 'Your Ticket' : 'Your Tickets'}</h1>
+            <h1 className="dsp" style={{fontSize:28,marginBottom:6}}>My Tickets</h1>
             {ticketPageLoading && <p style={{color:"var(--text2)",fontSize:13,marginTop:20,textAlign:"center"}}>Loading your tickets…</p>}
             {!ticketPageLoading && !ticketPageData && <p style={{color:"var(--red)",fontSize:13,marginTop:20,textAlign:"center"}}>Order not found.</p>}
             {!ticketPageLoading && ticketPageData && (() => {
@@ -1708,7 +1709,12 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                 try { await navigator.clipboard.writeText(url); setAllTicketsCopied(true); setTimeout(() => setAllTicketsCopied(false), 2000); } catch {}
               };
               return <>
-                <p style={{color:"var(--text2)",fontSize:13,marginBottom:24}}>{evTitle}{evDate ? ` — ${evDate}` : ''}</p>
+                <p style={{color:"var(--text2)",fontSize:13,marginBottom:16}}>{evTitle}{evDate ? ` — ${evDate}` : ''}</p>
+                {order.status !== 'cancelled' && !ticketFilterId && (
+                  <div style={{background:"rgba(200,146,42,.08)",border:"1px solid rgba(200,146,42,.2)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:20,fontSize:13,color:"var(--text2)",lineHeight:1.6}}>
+                    <strong style={{color:"var(--text)"}}>These are your tickets.</strong> Show the QR code at the door. Attending with others? Tap <em>Save / Share</em> under each ticket to send their individual QR code.
+                  </div>
+                )}
                 {order.status === 'cancelled' && <div style={{background:"rgba(179,58,42,.12)",border:"1px solid rgba(179,58,42,.35)",borderRadius:"var(--rs)",padding:"14px 16px",marginBottom:20,color:"var(--red)",fontSize:13,fontWeight:600}}>This order has been cancelled and refunded.</div>}
                 <div id="ticket-print-area">
                   {displayTickets.map((t) => {
@@ -1756,14 +1762,18 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                     <img src="/add-to-apple-wallet.svg" alt="Add to Apple Wallet" style={{height:44}} />
                   </a>
                 )}
-                <div style={{marginBottom:24,padding:"20px 16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
-                  <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>{hasReceipt ? 'Save a copy to your email' : 'Want another copy in your inbox?'}</p>
+                <div style={{marginBottom:24,textAlign:"center"}}>
                   {ticketResendSent
                     ? <p style={{fontSize:13,color:"var(--gold)",fontWeight:600}}>Sent! Check your inbox.</p>
-                    : <div style={{display:"flex",gap:8}}>
-                        <input className="fi" type="email" placeholder="your@email.com" value={ticketResendEmail} onChange={e=>setTicketResendEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendTicketResend()} style={{flex:1,padding:"8px 10px",fontSize:13}} />
-                        <button className="btn" onClick={sendTicketResend} disabled={ticketResendSending||!ticketResendEmail} style={{flexShrink:0}}>{ticketResendSending?"Sending…":"Email Me"}</button>
-                      </div>
+                    : showResendForm
+                      ? <div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                          <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>Enter your email to resend a link to these tickets.</p>
+                          <div style={{display:"flex",gap:8}}>
+                            <input className="fi" type="email" placeholder="your@email.com" value={ticketResendEmail} onChange={e=>setTicketResendEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendTicketResend()} style={{flex:1,padding:"8px 10px",fontSize:13}} autoFocus />
+                            <button className="btn" onClick={sendTicketResend} disabled={ticketResendSending||!ticketResendEmail} style={{flexShrink:0}}>{ticketResendSending?"Sending…":"Email Me"}</button>
+                          </div>
+                        </div>
+                      : <button style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"var(--text3)",textDecoration:"underline",padding:"4px 0"}} onClick={()=>setShowResendForm(true)}>Need another copy of this page in your inbox?</button>
                   }
                 </div>
                 {hasReceipt && (

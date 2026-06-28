@@ -99,11 +99,12 @@ async function sendConfirmation(res, { order, event, venue }) {
       <img src="${qrDataUrl}" width="180" height="180" alt="QR Code" style="display:block;border-radius:4px">
     </div>
     <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
-    <div style="font-size:12px;color:#b5a78a;line-height:1.7;margin-bottom:12px">
-      Show this QR code at the gate<br>
-      Buying for a group? Each person can get their own ticket:
+    <div style="font-size:12px;color:#b5a78a;line-height:1.7;margin-bottom:16px">
+      Show this QR code at the door.<br>
+      Attending with others? View individual tickets to share each person's QR code:
     </div>
-    <a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="display:inline-block;background:#c8922a;color:#0c0a07;font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;text-transform:uppercase;letter-spacing:1px">View All My Tickets</a>
+    <a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="display:inline-block;background:#c8922a;color:#0c0a07;font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;text-transform:uppercase;letter-spacing:1px">View My Tickets</a>
+    <div style="margin-top:10px;font-size:12px;color:#7a6c54">No sign-in needed — opens directly to your tickets.</div>
     <div style="margin-top:16px">
       <a href="https://c8tickets.com/api/wallet-pass?id=${encodeURIComponent(order.id)}" style="display:inline-block;background:#000;color:#fff;font-family:-apple-system,Helvetica Neue,Arial,sans-serif;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;border:1px solid #555">Add to Apple Wallet</a>
     </div>
