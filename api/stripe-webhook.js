@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { Resend } from 'resend';
+import { generateTicketPdf } from './_pdf.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -157,9 +158,35 @@ export default async function handler(req, res) {
       metadata: { ...m, order_id: order.id },
     }).catch(e => console.error('PI tag error:', e.message));
 
-    // Send confirmation email
-    const qrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(order.id)}&color=1a1007&bgcolor=ffffff&margin=8`;
+    // Fetch tickets for PDF attachment
+    let ticketRows = [];
+    try {
+      const tRes = await fetch(
+        `${supaUrl}/rest/v1/tickets?order_id=eq.${order.id}&select=id,ticket_number,ticket_type_name&order=ticket_number.asc&limit=50`,
+        { headers }
+      );
+      ticketRows = await tRes.json();
+      if (!Array.isArray(ticketRows)) ticketRows = [];
+    } catch (e) {
+      console.error('Webhook: failed to fetch tickets for PDF:', e.message);
+    }
 
+    let pdfBuffer = null;
+    try {
+      pdfBuffer = await generateTicketPdf({
+        order: { buyer_name: order.buyer_name || m.buyer_name || '' },
+        tickets: ticketRows,
+        eventTitle: m.event_title,
+        eventDate: m.event_date,
+        eventTime: m.event_time,
+        eventDoors: m.event_doors,
+        venueName: m.venue_name,
+      });
+    } catch (e) {
+      console.error('Webhook: PDF generation failed:', e.message);
+    }
+
+    // Send confirmation email
     const itemsHtml = items.map(i => `
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#b5a78a">${escHtml(i.qty)}× ${escHtml(i.type)}</td>
@@ -172,7 +199,7 @@ export default async function handler(req, res) {
         <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#c8922a;text-align:right">$${(ai.qty * ai.price).toFixed(2)}</td>
       </tr>`).join('');
 
-    await resend.emails.send({
+    const emailPayload = {
       from: 'C8Tickets <noreply@c8tickets.com>',
       to: m.buyer_email,
       subject: `Your tickets for ${escHtml(m.event_title || 'the event')}`,
@@ -211,13 +238,13 @@ export default async function handler(req, res) {
     <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${escHtml(order.id)}</div>
   </div>
   <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
-    <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
-    <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
-      <img src="${qrDataUrl}" width="180" height="180" alt="QR Code" style="display:block;border-radius:4px">
+    <div style="font-size:32px;margin-bottom:10px">🎟️</div>
+    <div style="font-size:15px;font-weight:700;color:#f0e9da;margin-bottom:8px">Your tickets are attached</div>
+    <div style="font-size:13px;color:#b5a78a;line-height:1.7;margin-bottom:20px">
+      Open <strong style="color:#f0e9da">tickets.pdf</strong> to see your QR codes — one per ticket.<br>
+      Show your QR code at the door to be scanned in.
     </div>
-    <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
-    <div style="font-size:12px;color:#b5a78a;line-height:1.7;margin-bottom:16px">📱 <strong style="color:#f0e9da">Show this QR code at the door.</strong><br>Attending with others? View individual tickets to share each person's QR code:</div>
-    <a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="display:inline-block;background:#c8922a;color:#0c0a07;font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;text-transform:uppercase;letter-spacing:1px">View My Tickets</a>
+    <a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="display:inline-block;background:#c8922a;color:#0c0a07;font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;text-transform:uppercase;letter-spacing:1px">View My Tickets Online</a>
     <div style="margin-top:10px;font-size:12px;color:#7a6c54">No sign-in needed — opens directly to your tickets.</div>
   </div>
   <div style="background:#161310;border:1px solid rgba(200,146,42,.08);border-radius:10px;padding:14px 18px;margin-bottom:20px;text-align:center">
@@ -230,7 +257,9 @@ export default async function handler(req, res) {
   </div>
 </div>
 </body></html>`,
-    }).catch(e => console.error('Webhook email error:', e.message));
+    };
+    if (pdfBuffer) emailPayload.attachments = [{ filename: 'tickets.pdf', content: pdfBuffer }];
+    await resend.emails.send(emailPayload).catch(e => console.error('Webhook email error:', e.message));
 
     console.log('Webhook recovered order', order.id, 'for PI', pi.id);
     return res.status(200).json({ received: true, orderId: order.id });

@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { generateTicketPdf } from './_pdf.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -22,14 +23,36 @@ async function sendConfirmation(res, { order, event, venue }) {
     return res.status(400).json({ error: 'Invalid order ID' });
   }
   const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const checkRes = await fetch(
-    `${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=id,buyer_email&limit=1`,
-    { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` } }
-  );
+  const supaUrl = process.env.VITE_SUPABASE_URL;
+  const supaHeaders = { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
+
+  const [checkRes, ticketsRes] = await Promise.all([
+    fetch(`${supaUrl}/rest/v1/orders?id=eq.${orderId}&select=id,buyer_email,buyer_name&limit=1`, { headers: supaHeaders }),
+    fetch(`${supaUrl}/rest/v1/tickets?order_id=eq.${orderId}&select=id,ticket_number,ticket_type_name&order=ticket_number.asc&limit=50`, { headers: supaHeaders }),
+  ]);
   const rows = await checkRes.json();
   if (!Array.isArray(rows) || rows.length === 0) return res.status(200).json({ success: true });
   const toEmail = rows[0].buyer_email;
   if (!toEmail) return res.status(200).json({ success: true });
+  const buyerName = rows[0].buyer_name || order.buyer_name || '';
+
+  const ticketRows = await ticketsRes.json();
+  const tickets = Array.isArray(ticketRows) ? ticketRows : [];
+
+  let pdfBuffer = null;
+  try {
+    pdfBuffer = await generateTicketPdf({
+      order: { ...order, buyer_name: buyerName },
+      tickets,
+      eventTitle: event.title,
+      eventDate: event.date,
+      eventTime: event.time,
+      eventDoors: event.doors,
+      venueName,
+    });
+  } catch (e) {
+    console.error('send-email: PDF generation failed:', e.message);
+  }
 
   const venueName = venue?.name || '';
   const venueAddress = venue?.location || '';
@@ -52,9 +75,7 @@ async function sendConfirmation(res, { order, event, venue }) {
       <td style="padding:8px 0;border-bottom:1px solid #2f271c;color:#4caf7d;text-align:right">-$${Number(order.discountAmount).toFixed(2)}</td>
     </tr>` : '';
 
-  const qrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(order.id)}&color=1a1007&bgcolor=ffffff&margin=8`;
-
-  const { error } = await resend.emails.send({
+  const emailPayload = {
     from: 'C8Tickets <noreply@c8tickets.com>',
     to: toEmail,
     subject: `Your tickets for ${escHtml(event.title)}`,
@@ -94,16 +115,13 @@ async function sendConfirmation(res, { order, event, venue }) {
     <div style="margin-top:12px;font-size:11px;color:#7a6c54">Order ID: ${escHtml(order.id)}</div>
   </div>
   <div style="background:#161310;border:1px solid rgba(200,146,42,.15);border-radius:10px;padding:24px;margin-bottom:20px;text-align:center">
-    <div style="font-size:13px;font-weight:700;color:#f0e9da;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px">Your Ticket</div>
-    <div style="background:white;border-radius:10px;padding:14px;display:inline-block;margin-bottom:12px">
-      <img src="${qrDataUrl}" width="180" height="180" alt="QR Code" style="display:block;border-radius:4px">
+    <div style="font-size:32px;margin-bottom:10px">🎟️</div>
+    <div style="font-size:15px;font-weight:700;color:#f0e9da;margin-bottom:8px">Your tickets are attached</div>
+    <div style="font-size:13px;color:#b5a78a;line-height:1.7;margin-bottom:20px">
+      Open <strong style="color:#f0e9da">tickets.pdf</strong> to see your QR codes — one per ticket.<br>
+      Show your QR code at the door to be scanned in.
     </div>
-    <div style="font-family:monospace;font-size:11px;color:#7a6c54;letter-spacing:1.5px;margin-bottom:10px">${escHtml(order.id.toUpperCase())}</div>
-    <div style="font-size:12px;color:#b5a78a;line-height:1.7;margin-bottom:16px">
-      Show this QR code at the door.<br>
-      Attending with others? View individual tickets to share each person's QR code:
-    </div>
-    <a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="display:inline-block;background:#c8922a;color:#0c0a07;font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;text-transform:uppercase;letter-spacing:1px">View My Tickets</a>
+    <a href="https://c8tickets.com/t/${encodeURIComponent(order.id)}" style="display:inline-block;background:#c8922a;color:#0c0a07;font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;text-transform:uppercase;letter-spacing:1px">View My Tickets Online</a>
     <div style="margin-top:10px;font-size:12px;color:#7a6c54">No sign-in needed — opens directly to your tickets.</div>
   </div>
   <div style="background:#161310;border:1px solid rgba(200,146,42,.08);border-radius:10px;padding:14px 18px;margin-bottom:20px;text-align:center">
@@ -117,7 +135,11 @@ async function sendConfirmation(res, { order, event, venue }) {
   </div>
 </div>
 </body></html>`,
-  });
+  };
+  if (pdfBuffer) {
+    emailPayload.attachments = [{ filename: 'tickets.pdf', content: pdfBuffer }];
+  }
+  const { error } = await resend.emails.send(emailPayload);
 
   if (error) { console.error(error); return res.status(400).json({ error }); }
   return res.status(200).json({ success: true });
