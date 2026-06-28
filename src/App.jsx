@@ -1683,9 +1683,6 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               <a href={buildGCalUrl(ev, venue.location)} target="_blank" rel="noopener noreferrer" className="btn" style={{flex:1,textAlign:"center",textDecoration:"none"}}>Google Calendar</a>
               <button className="btn" style={{flex:1}} onClick={()=>downloadIcs(ev, venue.location)}>Download .ics</button>
             </div>}
-            <a href={`${API_BASE}/api/wallet-pass?id=${lastOrder.id}`} style={{display:"block",marginTop:10,textAlign:"center"}}>
-              <img src="/add-to-apple-wallet.svg" alt="Add to Apple Wallet" style={{height:44}} />
-            </a>
             <button className="buy" style={{marginTop:8}} onClick={goHome}>Browse More Events</button>
           </div>); })()}
         {view === "mytickets" && (
@@ -1757,11 +1754,6 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                     );
                   })}
                 </div>
-                {order.status !== 'cancelled' && (
-                  <a href={`${API_BASE}/api/wallet-pass?id=${order.id}`} style={{display:"block",textAlign:"center",marginBottom:16}}>
-                    <img src="/add-to-apple-wallet.svg" alt="Add to Apple Wallet" style={{height:44}} />
-                  </a>
-                )}
                 <div style={{marginBottom:24,textAlign:"center"}}>
                   {ticketResendSent
                     ? <p style={{fontSize:13,color:"var(--gold)",fontWeight:600}}>Sent! Check your inbox.</p>
