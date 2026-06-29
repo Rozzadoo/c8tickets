@@ -1753,7 +1753,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                               : t.status==='cancelled'?'Cancelled':'Valid'}
                           </span>
                         </div>
-                        <button className="btn" style={{width:"100%",marginTop:10,fontSize:12,background:ticketCopiedId===t.id?"var(--green)":undefined,color:ticketCopiedId===t.id?"#fff":undefined}} onClick={shareTicket}>{ticketCopiedId===t.id?"Link Copied!":"Save / Share Ticket "+t.ticket_number}</button>
+                        <button className={ticketCopiedId===t.id?"btn":"btn gold"} style={{width:"100%",marginTop:10,fontSize:13,background:ticketCopiedId===t.id?"var(--green)":undefined,color:ticketCopiedId===t.id?"#fff":undefined}} onClick={shareTicket}>{ticketCopiedId===t.id?"✓ Link Copied!":"↑ Save / Share Ticket "+t.ticket_number}</button>
                       </div>
                     );
                   })}
