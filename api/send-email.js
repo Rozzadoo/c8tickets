@@ -26,8 +26,12 @@ async function sendConfirmation(res, { order, event, venue }) {
   const supaUrl = process.env.VITE_SUPABASE_URL;
   const supaHeaders = { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
 
+  // Declare these first — used both in PDF generation and email HTML
+  const venueName = venue?.name || '';
+  const venueAddress = venue?.location || '';
+
   const [checkRes, ticketsRes] = await Promise.all([
-    fetch(`${supaUrl}/rest/v1/orders?id=eq.${orderId}&select=id,buyer_email,buyer_name&limit=1`, { headers: supaHeaders }),
+    fetch(`${supaUrl}/rest/v1/orders?id=eq.${orderId}&select=id,buyer_email,buyer_name,event_id&limit=1`, { headers: supaHeaders }),
     fetch(`${supaUrl}/rest/v1/tickets?order_id=eq.${orderId}&select=id,ticket_number,ticket_type_name&order=ticket_number.asc&limit=50`, { headers: supaHeaders }),
   ]);
   const rows = await checkRes.json();
@@ -35,9 +39,52 @@ async function sendConfirmation(res, { order, event, venue }) {
   const toEmail = rows[0].buyer_email;
   if (!toEmail) return res.status(200).json({ success: true });
   const buyerName = rows[0].buyer_name || order.buyer_name || '';
+  const eventId = rows[0].event_id || null;
 
   const ticketRows = await ticketsRes.json();
-  const tickets = Array.isArray(ticketRows) ? ticketRows : [];
+  let tickets = Array.isArray(ticketRows) ? ticketRows : [];
+
+  // Lazy-generate ticket records from order_items for orders that predate fulfill_order
+  if (tickets.length === 0) {
+    try {
+      const itemsRes = await fetch(
+        `${supaUrl}/rest/v1/order_items?order_id=eq.${orderId}&select=ticket_type_name,quantity,is_addon&order=id.asc`,
+        { headers: supaHeaders }
+      );
+      const orderItems = await itemsRes.json();
+      const lineItems = (Array.isArray(orderItems) ? orderItems : []).filter(i => !i.is_addon);
+      const toInsert = [];
+      let num = 1;
+      for (const li of lineItems) {
+        for (let j = 0; j < (li.quantity || 1); j++) {
+          toInsert.push({ order_id: orderId, event_id: eventId, ticket_type_name: li.ticket_type_name, ticket_number: num++, status: 'valid' });
+        }
+      }
+      if (toInsert.length > 0) {
+        const insRes = await fetch(`${supaUrl}/rest/v1/tickets`, {
+          method: 'POST',
+          headers: { ...supaHeaders, 'Content-Type': 'application/json', Prefer: 'return=representation,resolution=ignore-duplicates' },
+          body: JSON.stringify(toInsert),
+        });
+        if (insRes.ok) {
+          const inserted = await insRes.json();
+          if (Array.isArray(inserted) && inserted.length > 0) {
+            tickets = inserted.map(t => ({ id: t.id, ticket_number: t.ticket_number, ticket_type_name: t.ticket_type_name }));
+          } else {
+            // Conflict — tickets already exist, re-fetch
+            const reRes = await fetch(
+              `${supaUrl}/rest/v1/tickets?order_id=eq.${orderId}&select=id,ticket_number,ticket_type_name&order=ticket_number.asc&limit=50`,
+              { headers: supaHeaders }
+            );
+            const reRows = await reRes.json();
+            if (Array.isArray(reRows)) tickets = reRows;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('send-email: ticket lazy-generation failed:', e.message);
+    }
+  }
 
   let pdfBuffer = null;
   try {
@@ -53,9 +100,6 @@ async function sendConfirmation(res, { order, event, venue }) {
   } catch (e) {
     console.error('send-email: PDF generation failed:', e.message);
   }
-
-  const venueName = venue?.name || '';
-  const venueAddress = venue?.location || '';
 
   const itemsHtml = (order.items || []).map(i => `
     <tr>
