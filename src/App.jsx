@@ -162,6 +162,8 @@ const [resetError, setResetError] = useState('');
   }, [isSuperAdmin]);
 
   const utmRef = useRef({});
+  const initialPathname = useRef(window.location.pathname);
+  const initialSearch = useRef(window.location.search);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const utm = {};
@@ -291,28 +293,30 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     if (!loaded) return;
-    const pathMatch = window.location.pathname.match(/^\/e\/([0-9a-f-]{36})$/i);
-    const eventId = pathMatch ? pathMatch[1] : new URLSearchParams(window.location.search).get('event');
+    const pathname = initialPathname.current;
+    const search = initialSearch.current;
+    const pathMatch = pathname.match(/^\/e\/([0-9a-f-]{36})$/i);
+    const eventId = pathMatch ? pathMatch[1] : new URLSearchParams(search).get('event');
     if (eventId) {
       const ev = events.find(e => e.id === eventId);
       if (ev && ev.published === false && !session) { setView('home'); }
       else { setSelId(eventId); setCart({}); setAddonCart({}); setView('detail'); }
     }
-    const ticketMatch = window.location.pathname.match(/^\/t\/([0-9a-f-]{36})$/i);
+    const ticketMatch = pathname.match(/^\/t\/([0-9a-f-]{36})$/i);
     if (ticketMatch) {
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(search);
       setTicketOrderId(ticketMatch[1]);
       setTicketReceiptMode(params.get('receipt') === '1');
       setTicketFilterId(params.get('ticket') || null);
       setTicketResendEmail(''); setTicketResendSent(false);
       setView('mytickets');
     }
-    const venueMatch = window.location.pathname.match(/^\/v\/([^/]+)$/i);
+    const venueMatch = pathname.match(/^\/v\/([^/]+)$/i);
     if (venueMatch) {
       const slugMatch = venues.find(v => v.slug === venueMatch[1]);
       if (slugMatch) { setVenueProfileId(slugMatch.id); setView('venue'); }
     }
-    const regMatch = window.location.pathname.match(/^\/r\/([0-9a-f-]{36})$/i);
+    const regMatch = pathname.match(/^\/r\/([0-9a-f-]{36})$/i);
     if (regMatch) { setRegFormId(regMatch[1]); setView('register'); }
   }, [loaded, venues]);
 
