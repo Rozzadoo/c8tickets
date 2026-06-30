@@ -1754,6 +1754,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                           </span>
                         </div>
                         <button className={ticketCopiedId===t.id?"btn":"btn gold"} style={{width:"100%",marginTop:10,fontSize:13,background:ticketCopiedId===t.id?"var(--green)":undefined,color:ticketCopiedId===t.id?"#fff":undefined}} onClick={shareTicket}>{ticketCopiedId===t.id?"✓ Link Copied!":"↑ Save / Share Ticket "+t.ticket_number}</button>
+                        {/iPhone|iPad|iPod/.test(navigator.userAgent) && <a href={`${API_BASE}/api/wallet-pass?id=${ticketOrderId}`} style={{display:"block",marginTop:8,background:"#000",color:"#fff",borderRadius:8,padding:"10px 0",textAlign:"center",textDecoration:"none",fontSize:13,fontWeight:600,letterSpacing:.3}}>🍎 Add to Apple Wallet</a>}
                       </div>
                     );
                   })}
