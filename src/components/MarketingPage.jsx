@@ -141,7 +141,7 @@ export default function MarketingPage() {
         url: 'https://platform.c8tickets.com',
         description: 'All-in-one ticketing software for bars, breweries, and independent venues. Event ticketing, league registration, and point-of-sale — no monthly fee.',
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', description: 'No monthly fee — pay per ticket sold' },
-        provider: { '@type': 'Organization', name: 'C8 Tickets', url: 'https://platform.c8tickets.com', email: 'hello@c8tickets.com' },
+        provider: { '@type': 'Organization', name: 'C8 Tickets', url: 'https://platform.c8tickets.com', email: 'support@c8tickets.com' },
         featureList: ['Event Ticketing', 'Door Sales', 'QR Code Check-In', 'League Registration', 'Point of Sale', 'Stripe Terminal', 'Offline Mode', 'Promo Codes'],
       },
       {
@@ -149,7 +149,7 @@ export default function MarketingPage() {
         '@type': 'Organization',
         name: 'C8 Tickets',
         url: 'https://platform.c8tickets.com',
-        email: 'hello@c8tickets.com',
+        email: 'support@c8tickets.com',
         description: 'Venue management software for independent bars, breweries, and event organizers.',
         areaServed: { '@type': 'State', name: 'Idaho' },
         serviceType: ['Event Ticketing', 'League Registration', 'Point of Sale'],
@@ -361,7 +361,7 @@ export default function MarketingPage() {
             <div style={{ textAlign: 'center', padding: '48px 32px', background: 'rgba(93,138,60,.08)', border: '1px solid rgba(93,138,60,.2)', borderRadius: 16 }}>
               <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
               <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 10 }}>Message received!</h3>
-              <p style={{ color: text2, fontSize: 15, lineHeight: 1.6 }}>We'll be in touch within one business day. In the meantime, feel free to email us directly at <a href="mailto:hello@c8tickets.com" style={{ color: gold }}>hello@c8tickets.com</a>.</p>
+              <p style={{ color: text2, fontSize: 15, lineHeight: 1.6 }}>We'll be in touch within one business day. In the meantime, feel free to email us directly at <a href="mailto:support@c8tickets.com" style={{ color: gold }}>support@c8tickets.com</a>.</p>
             </div>
           ) : (
             <form onSubmit={handleContact} style={{ background: card, border: `1px solid ${border}`, borderRadius: 16, padding: 'clamp(24px,4vw,40px)' }}>
@@ -385,7 +385,7 @@ export default function MarketingPage() {
         <div className="mkt-w" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <img src={LOGO} alt="C8 Tickets" style={{ height: 22, objectFit: 'contain', opacity: 0.5 }} />
           <p style={{ fontSize: 12, color: text3 }}>© {new Date().getFullYear()} C8 Tickets. All rights reserved.</p>
-          <a href="mailto:hello@c8tickets.com" style={{ fontSize: 12, color: text3, textDecoration: 'none' }}>hello@c8tickets.com</a>
+          <a href="mailto:support@c8tickets.com" style={{ fontSize: 12, color: text3, textDecoration: 'none' }}>support@c8tickets.com</a>
         </div>
       </footer>
     </div>
