@@ -26,32 +26,40 @@ export default async function handler(req, res) {
 
   const { id } = req.query;
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
-    return res.status(400).json({ error: 'Invalid order ID' });
+    return res.status(400).json({ error: 'Invalid ticket ID' });
   }
 
   const supaUrl = process.env.VITE_SUPABASE_URL;
   const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   const headers = { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
 
-  const [orderRes, eventsRes] = await Promise.all([
-    fetch(`${supaUrl}/rest/v1/orders?id=eq.${id}&select=*,order_items(*)&limit=1`, { headers }),
-    fetch(`${supaUrl}/rest/v1/events?select=id,title,event_date,doors_open,venue_name&limit=200`, { headers }),
+  // Fetch the individual ticket
+  const ticketRes = await fetch(`${supaUrl}/rest/v1/tickets?id=eq.${id}&select=*&limit=1`, { headers });
+  const ticketRows = await ticketRes.json();
+  const ticket = Array.isArray(ticketRows) ? ticketRows[0] : null;
+  if (!ticket || ticket.status === 'cancelled') return res.status(404).json({ error: 'Ticket not found' });
+
+  // Fetch order, sibling ticket count, and event in parallel
+  const [orderRes, siblingRes, eventRes] = await Promise.all([
+    fetch(`${supaUrl}/rest/v1/orders?id=eq.${ticket.order_id}&select=id,buyer_name,total_amount,status&limit=1`, { headers }),
+    fetch(`${supaUrl}/rest/v1/tickets?order_id=eq.${ticket.order_id}&select=id`, { headers }),
+    fetch(`${supaUrl}/rest/v1/events?id=eq.${ticket.event_id}&select=id,title,event_date,doors_open,venue_name&limit=1`, { headers }),
   ]);
 
   const orders = await orderRes.json();
   const order = Array.isArray(orders) ? orders[0] : null;
   if (!order || order.status === 'cancelled') return res.status(404).json({ error: 'Order not found' });
 
-  const events = await eventsRes.json();
-  const ev = Array.isArray(events) ? events.find(e => e.id === order.event_id) : null;
+  const siblings = await siblingRes.json();
+  const totalTickets = Array.isArray(siblings) ? siblings.length : 1;
 
-  const items = (order.order_items || []).filter(i => !i.is_addon);
-  const ticketSummary = items.map(i => `${i.quantity}× ${i.ticket_type_name}`).join(', ') || 'Ticket';
+  const evRows = await eventRes.json();
+  const ev = Array.isArray(evRows) ? evRows[0] : null;
 
   const passJson = {
     formatVersion: 1,
     passTypeIdentifier: PASS_TYPE_ID,
-    serialNumber: order.id,
+    serialNumber: ticket.id,
     teamIdentifier: process.env.APPLE_TEAM_ID,
     organizationName: 'C8Tickets',
     description: ev?.title || 'Event Ticket',
@@ -69,17 +77,17 @@ export default async function handler(req, res) {
       ],
       auxiliaryFields: [
         { key: 'venue', label: 'VENUE', value: ev?.venue_name || 'Crooked 8' },
-        { key: 'tickets', label: 'TICKETS', value: ticketSummary }
+        { key: 'type', label: 'TICKET TYPE', value: ticket.ticket_type_name || 'General Admission' }
       ],
       backFields: [
+        { key: 'ticketNum', label: 'TICKET', value: `${ticket.ticket_number} of ${totalTickets}` },
         { key: 'orderId', label: 'ORDER ID', value: order.id.toUpperCase() },
         { key: 'buyer', label: 'PURCHASED BY', value: order.buyer_name || '' },
-        { key: 'total', label: 'TOTAL PAID', value: `$${Number(order.total_amount).toFixed(2)}` },
         { key: 'refund', label: 'REFUND POLICY', value: 'All ticket sales are final and non-refundable unless the event is cancelled by the organizer. Questions? support@c8tickets.com' }
       ]
     },
     barcodes: [
-      { message: order.id, format: 'PKBarcodeFormatQR', messageEncoding: 'iso-8859-1' }
+      { message: ticket.id, format: 'PKBarcodeFormatQR', messageEncoding: 'iso-8859-1' }
     ]
   };
 
@@ -157,7 +165,7 @@ export default async function handler(req, res) {
   const passBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
 
   res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
-  res.setHeader('Content-Disposition', `attachment; filename="ticket-${order.id.slice(0, 8)}.pkpass"`);
+  res.setHeader('Content-Disposition', `attachment; filename="ticket-${ticket.ticket_number}.pkpass"`);
   res.setHeader('Cache-Control', 'no-store');
   return res.send(passBuffer);
 
