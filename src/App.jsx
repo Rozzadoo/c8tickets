@@ -105,6 +105,7 @@ const [resetError, setResetError] = useState('');
   const [ticketFilterId, setTicketFilterId] = useState(null);
   const [ticketCopiedId, setTicketCopiedId] = useState(null);
   const [allTicketsCopied, setAllTicketsCopied] = useState(false);
+  const [pubRegForms, setPubRegForms] = useState([]);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [expandedTickets, setExpandedTickets] = useState({});
   const [togglingPublish, setTogglingPublish] = useState(new Set());
@@ -233,6 +234,14 @@ const [resetError, setResetError] = useState('');
     if (!session) { setOrders([]); return; }
     reloadOrders();
   }, [session, reloadOrders]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    supabase.from('registration_forms')
+      .select('id,title,description,category,price_per_entry,capacity,team_size,start_date,end_date,status')
+      .eq('tenant_id', tenantId).eq('status', 'published')
+      .then(({ data }) => setPubRegForms(data || []));
+  }, [loaded, tenantId]);
 
   useEffect(() => {
     if (!session) return;
@@ -1374,6 +1383,36 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                       </div>
                     </div>
                   ))}</div>
+                </div>}
+                {pubRegForms.length > 0 && <div style={{marginTop:52}}>
+                  <div style={{display:'flex',alignItems:'baseline',gap:12,marginBottom:14,flexWrap:'wrap'}}>
+                    <div className="sec-title dsp" style={{fontSize:'clamp(20px,3vw,26px)',letterSpacing:2}}>Open Registrations</div>
+                    <div style={{height:2,flex:1,minWidth:32,background:'linear-gradient(90deg,rgba(200,146,42,.35),transparent)',borderRadius:2,alignSelf:'center'}}/>
+                  </div>
+                  <div className="grid">{pubRegForms.map(f => {
+                    const isFree = !f.price_per_entry || f.price_per_entry === 0;
+                    const priceLabel = isFree ? 'Free' : `$${Number(f.price_per_entry).toFixed(2)}${f.team_size > 1 ? '/team' : '/entry'}`;
+                    const dateLabel = f.end_date ? `Closes ${fmtDate(f.end_date)}` : f.start_date ? `Opens ${fmtDate(f.start_date)}` : null;
+                    return (
+                      <div key={f.id} className="card" role="button" tabIndex={0}
+                        onClick={() => { setRegFormId(f.id); setView('register'); }}
+                        onKeyDown={e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); setRegFormId(f.id); setView('register'); } }}>
+                        <div className="card-img" style={{background:'linear-gradient(135deg,#1a1510 0%,#2a1f0e 100%)'}}>
+                          <span style={{fontSize:48}}>📋</span>
+                          <div className="card-cat">{f.category || 'Registration'}</div>
+                        </div>
+                        <div className="card-body">
+                          {dateLabel && <div className="card-date">{dateLabel}</div>}
+                          <div className="card-title dsp">{f.title}</div>
+                          <div className="card-desc">{f.description}</div>
+                          <div className="card-foot">
+                            <div className="card-price">{priceLabel}</div>
+                            <button className="btn gold" onClick={e=>{e.stopPropagation();setRegFormId(f.id);setView('register');}}>Register</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}</div>
                 </div>}
               </>;
             })()}
