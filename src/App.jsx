@@ -2209,7 +2209,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             ['pos','POS',<svg key="pos" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>],
             ...(!isVenueUser ? [['accounts','Accounts',<svg key="ac" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>]] : []),
             ...(isSuperAdmin ? [['platform','Platform',<svg key="plat" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>]] : []),
-          ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='promos'&&!promosLoaded) loadPromos(); if(t==='accounts'&&!venueUsersLoaded) loadVenueUsers(); }} style={{display:'flex',alignItems:'center',gap:8}} title={label}>{icon}<span className="aside-label">{label}</span></button>)}</div>
+          ].map(([t,label,icon]) => <button key={t} className={`aside-btn ${aTab===t?"on":""}`} onClick={() => { setATab(t); if(t==='orders') reloadOrders(); if(t==='promos'&&!promosLoaded) loadPromos(); if(t==='accounts'&&!venueUsersLoaded) loadVenueUsers(); }} style={{display:'flex',alignItems:'center',gap:8}} title={label}>{icon}<span className="aside-label">{label}</span></button>)}</div>
           <div className="amain">
             {aTab === "dashboard" && (() => {
               const now = new Date();
@@ -2396,7 +2396,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
               })}</div>}
             </>; })()}
 
-            {aTab === "door" && <DoorSales events={vEvents} updateOrders={updateOrders} updateEvents={updateEvents} venue={venue} tenantId={tenantId} />}
+            {aTab === "door" && <DoorSales events={vEvents} updateOrders={updateOrders} updateEvents={updateEvents} reloadOrders={reloadOrders} venue={venue} tenantId={tenantId} />}
 
             {aTab === "live" && <LiveDash events={vEvents} orders={orders} />}
 

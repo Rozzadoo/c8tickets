@@ -7,7 +7,7 @@ import { fmtDate, fmtTime, fmtCurrency } from '../lib/utils';
 import CheckoutForm from './CheckoutForm';
 import QRImg from './QRImg';
 
-const DoorSales = ({ events, updateOrders, updateEvents, venue, tenantId }) => {
+const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, tenantId }) => {
   const [selEventId, setSelEventId] = useState('');
   const [doorCart, setDoorCart] = useState({});
   const [buyerName, setBuyerName] = useState('');
@@ -234,6 +234,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue, tenantId }) => {
     updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
       ...e, tickets: e.tickets.map((t, i) => ({ ...t, available: t.available - (doorCart[i] || 0) }))
     }));
+    reloadOrders?.();
     setLastSale(localOrder);
     setStep('confirm');
   };
@@ -298,6 +299,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, venue, tenantId }) => {
     updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
       ...e, tickets: e.tickets.map((t, i) => ({ ...t, available: t.available - (doorCart[i] || 0) }))
     }));
+    reloadOrders?.();
     setLastSale(localOrder);
     setStep('confirm');
   };
