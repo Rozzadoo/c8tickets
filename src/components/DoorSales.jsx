@@ -466,9 +466,24 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
             <div className="cart-tot"><span>Collect From Customer</span><span>{fmtCurrency(cashAmounts.grandTotal)}</span></div>
           </div>
           <p style={{fontSize:12,color:'var(--text3)',marginBottom:16}}>No card processing fee — cash only.</p>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
+            {[1,5,10,20,50,100].map(d => (
+              <button key={d} className="btn" style={{flex:'1 1 60px',fontSize:15,fontWeight:700,padding:'10px 4px'}}
+                onClick={() => setTendered(t => String(Math.round(((parseFloat(t)||0) + d) * 100) / 100))}>
+                +${d}
+              </button>
+            ))}
+            <button className="btn gold" style={{flex:'1 1 100%',fontWeight:700,padding:'10px 4px'}}
+              onClick={() => setTendered(String(cashAmounts.grandTotal))}>
+              Exact Change
+            </button>
+          </div>
           <div className="fg" style={{marginBottom:12}}>
             <label className="fl">Amount Tendered</label>
-            <input className="fi" type="number" min="0" step="0.01" placeholder={`${cashAmounts.grandTotal.toFixed(2)}`} value={tendered} onChange={e=>setTendered(e.target.value)} />
+            <div style={{display:'flex',gap:6}}>
+              <input className="fi" type="number" min="0" step="0.01" placeholder={`${cashAmounts.grandTotal.toFixed(2)}`} value={tendered} onChange={e=>setTendered(e.target.value)} style={{flex:1,margin:0}} />
+              {tendered !== '' && <button className="btn" style={{padding:'0 12px',flexShrink:0}} onClick={()=>setTendered('')}>✕</button>}
+            </div>
           </div>
           {tendered !== '' && (() => {
             const t = parseFloat(tendered); const change = t - cashAmounts.grandTotal;
