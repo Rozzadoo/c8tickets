@@ -1309,7 +1309,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                         <div className="feat-body">
                           <div className="feat-eyebrow"><span style={{width:6,height:6,borderRadius:'50%',background:'var(--gold)',display:'inline-block',flexShrink:0}}/>Up Next</div>
                           <div className="feat-title">{featuredEv.title}</div>
-                          <div className="feat-date">{fmtDate(featuredEv.date)} · {fmtTime(featuredEv.time)}{featuredEv.doors?` · Doors ${featuredEv.doors}`:''}</div>
+                          <div className="feat-date">{fmtDate(featuredEv.date)} · {fmtTime(featuredEv.time)}{featuredEv.doors?` · Doors ${fmtTime(featuredEv.doors)}`:''}</div>
                           <div className="feat-foot">
                             <div className="feat-price">{fSoldOut?<span style={{color:'var(--text3)',fontSize:14,fontWeight:600,textTransform:'uppercase',letterSpacing:1}}>Sold Out</span>:<>{fmtCurrency(fMp)}{fMp>0&&<small style={{fontSize:12,fontWeight:400,color:'var(--text2)'}}> & up</small>}</>}</div>
                             {fSoldOut?<span className="badge badge-sold">Sold Out</span>:<button className="btn gold" style={{padding:'10px 28px',fontSize:14}} onClick={e=>{e.stopPropagation();open(featuredEv.id);}}>{fLow?'Get Tickets — Selling Fast':'Get Tickets'}</button>}
