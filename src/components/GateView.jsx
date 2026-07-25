@@ -27,7 +27,7 @@ const GateView = ({ events, onLogout }) => {
     if (!result || result === 'loading') return;
     const autoNext = result.done || (!result.found) || result.wrongEvent;
     if (!autoNext) return;
-    const t = setTimeout(next, result.done ? 2000 : 3000);
+    const t = setTimeout(next, result.done ? 4000 : 3000);
     return () => clearTimeout(t);
   }, [result]);
 
@@ -205,14 +205,14 @@ const GateView = ({ events, onLogout }) => {
                 </div>
               )}
               {result.found && !result.cancelled && !result.wrongEvent && result.done && (
-                <div style={{textAlign:'center',padding:'20px 0'}}>
-                  <div style={{fontSize:48,marginBottom:10}}>✅</div>
-                  <h3 className="dsp" style={{color:'var(--green)',fontSize:22,marginBottom:8}}>
+                <div style={{position:'fixed',inset:0,zIndex:9999,background:'#2d5a1b',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:32}}>
+                  <div style={{fontSize:96,marginBottom:16,lineHeight:1}}>✅</div>
+                  <h2 className="dsp" style={{color:'#fff',fontSize:42,marginBottom:12,lineHeight:1.1}}>
                     {result.checkedInCount ? `${result.checkedInCount} Checked In!` : 'Checked In!'}
-                  </h3>
-                  <p style={{fontWeight:700,fontSize:16}}>{result.order?.buyer_name}</p>
-                  <p style={{color:'var(--gold)',fontSize:13,marginTop:4}}>{result.event?.title}</p>
-                  <p style={{color:'var(--text3)',fontSize:12,marginTop:8}}>Scanning next in 2 seconds...</p>
+                  </h2>
+                  <p style={{color:'#fff',fontWeight:700,fontSize:24,marginBottom:6}}>{result.order?.buyer_name}</p>
+                  <p style={{color:'rgba(255,255,255,0.7)',fontSize:16}}>{result.event?.title}</p>
+                  <p style={{color:'rgba(255,255,255,0.5)',fontSize:13,marginTop:24}}>Scanning next in 4 seconds…</p>
                 </div>
               )}
               {/* Individual ticket: valid, ready to check in */}
