@@ -252,6 +252,15 @@ const [resetError, setResetError] = useState('');
   }, [session, reloadOrders]);
 
   useEffect(() => {
+    if (checkInEventFilter || !loaded || events.length === 0) return;
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const upcoming = [...events].filter(e => e.venueId === venue.id && e.published !== false)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .find(e => e.date >= todayStr);
+    if (upcoming) setCheckInEventFilter(upcoming.id);
+  }, [loaded, events, venue.id, checkInEventFilter]);
+
+  useEffect(() => {
     if (aTab !== 'reports' || !session) return;
     setReportTicketsLoaded(false);
     supabase.from('tickets')
