@@ -131,6 +131,9 @@ const [resetError, setResetError] = useState('');
   const [venuePayouts, setVenuePayouts] = useState([]);
   const [payoutForm, setPayoutForm] = useState({ amount: '', date: new Date().toISOString().slice(0,10), notes: '' });
   const [savingPayout, setSavingPayout] = useState(false);
+  const [platformWithdrawals, setPlatformWithdrawals] = useState([]);
+  const [withdrawalForm, setWithdrawalForm] = useState({ amount: '', date: new Date().toISOString().slice(0,10), notes: '' });
+  const [savingWithdrawal, setSavingWithdrawal] = useState(false);
   const [sellForm, setSellForm] = useState({ name:'', email:'', phone:'', eventName:'', location:'', date:'', attendance:'', channel:'both', notes:'' });
   const [sellStatus, setSellStatus] = useState('idle');
   const [venueUsers, setVenueUsers] = useState([]);
@@ -293,6 +296,12 @@ const [resetError, setResetError] = useState('');
     supabase.from('venue_payouts').select('*').order('paid_at', { ascending: false })
       .then(({ data }) => setVenuePayouts(data || []));
   }, [aTab, session]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || !session) return;
+    supabase.from('platform_withdrawals').select('*').order('withdrawn_at', { ascending: false })
+      .then(({ data }) => { if (data) setPlatformWithdrawals(data); });
+  }, [isSuperAdmin, session]);
 
   useEffect(() => {
     if (aTab !== 'reports' || !session) return;
@@ -718,6 +727,27 @@ const deletePayout = async (id) => {
   if (!window.confirm('Remove this payment record? This cannot be undone.')) return;
   await supabase.from('venue_payouts').delete().eq('id', id);
   setVenuePayouts(venuePayouts.filter(p => p.id !== id));
+};
+
+const saveWithdrawal = async () => {
+  if (!withdrawalForm.amount || !withdrawalForm.date) return;
+  setSavingWithdrawal(true);
+  const { data, error } = await supabase.from('platform_withdrawals').insert({
+    amount: Number(withdrawalForm.amount),
+    notes: withdrawalForm.notes || null,
+    withdrawn_at: withdrawalForm.date,
+  }).select().single();
+  if (!error && data) {
+    setPlatformWithdrawals([data, ...platformWithdrawals]);
+    setWithdrawalForm({ amount: '', date: new Date().toISOString().slice(0,10), notes: '' });
+  }
+  setSavingWithdrawal(false);
+};
+
+const deleteWithdrawal = async (id) => {
+  if (!window.confirm('Remove this withdrawal record? This cannot be undone.')) return;
+  await supabase.from('platform_withdrawals').delete().eq('id', id);
+  setPlatformWithdrawals(platformWithdrawals.filter(p => p.id !== id));
 };
 
 const applyPromo = async () => {
@@ -3190,6 +3220,79 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) =
                               </table>
                             </div>
                           : <p style={{fontSize:13,color:'var(--text3)'}}>No payments recorded yet — use the form above to log each payout.</p>
+                        }
+                      </div>
+                    );
+                  })()}
+
+                  {isSuperAdmin && (() => {
+                    const totalFeesCollected = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.serviceFees || 0), 0);
+                    const totalWithdrawn = platformWithdrawals.reduce((s, w) => s + Number(w.amount), 0);
+                    const outstanding = Math.round((totalFeesCollected - totalWithdrawn) * 100) / 100;
+                    return (
+                      <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:24}}>
+                        <h3 className="dsp" style={{fontSize:18,marginBottom:4}}>Platform Fee Withdrawal Tracker</h3>
+                        <p style={{fontSize:12,color:'var(--text3)',marginBottom:16}}>Visible to platform owner only — track when you transfer collected service fees to yourself.</p>
+                        <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+                          <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Service Fees Collected</div>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(totalFeesCollected)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>All-time, non-cancelled orders</div>
+                          </div>
+                          <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Total Withdrawn</div>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--green)'}}>{fmtCurrency(totalWithdrawn)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{platformWithdrawals.length} transfer{platformWithdrawals.length!==1?'s':''}</div>
+                          </div>
+                          <div style={{flex:1,minWidth:130,background:outstanding>0.005?'rgba(200,146,42,.1)':'rgba(76,175,125,.08)',border:`1px solid ${outstanding>0.005?'rgba(200,146,42,.3)':'rgba(76,175,125,.25)'}`,borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Available to Withdraw</div>
+                            <div style={{fontSize:22,fontWeight:700,color:outstanding>0.005?'var(--gold)':'var(--green)'}}>{fmtCurrency(outstanding)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{outstanding<=0.005?'All withdrawn':'Ready to transfer'}</div>
+                          </div>
+                        </div>
+                        <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'16px 18px',marginBottom:20}}>
+                          <div style={{fontSize:12,fontWeight:700,color:'var(--text)',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>Record a Withdrawal</div>
+                          <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+                            <div className="fg" style={{margin:0,minWidth:110}}>
+                              <label className="fl">Amount $</label>
+                              <input className="fi" type="number" min="0" step="0.01" value={withdrawalForm.amount} onChange={e=>setWithdrawalForm({...withdrawalForm,amount:e.target.value})} placeholder="0.00" />
+                            </div>
+                            <div className="fg" style={{margin:0,minWidth:150}}>
+                              <label className="fl">Date Transferred</label>
+                              <input className="fi" type="date" value={withdrawalForm.date} onChange={e=>setWithdrawalForm({...withdrawalForm,date:e.target.value})} />
+                            </div>
+                            <div className="fg" style={{margin:0,flex:1,minWidth:180}}>
+                              <label className="fl">Notes (optional)</label>
+                              <input className="fi" value={withdrawalForm.notes} onChange={e=>setWithdrawalForm({...withdrawalForm,notes:e.target.value})} placeholder="e.g. July transfer" />
+                            </div>
+                            <button className="btn gold" style={{flexShrink:0,padding:'10px 18px'}} disabled={!withdrawalForm.amount||!withdrawalForm.date||savingWithdrawal} onClick={saveWithdrawal}>{savingWithdrawal?'Saving…':'Record Withdrawal'}</button>
+                          </div>
+                        </div>
+                        {platformWithdrawals.length > 0
+                          ? <div style={{overflowX:'auto'}}>
+                              <table className="dt">
+                                <thead><tr><th>Date</th><th>Amount</th><th>Notes</th><th>Recorded</th><th></th></tr></thead>
+                                <tbody>
+                                  {platformWithdrawals.map(w=>(
+                                    <tr key={w.id}>
+                                      <td style={{whiteSpace:'nowrap',fontWeight:600}}>{new Date(w.withdrawn_at+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+                                      <td style={{fontWeight:700,color:'var(--green)'}}>{fmtCurrency(Number(w.amount))}</td>
+                                      <td style={{color:'var(--text3)',fontSize:13}}>{w.notes||'—'}</td>
+                                      <td style={{fontSize:11,color:'var(--text3)'}}>{new Date(w.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</td>
+                                      <td><button className="btn" style={{fontSize:11,padding:'4px 10px',color:'var(--red)'}} onClick={()=>deleteWithdrawal(w.id)}>Remove</button></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr style={{borderTop:'2px solid var(--border)'}}>
+                                    <td style={{fontWeight:700}}>Total Withdrawn</td>
+                                    <td style={{fontWeight:700,color:'var(--green)',fontSize:15}}>{fmtCurrency(totalWithdrawn)}</td>
+                                    <td colSpan={3}></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          : <p style={{fontSize:13,color:'var(--text3)'}}>No withdrawals recorded yet — use the form above to log each transfer.</p>
                         }
                       </div>
                     );
