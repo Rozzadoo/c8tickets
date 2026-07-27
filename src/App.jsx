@@ -962,10 +962,11 @@ const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = n
   const qrSz = r(84);
   const stubW = r(110);
   const cols = size.cols || 1;
-  const qrDataUrls = await Promise.all(tickets.map(t => QRCodeLib.toDataURL(t.id, { width: qrSz, margin: 1, color: { dark: '#1a1410', light: '#ffffff' } })));
+  const qrDataUrls = await Promise.all(tickets.map(t => QRCodeLib.toDataURL(t.id, { width: qrSz, margin: 1, color: { dark: '#000000', light: '#ffffff' } })));
   const tktHtml = (t, i) => {
     const fp = t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));
     return `<div class="tkt">
+  <div class="gold-bar"></div>
   <div class="tkt-body">
     <div>
       <div class="brand">${venue.name}</div>
@@ -992,7 +993,7 @@ const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = n
     rowsHtml.push(`<div class="row">${rowTickets.map((t, j) => tktHtml(t, i + j)).join('')}</div>`);
   }
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Physical Tickets — ${ev.title}</title><style>
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:2px solid #d9d0c0;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
@@ -1000,19 +1001,20 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .sheet{padding:0.35in 0.3in}
 .row{display:flex;gap:0.15in;margin-bottom:0;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}
 .cut{height:0;border-top:1px dashed #bfb09a;margin:0.12in 0}
-.tkt{flex:1;${size.height?`height:${size.height};`:''}background:#fff;border:2px solid #c8922a;border-top:4px solid #c8922a;border-radius:4px;display:flex;overflow:hidden}
-.tkt-body{flex:1;padding:${r(12)}px ${r(12)}px ${r(12)}px ${r(14)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed #c8922a;min-width:0}
-.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(10)}px ${r(8)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(4)}px}
-.brand{font-size:${r(11)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:2.5px;line-height:1}
-.brand-loc{font-size:${r(6.5)}px;color:#8a7a62;text-transform:uppercase;letter-spacing:1.5px;margin-top:${r(2)}px}
-.evt-title{font-size:${r(15)}px;font-weight:800;color:#1a1410;text-transform:uppercase;letter-spacing:.5px;line-height:1.2;margin-bottom:${r(5)}px}
-.evt-bottom{font-size:${r(8.5)}px;color:#5a4e3a;text-transform:uppercase;letter-spacing:.5px;line-height:1.4}
-.stub-tier{font-size:${r(7.5)}px;font-weight:900;color:#1a1410;text-transform:uppercase;letter-spacing:1px;text-align:center;line-height:1.3;word-break:break-word}
-.stub-divider{width:80%;height:1px;background:#d9c8a8;margin:${r(2)}px 0}
-.stub-price-lbl{font-size:${r(5.5)}px;color:#8a7a62;text-transform:uppercase;letter-spacing:2px}
-.stub-price{font-size:${r(20)}px;font-weight:900;color:#1a1410;line-height:1;margin-bottom:${r(2)}px}
-.qr-wrap{border:1px solid #e0d8cc;border-radius:3px;padding:3px;background:#fff}
-.tkt-id{font-size:${r(5.5)}px;color:#8a7a62;font-family:monospace;letter-spacing:.5px;text-align:center}
+.tkt{flex:1;${size.height?`height:${size.height};`:''}background:#1c1914;border:1.5px solid #c8922a;border-radius:5px;display:flex;overflow:hidden;position:relative}
+.gold-bar{position:absolute;top:0;left:0;right:0;height:4px;background:#c8922a;z-index:2}
+.tkt-body{flex:1;padding:${r(14)}px ${r(12)}px ${r(12)}px ${r(14)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.5);position:relative;z-index:1;min-width:0}
+.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(10)}px ${r(8)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(5)}px;position:relative;z-index:1}
+.brand{font-size:${r(12)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:2.5px;line-height:1}
+.brand-loc{font-size:${r(6.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:${r(2)}px}
+.evt-title{font-size:${r(16)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.6px;line-height:1.2;margin-bottom:${r(6)}px}
+.evt-bottom{font-size:${r(9)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px;line-height:1.4}
+.stub-tier{font-size:${r(7.5)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1px;text-align:center;line-height:1.3;word-break:break-word}
+.stub-divider{width:70%;height:1px;background:rgba(200,146,42,.4);margin:${r(2)}px 0}
+.stub-price-lbl{font-size:${r(5.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px}
+.stub-price{font-size:${r(21)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(2)}px}
+.qr-wrap{background:#fff;padding:4px;border-radius:3px}
+.tkt-id{font-size:${r(5.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
 @media print{.toolbar{display:none}.sheet{padding:0.25in 0.2in}.row{break-inside:avoid;page-break-inside:avoid}@page{size:letter portrait;margin:0}}
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Set margins to <strong>None</strong> in the print dialog.</p></div>
@@ -1068,7 +1070,7 @@ const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = n
     rowsHtml.push(`<div class="row">${rowTickets.map((t, j) => tktHtml(t, i + j)).join('')}</div>`);
   }
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo Tickets — ${ev.title}</title><style>
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:2px solid #d9d0c0;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
