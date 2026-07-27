@@ -872,8 +872,8 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif;padding:16
 .brand{font-size:${r(11.5)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
 .brand-sub{font-size:${r(7)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
 .gold-rule{width:${r(32)}px;height:2px;background:#c8922a;margin:${r(7)}px 0 ${r(8)}px}
-.evt-name{font-size:${r(15.5)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:${r(5)}px}
-.evt-date{font-size:${r(8)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(3)}px}
+.evt-name{font-size:${r(17)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:${r(5)}px}
+.evt-date{font-size:${r(10)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;margin-bottom:${r(4)}px}
 .evt-venue{font-size:${r(7)}px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
 .tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:${r(8)}px}
 .tier-label{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(2)}px}
@@ -920,9 +920,9 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
 .gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a);z-index:2}
 .brand{font-size:${r(13)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
 .brand-loc{font-size:${r(7.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
-.evt-title{font-size:${r(15)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(6)}px}
+.evt-title{font-size:${r(17)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(6)}px}
 .evt-meta{font-size:${r(8.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;line-height:2}
-.evt-bottom{display:flex;gap:${r(10)}px;flex-wrap:wrap;font-size:${r(7.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px}
+.evt-bottom{display:flex;gap:${r(12)}px;flex-wrap:wrap;font-size:${r(10)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px}
 .stub-tier{font-size:${r(7)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1.5px;text-align:center;line-height:1.3;word-break:break-word}
 .stub-price-lbl{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:${r(3)}px}
 .stub-price{font-size:${r(22)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(4)}px}
@@ -939,9 +939,9 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
     </div>
     <div class="evt-title">${sampleTicket.eventTitle}</div>
     <div class="evt-bottom">
-      <span>📅&nbsp;${sampleTicket.date}</span>
-      ${sampleTicket.time ? `<span>🕐&nbsp;${sampleTicket.time}</span>` : ''}
-      ${sampleTicket.doors ? `<span>🚪&nbsp;${sampleTicket.doors}</span>` : ''}
+      <span>${sampleTicket.date}</span>
+      ${sampleTicket.time ? `<span>${sampleTicket.time}</span>` : ''}
+      ${sampleTicket.doors ? `<span>Doors&nbsp;${sampleTicket.doors}</span>` : ''}
     </div>
   </div>
   <div class="tkt-stub">
@@ -977,8 +977,8 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a);z-index:2}
 .brand{font-size:${r(13)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
 .brand-loc{font-size:${r(7.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
-.evt-title{font-size:${r(15)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(8)}px}
-.evt-bottom{display:flex;gap:${r(10)}px;flex-wrap:wrap;font-size:${r(7.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px}
+.evt-title{font-size:${r(17)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(8)}px}
+.evt-bottom{display:flex;gap:${r(12)}px;flex-wrap:wrap;font-size:${r(10)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px}
 .stub-tier{font-size:${r(7)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1.5px;text-align:center;line-height:1.3;word-break:break-word}
 .stub-price-lbl{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:${r(2)}px}
 .stub-price{font-size:${r(22)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(2)}px}
@@ -988,7 +988,7 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Use "Save as PDF" to send to a print shop</p></div>
 <div class="sheet">
-${tickets.map((t,i)=>{const fp=t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));return`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-bottom"><span>📅&nbsp;${t.date}</span>${t.time?`<span>🕐&nbsp;${t.time}</span>`:''} ${t.doors?`<span>🚪&nbsp;${t.doors}</span>`:''}</div></div><div class="tkt-stub"><div class="stub-tier">${t.type}</div><div class="stub-price-lbl">Price</div><div class="stub-price">${fp}</div><div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}</div></div></div>`;}).join('\n')}
+${tickets.map((t,i)=>{const fp=t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));return`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-bottom"><span>${t.date}</span>${t.time?`<span>${t.time}</span>`:''} ${t.doors?`<span>Doors&nbsp;${t.doors}</span>`:''}</div></div><div class="tkt-stub"><div class="stub-tier">${t.type}</div><div class="stub-price-lbl">Price</div><div class="stub-price">${fp}</div><div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}</div></div></div>`;}).join('\n')}
 </div></body></html>`;
   const win = window.open('', '_blank');
   if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
@@ -1015,8 +1015,8 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
 .brand{font-size:${r(11.5)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
 .brand-sub{font-size:${r(7)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
 .gold-rule{width:${r(32)}px;height:2px;background:#c8922a;margin:${r(7)}px 0 ${r(8)}px}
-.evt-name{font-size:${r(15.5)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:${r(5)}px}
-.evt-date{font-size:${r(8)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(3)}px}
+.evt-name{font-size:${r(17)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:${r(5)}px}
+.evt-date{font-size:${r(10)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;margin-bottom:${r(4)}px}
 .evt-venue{font-size:${r(7)}px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
 .tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:${r(8)}px}
 .tier-label{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(2)}px}
@@ -3228,7 +3228,8 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) =
                   {isSuperAdmin && (() => {
                     const totalFeesCollected = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.serviceFees || 0), 0);
                     const totalWithdrawn = platformWithdrawals.reduce((s, w) => s + Number(w.amount), 0);
-                    const outstanding = Math.round((totalFeesCollected - totalWithdrawn) * 100) / 100;
+                    const stripeTransferFees = Math.round(venuePayouts.length * 1.50 * 100) / 100;
+                    const outstanding = Math.round((totalFeesCollected - totalWithdrawn - stripeTransferFees) * 100) / 100;
                     return (
                       <div style={{borderTop:'1px solid var(--border)',paddingTop:28,marginTop:24}}>
                         <h3 className="dsp" style={{fontSize:18,marginBottom:4}}>Platform Fee Withdrawal Tracker</h3>
@@ -3238,6 +3239,11 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) =
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Service Fees Collected</div>
                             <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(totalFeesCollected)}</div>
                             <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>All-time, non-cancelled orders</div>
+                          </div>
+                          <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Stripe Transfer Fees</div>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(stripeTransferFees)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{venuePayouts.length} payout{venuePayouts.length!==1?'s':''} × $1.50</div>
                           </div>
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Total Withdrawn</div>
