@@ -959,14 +959,32 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
 const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = null) => {
   const fs = size.fScale ?? 1;
   const r = (n) => Math.round(n * fs);
-  const qrSz = r(88);
-  const stubW = r(108);
+  const qrSz = r(84);
+  const stubW = r(110);
   const cols = size.cols || 1;
-  const qrDataUrls = await Promise.all(tickets.map(t => QRCodeLib.toDataURL(t.id, { width: qrSz, margin: 1 })));
-  const hasImg = !!(ev.image && ev.image.startsWith('http'));
+  const qrDataUrls = await Promise.all(tickets.map(t => QRCodeLib.toDataURL(t.id, { width: qrSz, margin: 1, color: { dark: '#1a1410', light: '#ffffff' } })));
   const tktHtml = (t, i) => {
     const fp = t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));
-    return `<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-bottom"><span>${t.date}</span>${t.time?`<span> · ${t.time}</span>`:''} ${t.doors?`<span> · Doors ${t.doors}</span>`:''}</div></div><div class="tkt-stub"><div class="stub-tier">${t.type}</div><div class="stub-price-lbl">Price</div><div class="stub-price">${fp}</div><div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}</div></div></div>`;
+    return `<div class="tkt">
+  <div class="tkt-body">
+    <div>
+      <div class="brand">${venue.name}</div>
+      <div class="brand-loc">${venue.location}</div>
+    </div>
+    <div>
+      <div class="evt-title">${t.eventTitle}</div>
+      <div class="evt-bottom">${t.date}${t.time?' &nbsp;·&nbsp; '+t.time:''}${t.doors?' &nbsp;·&nbsp; Doors '+t.doors:''}</div>
+    </div>
+  </div>
+  <div class="tkt-stub">
+    <div class="stub-tier">${t.type}</div>
+    <div class="stub-divider"></div>
+    <div class="stub-price-lbl">Price</div>
+    <div class="stub-price">${fp}</div>
+    <div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
+    <div class="tkt-id">${t.id.slice(0,8).toUpperCase()}</div>
+  </div>
+</div>`;
   };
   const rowsHtml = [];
   for (let i = 0; i < tickets.length; i += cols) {
@@ -976,29 +994,28 @@ const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = n
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Physical Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
-.toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:1px solid #d9d0c0;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:2px solid #d9d0c0;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
-.toolbar p{font-size:13px;color:#6b5e47;line-height:1.5}
+.toolbar p{font-size:13px;color:#6b5e47;line-height:1.6}
 .sheet{padding:0.35in 0.3in}
-.row{display:flex;gap:0.15in;margin-bottom:0.12in;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}
-.cut{height:0;border-top:1px dashed #d4c9b5;margin:0.06in 0;break-inside:avoid;page-break-inside:avoid}
-.tkt{flex:1;${size.height?`height:${size.height};`:''}background:#1c1914;border:1.5px solid #c8922a;border-radius:6px;display:flex;overflow:hidden;position:relative}
-.tkt-img{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;opacity:0.15}
-.tkt-body{flex:1;padding:${r(13)}px ${r(11)}px ${r(11)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.4);position:relative;z-index:1;min-width:0}
-.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(10)}px ${r(8)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(5)}px;position:relative;z-index:1}
-.gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a);z-index:2}
-.brand{font-size:${r(12)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
-.brand-loc{font-size:${r(7)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:${r(2)}px}
-.evt-title{font-size:${r(16)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.6px;line-height:1.2;margin:${r(7)}px 0 ${r(6)}px}
-.evt-bottom{font-size:${r(9)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px;line-height:1.4}
-.stub-tier{font-size:${r(7)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1.5px;text-align:center;line-height:1.3;word-break:break-word}
-.stub-price-lbl{font-size:${r(5.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:${r(2)}px}
-.stub-price{font-size:${r(21)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(2)}px}
-.qr-wrap{background:#fff;padding:4px;border-radius:3px}
-.tkt-id{font-size:${r(5.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
-@media print{.toolbar{display:none}.sheet{padding:0.25in 0.2in}.row{break-inside:avoid;page-break-inside:avoid}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cut{border-top-color:#ccc}@page{size:letter portrait;margin:0}}
+.row{display:flex;gap:0.15in;margin-bottom:0;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}
+.cut{height:0;border-top:1px dashed #bfb09a;margin:0.12in 0}
+.tkt{flex:1;${size.height?`height:${size.height};`:''}background:#fff;border:2px solid #c8922a;border-top:4px solid #c8922a;border-radius:4px;display:flex;overflow:hidden}
+.tkt-body{flex:1;padding:${r(12)}px ${r(12)}px ${r(12)}px ${r(14)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed #c8922a;min-width:0}
+.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(10)}px ${r(8)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(4)}px}
+.brand{font-size:${r(11)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:2.5px;line-height:1}
+.brand-loc{font-size:${r(6.5)}px;color:#8a7a62;text-transform:uppercase;letter-spacing:1.5px;margin-top:${r(2)}px}
+.evt-title{font-size:${r(15)}px;font-weight:800;color:#1a1410;text-transform:uppercase;letter-spacing:.5px;line-height:1.2;margin-bottom:${r(5)}px}
+.evt-bottom{font-size:${r(8.5)}px;color:#5a4e3a;text-transform:uppercase;letter-spacing:.5px;line-height:1.4}
+.stub-tier{font-size:${r(7.5)}px;font-weight:900;color:#1a1410;text-transform:uppercase;letter-spacing:1px;text-align:center;line-height:1.3;word-break:break-word}
+.stub-divider{width:80%;height:1px;background:#d9c8a8;margin:${r(2)}px 0}
+.stub-price-lbl{font-size:${r(5.5)}px;color:#8a7a62;text-transform:uppercase;letter-spacing:2px}
+.stub-price{font-size:${r(20)}px;font-weight:900;color:#1a1410;line-height:1;margin-bottom:${r(2)}px}
+.qr-wrap{border:1px solid #e0d8cc;border-radius:3px;padding:3px;background:#fff}
+.tkt-id{font-size:${r(5.5)}px;color:#8a7a62;font-family:monospace;letter-spacing:.5px;text-align:center}
+@media print{.toolbar{display:none}.sheet{padding:0.25in 0.2in}.row{break-inside:avoid;page-break-inside:avoid}@page{size:letter portrait;margin:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel}<br><strong>In the print dialog: enable "Print backgrounds" and set margins to None.</strong></p></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Set margins to <strong>None</strong> in the print dialog.</p></div>
 <div class="sheet">
 ${rowsHtml.map((row, i) => i > 0 ? `<div class="cut"></div>${row}` : row).join('\n')}
 </div></body></html>`;
@@ -1023,7 +1040,7 @@ const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = n
     const hasImg = t.image && t.image.startsWith('http');
     const fp = t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));
     return `<div class="tkt">
-  <div class="tkt-photo ${hasImg?'':'no-photo'}" style="${hasImg?`background-image:url('${t.image}');background-position:${t.focalX??50}% ${t.focalY??50}%`:''}"></div>
+  <div class="tkt-photo">${hasImg?`<img src="${t.image}" alt="" class="photo-img" style="object-position:${t.focalX??50}% ${t.focalY??50}%">`:'<div class="no-photo"></div>'}</div>
   <div class="tkt-stripe"></div>
   <div class="tkt-main">
     <div>
@@ -1052,16 +1069,18 @@ const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = n
   }
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo Tickets — ${ev.title}</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
-.toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:1px solid #d9d0c0;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
+.toolbar{padding:16px 24px;background:#f5f3ef;border-bottom:2px solid #d9d0c0;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .toolbar button{background:#c8922a;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
-.toolbar p{font-size:13px;color:#6b5e47;line-height:1.5}
+.toolbar p{font-size:13px;color:#6b5e47;line-height:1.6}
 .sheet{padding:0.35in 0.3in}
-.row{display:flex;gap:0.18in;margin-bottom:0.12in;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}
-.cut{height:0;border-top:1px dashed #c8b89a;margin:0.06in 0;break-inside:avoid;page-break-inside:avoid}
-.tkt{flex:1;display:flex;height:${size.height ?? '2.4in'};background:#1c1914;border:1.5px solid #c8922a;border-radius:6px;overflow:hidden}
-.tkt-photo{width:${size.photoW ?? '33%'};flex-shrink:0;background-size:cover;background-repeat:no-repeat;position:relative}
-.tkt-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,rgba(28,25,20,0) 40%,rgba(28,25,20,.75) 100%)}
+.row{display:flex;gap:0.18in;margin-bottom:0;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}
+.cut{height:0;border-top:1px dashed #bfb09a;margin:0.14in 0}
+.tkt{flex:1;display:flex;height:${size.height ?? '2.4in'};background:#1c1914;border:2px solid #c8922a;border-radius:4px;overflow:hidden}
+.tkt-photo{width:${size.photoW ?? '33%'};flex-shrink:0;position:relative;overflow:hidden}
+.photo-img{width:100%;height:100%;object-fit:cover;display:block}
+.no-photo{width:100%;height:100%;background:linear-gradient(135deg,#2a2218 0%,#1c1914 100%)}
+.tkt-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,rgba(28,25,20,0) 50%,rgba(28,25,20,.8) 100%)}
 .tkt-stripe{width:3px;flex-shrink:0;background:linear-gradient(to bottom,#c8922a,#f0c050,#c8922a)}
 .tkt-main{flex:1;padding:${r(13)}px ${r(12)}px ${r(11)}px ${r(14)}px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
 .brand{font-size:${r(11.5)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
@@ -1076,10 +1095,9 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
 .tkt-code{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:1px}
 .qr-box{background:#fff;padding:4px;border-radius:4px;flex-shrink:0}
 .qr-box img{display:block}
-.no-photo{background:linear-gradient(135deg,#2a2218 0%,#1c1914 60%,#0e0c09 100%)}
 @media print{.toolbar{display:none}.sheet{padding:0.25in 0.2in}.row{break-inside:avoid;page-break-inside:avoid}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cut{border-top-color:#b8a888}@page{size:letter portrait;margin:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel}<br><strong>In the print dialog: enable "Print backgrounds" and set margins to None.</strong></p></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Set margins to <strong>None</strong> in the print dialog.</p></div>
 <div class="sheet">
 ${rowsHtml.map((row, i) => i > 0 ? `<div class="cut"></div>${row}` : row).join('\n')}
 </div></body></html>`;
