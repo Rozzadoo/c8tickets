@@ -956,7 +956,7 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
   }
 };
 
-const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0]) => {
+const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = null) => {
   const fs = size.fScale ?? 1;
   const r = (n) => Math.round(n * fs);
   const qrSz = r(88);
@@ -992,12 +992,16 @@ ${tickets.map((t,i)=>{const fp=t.price==null?'':'$'+(t.price%1===0?Math.round(t.
 </div></body></html>`;
   const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  if (win) {
+    win.location.href = url;
+  } else {
+    const opened = window.open(url, '_blank');
+    if (!opened) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  }
   setTimeout(() => URL.revokeObjectURL(url), 300000);
 };
 
-const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0]) => {
+const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = null) => {
   const fs = size.fScale ?? 1;
   const r = (n) => Math.round(n * fs);
   const qrSz = r(72);
@@ -1057,8 +1061,12 @@ ${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');const fp=
 </div></body></html>`;
   const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  if (win) {
+    win.location.href = url;
+  } else {
+    const opened = window.open(url, '_blank');
+    if (!opened) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  }
   setTimeout(() => URL.revokeObjectURL(url), 300000);
 };
 
@@ -1108,20 +1116,21 @@ const generatePhotoTickets = async (ev, size, consignee) => {
   setPhysicalPreviewData({ html, ev, size, mode: 'photo', consignee });
 };
 
-const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) => {
+const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, win = null) => {
   setPhysicalPreviewData(null);
   setPhysicalDupeData(null);
   setGeneratingPhysical(ev.id + (mode === 'photo' ? '-photo' : ''));
   const { orders, wasExisting } = await fetchOrCreatePhysicalOrders(ev, consignee);
   setGeneratingPhysical(false);
   if (wasExisting && !forceNew) {
+    if (win) win.close();
     setPhysicalDupeData({ ev, size, mode, consignee, count: orders.length, existingOrders: orders });
     return;
   }
-  if (orders.length === 0) { alert('No tickets to generate.'); return; }
+  if (orders.length === 0) { if (win) win.close(); alert('No tickets to generate.'); return; }
   const mapped = orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), doors: fmtTime(ev.doors || ''), image: ev.image, focalX: ev.focalX, focalY: ev.focalY }));
-  if (mode === 'photo') await openPhotoPage(ev, mapped, venue, size);
-  else await openPrintPage(ev, mapped, venue, size);
+  if (mode === 'photo') await openPhotoPage(ev, mapped, venue, size, win);
+  else await openPrintPage(ev, mapped, venue, size, win);
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
   const allPublicEvents = events.filter(e => e.published !== false);
@@ -3715,7 +3724,11 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) =
             </div>
             {physicalPreviewData.consignee && <p style={{fontSize:13,color:'var(--text2)',marginBottom:16}}>Consignee: <strong>{physicalPreviewData.consignee}</strong></p>}
             <div style={{display:'flex',gap:10}}>
-              <button className="buy" style={{flex:1}} disabled={!!generatingPhysical} onClick={()=>doGeneratePhysical(physicalPreviewData.ev,physicalPreviewData.size,physicalPreviewData.mode,physicalPreviewData.consignee)}>
+              <button className="buy" style={{flex:1}} disabled={!!generatingPhysical} onClick={()=>{
+                const win=window.open('about:blank','_blank');
+                if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
+                doGeneratePhysical(physicalPreviewData.ev,physicalPreviewData.size,physicalPreviewData.mode,physicalPreviewData.consignee,false,win);
+              }}>
                 {generatingPhysical?'Generating…':`Generate All ${physicalPreviewData.ev.tickets.reduce((s,t)=>s+(t.physicalQty??0),0)} Tickets`}
               </button>
               <button className="btn" style={{padding:'10px 20px'}} onClick={()=>setPhysicalPreviewData(null)}>Back</button>
@@ -3728,21 +3741,23 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) =
             <h2 className="dsp" style={{fontSize:20,marginBottom:8}}>Tickets Already Generated</h2>
             <p style={{color:'var(--text2)',fontSize:14,marginBottom:24}}><strong style={{color:'var(--text)'}}>{physicalDupeData.count} physical tickets</strong> already exist for this event. Re-download the existing PDF, or generate a new batch.</p>
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              <button className="buy" disabled={!!generatingPhysical} onClick={async()=>{
+              <button className="buy" disabled={!!generatingPhysical} onClick={()=>{
+                const win=window.open('about:blank','_blank');
+                if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
                 const{ev,size,mode,existingOrders}=physicalDupeData;
                 setPhysicalDupeData(null);
                 setGeneratingPhysical(ev.id);
-                const mapped=existingOrders.map(o=>({...o,eventTitle:ev.title,date:fmtDate(ev.date),time:fmtTime(ev.time),image:ev.image,focalX:ev.focalX,focalY:ev.focalY}));
-                if(mode==='photo') await openPhotoPage(ev,mapped,venue,size);
-                else await openPrintPage(ev,mapped,venue,size);
-                setGeneratingPhysical(false);
+                const mapped=existingOrders.map(o=>({...o,eventTitle:ev.title,date:fmtDate(ev.date),time:fmtTime(ev.time),doors:fmtTime(ev.doors||''),image:ev.image,focalX:ev.focalX,focalY:ev.focalY}));
+                (mode==='photo'?openPhotoPage(ev,mapped,venue,size,win):openPrintPage(ev,mapped,venue,size,win)).then(()=>setGeneratingPhysical(false));
               }}>
                 {generatingPhysical?'Generating…':`↓ Re-download PDF (${physicalDupeData.count} tickets)`}
               </button>
-              <button className="btn" disabled={!!generatingPhysical} onClick={async()=>{
+              <button className="btn" disabled={!!generatingPhysical} onClick={()=>{
+                const win=window.open('about:blank','_blank');
+                if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
                 const{ev,size,mode,consignee}=physicalDupeData;
                 setPhysicalDupeData(null);
-                await doGeneratePhysical(ev,size,mode,consignee,true);
+                doGeneratePhysical(ev,size,mode,consignee,true,win);
               }}>Generate New Batch (creates additional tickets)</button>
               <button className="btn" onClick={()=>setPhysicalDupeData(null)}>Cancel</button>
             </div>
