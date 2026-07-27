@@ -990,9 +990,11 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 <div class="sheet">
 ${tickets.map((t,i)=>{const fp=t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));return`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-bottom"><span>${t.date}</span>${t.time?`<span>${t.time}</span>`:''} ${t.doors?`<span>Doors&nbsp;${t.doors}</span>`:''}</div></div><div class="tkt-stub"><div class="stub-tier">${t.type}</div><div class="stub-price-lbl">Price</div><div class="stub-price">${fp}</div><div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}</div></div></div>`;}).join('\n')}
 </div></body></html>`;
-  const win = window.open('', '_blank');
-  if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
-  win.document.write(html); win.document.close();
+  const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  setTimeout(() => URL.revokeObjectURL(url), 300000);
 };
 
 const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0]) => {
@@ -1053,9 +1055,11 @@ ${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');const fp=
   </div>
 </div>`;}).join('\n')}
 </div></body></html>`;
-  const win = window.open('', '_blank');
-  if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
-  win.document.write(html); win.document.close();
+  const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+  setTimeout(() => URL.revokeObjectURL(url), 300000);
 };
 
 const fetchOrCreatePhysicalOrders = async (ev, consignee = '') => {
