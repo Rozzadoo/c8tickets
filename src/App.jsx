@@ -92,6 +92,13 @@ const [resetError, setResetError] = useState('');
   const [ticketSizeSelected, setTicketSizeSelected] = useState('strip');
   const [ticketSizeCustomW, setTicketSizeCustomW] = useState('5.5');
   const [ticketSizeCustomH, setTicketSizeCustomH] = useState('2');
+  const [physicalConsignee, setPhysicalConsignee] = useState('');
+  const [physicalPreviewData, setPhysicalPreviewData] = useState(null);
+  const [physicalDupeData, setPhysicalDupeData] = useState(null);
+  const [physicalVoidModal, setPhysicalVoidModal] = useState(null);
+  const [physicalVoidCount, setPhysicalVoidCount] = useState('');
+  const [physicalVoiding, setPhysicalVoiding] = useState(false);
+  const [physicalCounts, setPhysicalCounts] = useState({});
   const [editEmailOrder, setEditEmailOrder] = useState(null);
   const [editEmailValue, setEditEmailValue] = useState('');
   const [editEmailSaving, setEditEmailSaving] = useState(false);
@@ -250,6 +257,17 @@ const [resetError, setResetError] = useState('');
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [session, reloadOrders]);
+
+  useEffect(() => {
+    if (aTab !== 'events' || !session || !tenantId) return;
+    supabase.from('orders').select('event_id').eq('tenant_id', tenantId).eq('source', 'physical').neq('status', 'cancelled')
+      .then(({ data }) => {
+        if (!data) return;
+        const counts = {};
+        data.forEach(o => { counts[o.event_id] = (counts[o.event_id] || 0) + 1; });
+        setPhysicalCounts(counts);
+      });
+  }, [aTab, session, tenantId]);
 
   useEffect(() => {
     if (checkInEventFilter || !loaded || events.length === 0) return;
@@ -801,6 +819,103 @@ const sendTicketResend = async () => {
   setTicketResendSent(true);
 };
 
+const generateTicketPreviewHtml = async (ev, size, mode, venue) => {
+  const mockId = 'preview-00000000-0000-0000-0000-000000000000';
+  const fs = size.fScale ?? 1;
+  const r = (n) => Math.round(n * fs);
+  const qrSz = mode === 'photo' ? r(72) : r(88);
+  const qrDataUrl = await QRCodeLib.toDataURL(mockId, { width: qrSz, margin: 1 });
+  const sampleTicket = { id: mockId, type: ev.tickets[0]?.type || 'General Admission', eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY };
+
+  if (mode === 'photo') {
+    const hasImg = sampleTicket.image && sampleTicket.image.startsWith('http');
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
+.tkt{display:flex;height:${size.height ?? '2.4in'};background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.tkt-photo{width:${size.photoW ?? '33%'};flex-shrink:0;background-size:cover;background-repeat:no-repeat;position:relative}
+.tkt-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,rgba(28,25,20,0) 40%,rgba(28,25,20,.75) 100%)}
+.tkt-stripe{width:3px;flex-shrink:0;background:linear-gradient(to bottom,#c8922a,#f0c050,#c8922a)}
+.tkt-main{flex:1;padding:${r(13)}px ${r(12)}px ${r(11)}px ${r(14)}px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.brand{font-size:${r(11.5)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
+.brand-sub{font-size:${r(7)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
+.gold-rule{width:${r(32)}px;height:2px;background:#c8922a;margin:${r(7)}px 0 ${r(8)}px}
+.evt-name{font-size:${r(15.5)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.7px;line-height:1.18;margin-bottom:${r(5)}px}
+.evt-date{font-size:${r(8)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(3)}px}
+.evt-venue{font-size:${r(7)}px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
+.tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:${r(8)}px}
+.tier-label{font-size:${r(6.5)}px;color:#c8922a;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(3)}px}
+.tier-name{font-size:${r(10)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(4)}px}
+.tkt-code{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:1px}
+.qr-box{background:#fff;padding:4px;border-radius:4px;flex-shrink:0}
+.qr-box img{display:block}
+.no-photo{background:linear-gradient(135deg,#2a2218 0%,#1c1914 60%,#0e0c09 100%)}
+</style></head><body>
+<div class="tkt">
+  <div class="tkt-photo ${hasImg ? '' : 'no-photo'}" style="${hasImg ? `background-image:url('${sampleTicket.image}');background-position:${sampleTicket.focalX ?? 50}% ${sampleTicket.focalY ?? 50}%` : ''}"></div>
+  <div class="tkt-stripe"></div>
+  <div class="tkt-main">
+    <div>
+      <div class="brand">${venue.name}</div>
+      <div class="brand-sub">${venue.location}</div>
+      <div class="gold-rule"></div>
+      <div class="evt-name">${sampleTicket.eventTitle}</div>
+      <div class="evt-date">${sampleTicket.date}${sampleTicket.time ? ' &nbsp;·&nbsp; ' + sampleTicket.time : ''}</div>
+      <div class="evt-venue">${venue.location}</div>
+    </div>
+    <div class="tkt-foot">
+      <div>
+        <div class="tier-label">Admit One</div>
+        <div class="tier-name">${sampleTicket.type}</div>
+        <div class="tkt-code">#PREVIEW</div>
+      </div>
+      <div class="qr-box"><img src="${qrDataUrl}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+  } else {
+    const stubW = r(108);
+    const hasImg = !!(ev.image && ev.image.startsWith('http'));
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
+.tkt{width:100%;${size.height ? `min-height:${size.height};` : ''}background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;display:flex;overflow:hidden;position:relative}
+.tkt-img{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;opacity:0.18}
+.tkt-body{flex:1;padding:${r(14)}px ${r(12)}px ${r(12)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.35);position:relative;z-index:1}
+.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(12)}px ${r(10)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(6)}px;position:relative;z-index:1}
+.gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a);z-index:2}
+.brand{font-size:${r(13)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
+.brand-loc{font-size:${r(7.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
+.evt-title{font-size:${r(15)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(6)}px}
+.evt-meta{font-size:${r(8.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;line-height:2}
+.tkt-type{margin-top:${r(8)}px;font-size:${r(8)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px;border:1px solid rgba(200,146,42,.5);border-radius:3px;padding:2px 7px;display:inline-block}
+.admit{font-size:${r(7.5)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px}
+.qr-wrap{background:#fff;padding:5px;border-radius:4px}
+.tkt-id{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
+</style></head><body>
+<div class="tkt">
+  <div class="gold-bar"></div>
+  ${hasImg ? `<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX ?? 50}% ${ev.focalY ?? 50}%"></div>` : ''}
+  <div class="tkt-body">
+    <div>
+      <div class="brand">${venue.name}</div>
+      <div class="brand-loc">${venue.location}</div>
+    </div>
+    <div class="evt-title">${sampleTicket.eventTitle}</div>
+    <div class="evt-meta">📅 ${sampleTicket.date}${sampleTicket.time ? '<br>🕐 ' + sampleTicket.time : ''}<br>📍 ${venue.location}</div>
+    <div><span class="tkt-type">${sampleTicket.type}</span></div>
+  </div>
+  <div class="tkt-stub">
+    <div class="admit">Admit One</div>
+    <div class="qr-wrap"><img src="${qrDataUrl}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
+    <div class="tkt-id">PREVIEW</div>
+  </div>
+</div>
+</body></html>`;
+  }
+};
+
 const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0]) => {
   const fs = size.fScale ?? 1;
   const r = (n) => Math.round(n * fs);
@@ -901,19 +1016,19 @@ ${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');return`<d
   win.document.write(html); win.document.close();
 };
 
-const fetchOrCreatePhysicalOrders = async (ev) => {
+const fetchOrCreatePhysicalOrders = async (ev, consignee = '') => {
   const { data: existing } = await supabase
-    .from('orders').select('id, order_items(ticket_type_name)')
-    .eq('event_id', ev.id).eq('source', 'physical');
+    .from('orders').select('id, order_items(ticket_type_name), status, created_at')
+    .eq('event_id', ev.id).eq('source', 'physical').neq('status', 'cancelled');
   if (existing && existing.length > 0) {
-    return existing.map(o => ({ id: o.id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket' }));
+    return { orders: existing.map(o => ({ id: o.id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket' })), wasExisting: true };
   }
   const results = [];
   for (const tier of ev.tickets.filter(t => (t.physicalQty ?? 0) > 0)) {
     for (let n = 0; n < tier.physicalQty; n++) {
       const { data: order, error } = await supabase.from('orders').insert({
         tenant_id: tenantId, event_id: ev.id,
-        buyer_name: 'Walk-In', buyer_email: 'physical@c8tickets.com', buyer_phone: '',
+        buyer_name: consignee || 'Physical Ticket', buyer_email: 'physical@c8tickets.com', buyer_phone: '',
         status: 'confirmed', total_amount: tier.price, source: 'physical',
       }).select().single();
       if (error) { console.error(error); continue; }
@@ -925,29 +1040,42 @@ const fetchOrCreatePhysicalOrders = async (ev) => {
       results.push({ id: order.id, type: tier.type });
     }
   }
-  return results;
+  setPhysicalCounts(prev => ({ ...prev, [ev.id]: (prev[ev.id] || 0) + results.length }));
+  return { orders: results, wasExisting: false };
 };
 
-const generatePhysicalTickets = async (ev, size = TICKET_SIZES[0]) => {
+const generatePhysicalTickets = async (ev, size, consignee) => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
   }
-  setGeneratingPhysical(ev.id);
-  const orders = await fetchOrCreatePhysicalOrders(ev);
-  setGeneratingPhysical(false);
-  if (orders.length > 0) await openPrintPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time) })), venue, size);
+  const html = await generateTicketPreviewHtml(ev, size, 'print', venue);
+  setPhysicalPreviewData({ html, ev, size, mode: 'print', consignee });
 };
 
-const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
+const generatePhotoTickets = async (ev, size, consignee) => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
   }
-  setGeneratingPhysical(ev.id + '-photo');
-  const orders = await fetchOrCreatePhysicalOrders(ev);
+  const html = await generateTicketPreviewHtml(ev, size, 'photo', venue);
+  setPhysicalPreviewData({ html, ev, size, mode: 'photo', consignee });
+};
+
+const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) => {
+  setPhysicalPreviewData(null);
+  setPhysicalDupeData(null);
+  setGeneratingPhysical(ev.id + (mode === 'photo' ? '-photo' : ''));
+  const { orders, wasExisting } = await fetchOrCreatePhysicalOrders(ev, consignee);
   setGeneratingPhysical(false);
-  if (orders.length > 0) await openPhotoPage(ev, orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY })), venue, size);
+  if (wasExisting && !forceNew) {
+    setPhysicalDupeData({ ev, size, mode, consignee, count: orders.length, existingOrders: orders });
+    return;
+  }
+  if (orders.length === 0) { alert('No tickets to generate.'); return; }
+  const mapped = orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY }));
+  if (mode === 'photo') await openPhotoPage(ev, mapped, venue, size);
+  else await openPrintPage(ev, mapped, venue, size);
 };
   const vEvents = events.filter(e => e.venueId === venue.id);
   const allPublicEvents = events.filter(e => e.published !== false);
@@ -2288,7 +2416,7 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Generating…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Generating…":"📸 Photo PDF"}</button></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><div style={{display:'flex',flexDirection:'column',gap:3}}>{(physicalCounts[ev.id]||0)>0&&<div style={{fontSize:10,color:'var(--gold)',fontWeight:700}}>{physicalCounts[ev.id]} physical printed</div>}<div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Loading…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Loading…":"📸 Photo PDF"}</button>{(physicalCounts[ev.id]||0)>0&&<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={async()=>{const{data}=await supabase.from('orders').select('id,order_items(ticket_type_id)').eq('event_id',ev.id).eq('source','physical').eq('status','confirmed').order('created_at',{ascending:true});setPhysicalVoidModal({ev,validOrders:(data||[]).map(o=>({id:o.id,ticketTypeId:o.order_items?.[0]?.ticket_type_id}))});setPhysicalVoidCount('');}}>Void Physical</button>}</div></div></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
@@ -3421,6 +3549,10 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-ticketsize-heading" onClick={e=>e.stopPropagation()} style={{maxWidth:540}}>
             <h2 id="dlg-ticketsize-heading" className="dsp" style={{fontSize:22,marginBottom:6}}>Choose Ticket Size</h2>
             <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>{ticketSizeModal.mode==='photo'?'Photo PDF — event image on left panel':'Text layout — event photo as subtle background texture'}</p>
+            <div className="fg" style={{marginBottom:20}}>
+              <label className="fl">Consignee / Batch Label <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
+              <input className="fi" type="text" placeholder="e.g. UPS Store batch 1, Front desk" value={physicalConsignee} onChange={e=>setPhysicalConsignee(e.target.value)} />
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
               {TICKET_SIZES.map(s=><button key={s.id} onClick={()=>setTicketSizeSelected(s.id)} style={{padding:"14px 16px",textAlign:"left",border:`2px solid ${ticketSizeSelected===s.id?"var(--gold)":"var(--border)"}`,borderRadius:8,background:ticketSizeSelected===s.id?"rgba(200,146,42,0.1)":"var(--card)",cursor:"pointer",color:"var(--text)"}}>
                 <div style={{fontWeight:700,fontSize:13}}>{s.label}</div>
@@ -3437,13 +3569,102 @@ const generatePhotoTickets = async (ev, size = TICKET_SIZES[0]) => {
                 const size=ticketSizeSelected==='custom'?resolveCustomSize(ticketSizeCustomW,ticketSizeCustomH):TICKET_SIZES.find(s=>s.id===ticketSizeSelected);
                 const{ev,mode}=ticketSizeModal;
                 setTicketSizeModal(null);
-                if(mode==='print') await generatePhysicalTickets(ev,size);
-                else await generatePhotoTickets(ev,size);
-              }}>{generatingPhysical?"Generating…":"Generate PDF"}</button>
+                if(mode==='print') await generatePhysicalTickets(ev,size,physicalConsignee);
+                else await generatePhotoTickets(ev,size,physicalConsignee);
+              }}>{generatingPhysical?"Loading…":"Preview Ticket"}</button>
               <button className="btn" style={{padding:"10px 20px"}} onClick={()=>setTicketSizeModal(null)}>Cancel</button>
             </div>
           </div>
         </div>}
+
+        {physicalPreviewData && <div className="modal-bg" onClick={()=>setPhysicalPreviewData(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:680,width:'95vw'}}>
+            <h2 className="dsp" style={{fontSize:20,marginBottom:4}}>Ticket Preview</h2>
+            <p style={{color:'var(--text3)',fontSize:12,marginBottom:16}}>Sample layout — QR shown is a placeholder, not a real ticket.</p>
+            <div style={{borderRadius:8,overflow:'hidden',marginBottom:20,border:'1px solid var(--border)'}}>
+              <iframe
+                srcDoc={physicalPreviewData.html}
+                style={{width:'100%',height:220,border:'none',display:'block'}}
+                title="Ticket preview"
+              />
+            </div>
+            {physicalPreviewData.consignee && <p style={{fontSize:13,color:'var(--text2)',marginBottom:16}}>Consignee: <strong>{physicalPreviewData.consignee}</strong></p>}
+            <div style={{display:'flex',gap:10}}>
+              <button className="buy" style={{flex:1}} disabled={!!generatingPhysical} onClick={()=>doGeneratePhysical(physicalPreviewData.ev,physicalPreviewData.size,physicalPreviewData.mode,physicalPreviewData.consignee)}>
+                {generatingPhysical?'Generating…':`Generate All ${physicalPreviewData.ev.tickets.reduce((s,t)=>s+(t.physicalQty??0),0)} Tickets`}
+              </button>
+              <button className="btn" style={{padding:'10px 20px'}} onClick={()=>setPhysicalPreviewData(null)}>Back</button>
+            </div>
+          </div>
+        </div>}
+
+        {physicalDupeData && <div className="modal-bg" onClick={()=>setPhysicalDupeData(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:480}}>
+            <h2 className="dsp" style={{fontSize:20,marginBottom:8}}>Tickets Already Generated</h2>
+            <p style={{color:'var(--text2)',fontSize:14,marginBottom:24}}><strong style={{color:'var(--text)'}}>{physicalDupeData.count} physical tickets</strong> already exist for this event. Re-download the existing PDF, or generate a new batch.</p>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <button className="buy" disabled={!!generatingPhysical} onClick={async()=>{
+                const{ev,size,mode,existingOrders}=physicalDupeData;
+                setPhysicalDupeData(null);
+                setGeneratingPhysical(ev.id);
+                const mapped=existingOrders.map(o=>({...o,eventTitle:ev.title,date:fmtDate(ev.date),time:fmtTime(ev.time),image:ev.image,focalX:ev.focalX,focalY:ev.focalY}));
+                if(mode==='photo') await openPhotoPage(ev,mapped,venue,size);
+                else await openPrintPage(ev,mapped,venue,size);
+                setGeneratingPhysical(false);
+              }}>
+                {generatingPhysical?'Generating…':`↓ Re-download PDF (${physicalDupeData.count} tickets)`}
+              </button>
+              <button className="btn" disabled={!!generatingPhysical} onClick={async()=>{
+                const{ev,size,mode,consignee}=physicalDupeData;
+                setPhysicalDupeData(null);
+                await doGeneratePhysical(ev,size,mode,consignee,true);
+              }}>Generate New Batch (creates additional tickets)</button>
+              <button className="btn" onClick={()=>setPhysicalDupeData(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>}
+
+        {physicalVoidModal && (() => {
+          const { ev, validOrders } = physicalVoidModal;
+          const maxVoid = validOrders.length;
+          const voidN = Math.min(parseInt(physicalVoidCount) || 0, maxVoid);
+          return <div className="modal-bg" onClick={()=>setPhysicalVoidModal(null)}>
+            <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:460}}>
+              <h2 className="dsp" style={{fontSize:20,marginBottom:8}}>Void Physical Tickets</h2>
+              <p style={{color:'var(--text2)',fontSize:14,marginBottom:6}}>Event: <strong style={{color:'var(--text)'}}>{ev.title}</strong></p>
+              <p style={{color:'var(--text2)',fontSize:13,marginBottom:20}}>
+                <span style={{color:'var(--green)',fontWeight:700}}>{maxVoid}</span> valid tickets can be voided.
+                {(physicalCounts[ev.id]||0)-maxVoid>0&&<span style={{marginLeft:8,color:'var(--text3)'}}>{(physicalCounts[ev.id]||0)-maxVoid} already checked in — cannot void.</span>}
+              </p>
+              <div className="fg" style={{marginBottom:8}}>
+                <label className="fl">Number of tickets to void</label>
+                <input className="fi" type="number" min="1" max={maxVoid} value={physicalVoidCount} onChange={e=>setPhysicalVoidCount(e.target.value)} placeholder={`1 – ${maxVoid}`} />
+              </div>
+              <p style={{fontSize:11,color:'var(--text3)',marginBottom:20}}>Voids the most recently generated tickets first (least likely to have been distributed).</p>
+              <div style={{display:'flex',gap:10}}>
+                <button className="buy" style={{background:'var(--red)',borderColor:'var(--red)',flex:1}}
+                  disabled={physicalVoiding||voidN<=0||voidN>maxVoid}
+                  onClick={async()=>{
+                    if(!confirm(`Void ${voidN} physical ticket${voidN!==1?'s':''} for "${ev.title}"? This cannot be undone.`))return;
+                    setPhysicalVoiding(true);
+                    const toVoid=validOrders.slice(-voidN);
+                    for(const o of toVoid){
+                      await supabase.from('orders').update({status:'cancelled'}).eq('id',o.id);
+                      await supabase.rpc('decrement_sold',{tid:o.ticketTypeId,qty:1});
+                    }
+                    setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-voidN)}));
+                    setPhysicalVoiding(false);
+                    setPhysicalVoidModal(null);
+                    setPhysicalVoidCount('');
+                    reloadOrders();
+                  }}>
+                  {physicalVoiding?'Voiding…':`Void ${voidN>0?voidN:''} Ticket${voidN!==1?'s':''}`}
+                </button>
+                <button className="btn" style={{padding:'10px 20px'}} onClick={()=>setPhysicalVoidModal(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>;
+        })()}
         </main>
 
       <footer className="footer">
