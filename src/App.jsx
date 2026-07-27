@@ -825,7 +825,8 @@ const generateTicketPreviewHtml = async (ev, size, mode, venue) => {
   const r = (n) => Math.round(n * fs);
   const qrSz = mode === 'photo' ? r(72) : r(88);
   const qrDataUrl = await QRCodeLib.toDataURL(mockId, { width: qrSz, margin: 1 });
-  const sampleTicket = { id: mockId, type: ev.tickets[0]?.type || 'General Admission', eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY };
+  const sampleTicket = { id: mockId, type: ev.tickets[0]?.type || 'General Admission', price: ev.tickets[0]?.price, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), doors: fmtTime(ev.doors || ''), image: ev.image, focalX: ev.focalX, focalY: ev.focalY };
+  const fmtP = p => p == null ? '' : '$' + (p % 1 === 0 ? Math.round(p) : Number(p).toFixed(2));
 
   if (mode === 'photo') {
     const hasImg = sampleTicket.image && sampleTicket.image.startsWith('http');
@@ -844,8 +845,9 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif;padding:16
 .evt-date{font-size:${r(8)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(3)}px}
 .evt-venue{font-size:${r(7)}px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
 .tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:${r(8)}px}
-.tier-label{font-size:${r(6.5)}px;color:#c8922a;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(3)}px}
-.tier-name{font-size:${r(10)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(4)}px}
+.tier-label{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(2)}px}
+.tier-name{font-size:${r(10)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(2)}px}
+.tier-price{font-size:${r(16)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(3)}px}
 .tkt-code{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:1px}
 .qr-box{background:#fff;padding:4px;border-radius:4px;flex-shrink:0}
 .qr-box img{display:block}
@@ -860,13 +862,13 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif;padding:16
       <div class="brand-sub">${venue.location}</div>
       <div class="gold-rule"></div>
       <div class="evt-name">${sampleTicket.eventTitle}</div>
-      <div class="evt-date">${sampleTicket.date}${sampleTicket.time ? ' &nbsp;·&nbsp; ' + sampleTicket.time : ''}</div>
-      <div class="evt-venue">${venue.location}</div>
+      <div class="evt-date">${sampleTicket.date}${sampleTicket.time ? ' &nbsp;·&nbsp; ' + sampleTicket.time : ''}${sampleTicket.doors ? ' &nbsp;·&nbsp; Doors ' + sampleTicket.doors : ''}</div>
     </div>
     <div class="tkt-foot">
       <div>
-        <div class="tier-label">Admit One</div>
+        <div class="tier-label">Ticket Type</div>
         <div class="tier-name">${sampleTicket.type}</div>
+        ${sampleTicket.price != null ? `<div class="tier-price">${fmtP(sampleTicket.price)}</div>` : ''}
         <div class="tkt-code">#PREVIEW</div>
       </div>
       <div class="qr-box"><img src="${qrDataUrl}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
@@ -889,10 +891,12 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
 .brand-loc{font-size:${r(7.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
 .evt-title{font-size:${r(15)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(6)}px}
 .evt-meta{font-size:${r(8.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;line-height:2}
-.tkt-type{margin-top:${r(8)}px;font-size:${r(8)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px;border:1px solid rgba(200,146,42,.5);border-radius:3px;padding:2px 7px;display:inline-block}
-.admit{font-size:${r(7.5)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px}
+.evt-bottom{display:flex;gap:${r(10)}px;flex-wrap:wrap;font-size:${r(7.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px}
+.stub-tier{font-size:${r(7)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1.5px;text-align:center;line-height:1.3;word-break:break-word}
+.stub-price-lbl{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:${r(3)}px}
+.stub-price{font-size:${r(22)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(4)}px}
 .qr-wrap{background:#fff;padding:5px;border-radius:4px}
-.tkt-id{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
+.tkt-id{font-size:${r(6)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
 </style></head><body>
 <div class="tkt">
   <div class="gold-bar"></div>
@@ -903,11 +907,16 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
       <div class="brand-loc">${venue.location}</div>
     </div>
     <div class="evt-title">${sampleTicket.eventTitle}</div>
-    <div class="evt-meta">📅 ${sampleTicket.date}${sampleTicket.time ? '<br>🕐 ' + sampleTicket.time : ''}<br>📍 ${venue.location}</div>
-    <div><span class="tkt-type">${sampleTicket.type}</span></div>
+    <div class="evt-bottom">
+      <span>📅&nbsp;${sampleTicket.date}</span>
+      ${sampleTicket.time ? `<span>🕐&nbsp;${sampleTicket.time}</span>` : ''}
+      ${sampleTicket.doors ? `<span>🚪&nbsp;${sampleTicket.doors}</span>` : ''}
+    </div>
   </div>
   <div class="tkt-stub">
-    <div class="admit">Admit One</div>
+    <div class="stub-tier">${sampleTicket.type}</div>
+    <div class="stub-price-lbl">Price</div>
+    <div class="stub-price">${fmtP(sampleTicket.price)}</div>
     <div class="qr-wrap"><img src="${qrDataUrl}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
     <div class="tkt-id">PREVIEW</div>
   </div>
@@ -933,21 +942,22 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .tkt{width:100%;${size.height?`min-height:${size.height};`:''}background:#1c1914;border:1.5px solid #c8922a;border-radius:8px;display:flex;overflow:hidden;position:relative;page-break-inside:avoid}
 .tkt-img{position:absolute;inset:0;background-size:cover;background-repeat:no-repeat;opacity:0.18}
 .tkt-body{flex:1;padding:${r(14)}px ${r(12)}px ${r(12)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.35);position:relative;z-index:1}
-.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(12)}px ${r(10)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(6)}px;position:relative;z-index:1}
+.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(12)}px ${r(8)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(4)}px;position:relative;z-index:1}
 .gold-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c8922a,#f0c050,#c8922a);z-index:2}
 .brand{font-size:${r(13)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:3px;line-height:1}
 .brand-loc{font-size:${r(7.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
-.evt-title{font-size:${r(15)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(6)}px}
-.evt-meta{font-size:${r(8.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.8px;line-height:2}
-.tkt-type{margin-top:${r(8)}px;font-size:${r(8)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px;border:1px solid rgba(200,146,42,.5);border-radius:3px;padding:2px 7px;display:inline-block}
-.admit{font-size:${r(7.5)}px;font-weight:700;color:#c8922a;text-transform:uppercase;letter-spacing:2px}
+.evt-title{font-size:${r(15)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.8px;line-height:1.2;margin:${r(8)}px 0 ${r(8)}px}
+.evt-bottom{display:flex;gap:${r(10)}px;flex-wrap:wrap;font-size:${r(7.5)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px}
+.stub-tier{font-size:${r(7)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1.5px;text-align:center;line-height:1.3;word-break:break-word}
+.stub-price-lbl{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;margin-top:${r(2)}px}
+.stub-price{font-size:${r(22)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(2)}px}
 .qr-wrap{background:#fff;padding:5px;border-radius:4px}
-.tkt-id{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center;word-break:break-all;line-height:1.4}
+.tkt-id{font-size:${r(6)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
 @media print{.toolbar{display:none}.sheet{padding:0.2in}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:letter portrait;margin:0}}
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Use "Save as PDF" to send to a print shop</p></div>
 <div class="sheet">
-${tickets.map((t,i)=>`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-meta">📅 ${t.date}${t.time?'<br>🕐 '+t.time:''}<br>📍 ${venue.location}</div><div><span class="tkt-type">${t.type}</span></div></div><div class="tkt-stub"><div class="admit">Admit One</div><div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}<br>${t.id.slice(9,17).toUpperCase()}</div></div></div>`).join('\n')}
+${tickets.map((t,i)=>{const fp=t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));return`<div class="tkt"><div class="gold-bar"></div>${hasImg?`<div class="tkt-img" style="background-image:url('${ev.image}');background-position:${ev.focalX??50}% ${ev.focalY??50}%"></div>`:''}<div class="tkt-body"><div><div class="brand">${venue.name}</div><div class="brand-loc">${venue.location}</div></div><div class="evt-title">${t.eventTitle}</div><div class="evt-bottom"><span>📅&nbsp;${t.date}</span>${t.time?`<span>🕐&nbsp;${t.time}</span>`:''} ${t.doors?`<span>🚪&nbsp;${t.doors}</span>`:''}</div></div><div class="tkt-stub"><div class="stub-tier">${t.type}</div><div class="stub-price-lbl">Price</div><div class="stub-price">${fp}</div><div class="qr-wrap"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div><div class="tkt-id">${t.id.slice(0,8).toUpperCase()}</div></div></div>`;}).join('\n')}
 </div></body></html>`;
   const win = window.open('', '_blank');
   if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
@@ -978,8 +988,9 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
 .evt-date{font-size:${r(8)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(3)}px}
 .evt-venue{font-size:${r(7)}px;color:#5e5040;text-transform:uppercase;letter-spacing:.5px}
 .tkt-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:${r(8)}px}
-.tier-label{font-size:${r(6.5)}px;color:#c8922a;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(3)}px}
-.tier-name{font-size:${r(10)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(4)}px}
+.tier-label{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:${r(2)}px}
+.tier-name{font-size:${r(10)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:1px;margin-bottom:${r(2)}px}
+.tier-price{font-size:${r(16)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(3)}px}
 .tkt-code{font-size:${r(6.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:1px}
 .qr-box{background:#fff;padding:4px;border-radius:4px;flex-shrink:0}
 .qr-box img{display:block}
@@ -988,7 +999,7 @@ body{background:#f0ede8;font-family:'Helvetica Neue',Arial,sans-serif}
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Save as PDF and send to your print shop</p></div>
 <div class="sheet">
-${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');return`<div class="tkt">
+${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');const fp=t.price==null?'':'$'+(t.price%1===0?Math.round(t.price):Number(t.price).toFixed(2));return`<div class="tkt">
   <div class="tkt-photo ${hasImg?'':'no-photo'}" style="${hasImg?`background-image:url('${t.image}');background-position:${t.focalX??50}% ${t.focalY??50}%`:''}"></div>
   <div class="tkt-stripe"></div>
   <div class="tkt-main">
@@ -997,13 +1008,13 @@ ${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');return`<d
       <div class="brand-sub">${venue.location}</div>
       <div class="gold-rule"></div>
       <div class="evt-name">${t.eventTitle}</div>
-      <div class="evt-date">${t.date}${t.time?' &nbsp;·&nbsp; '+t.time:''}</div>
-      <div class="evt-venue">${venue.location}</div>
+      <div class="evt-date">${t.date}${t.time?' &nbsp;·&nbsp; '+t.time:''}${t.doors?' &nbsp;·&nbsp; Doors '+t.doors:''}</div>
     </div>
     <div class="tkt-foot">
       <div>
-        <div class="tier-label">Admit One</div>
+        <div class="tier-label">Ticket Type</div>
         <div class="tier-name">${t.type}</div>
+        ${fp?`<div class="tier-price">${fp}</div>`:''}
         <div class="tkt-code">#${t.id.slice(0,8).toUpperCase()}</div>
       </div>
       <div class="qr-box"><img src="${qrDataUrls[i]}" width="${qrSz}" height="${qrSz}" alt="QR"></div>
@@ -1018,10 +1029,10 @@ ${tickets.map((t,i)=>{const hasImg=t.image&&t.image.startsWith('http');return`<d
 
 const fetchOrCreatePhysicalOrders = async (ev, consignee = '') => {
   const { data: existing } = await supabase
-    .from('orders').select('id, order_items(ticket_type_name), status, created_at')
+    .from('orders').select('id, order_items(ticket_type_name, unit_price), status, created_at')
     .eq('event_id', ev.id).eq('source', 'physical').neq('status', 'cancelled');
   if (existing && existing.length > 0) {
-    return { orders: existing.map(o => ({ id: o.id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket' })), wasExisting: true };
+    return { orders: existing.map(o => ({ id: o.id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket', price: o.order_items?.[0]?.unit_price != null ? Number(o.order_items[0].unit_price) : null })), wasExisting: true };
   }
   const results = [];
   for (const tier of ev.tickets.filter(t => (t.physicalQty ?? 0) > 0)) {
@@ -1037,7 +1048,7 @@ const fetchOrCreatePhysicalOrders = async (ev, consignee = '') => {
         ticket_type_name: tier.type, quantity: 1, unit_price: tier.price,
       });
       await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
-      results.push({ id: order.id, type: tier.type });
+      results.push({ id: order.id, type: tier.type, price: tier.price });
     }
   }
   setPhysicalCounts(prev => ({ ...prev, [ev.id]: (prev[ev.id] || 0) + results.length }));
@@ -1073,7 +1084,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false) =
     return;
   }
   if (orders.length === 0) { alert('No tickets to generate.'); return; }
-  const mapped = orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), image: ev.image, focalX: ev.focalX, focalY: ev.focalY }));
+  const mapped = orders.map(o => ({ ...o, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), doors: fmtTime(ev.doors || ''), image: ev.image, focalX: ev.focalX, focalY: ev.focalY }));
   if (mode === 'photo') await openPhotoPage(ev, mapped, venue, size);
   else await openPrintPage(ev, mapped, venue, size);
 };
