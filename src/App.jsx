@@ -959,8 +959,8 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;padding:16px}
 const openPrintPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = null) => {
   const fs = size.fScale ?? 1;
   const r = (n) => Math.round(n * fs);
-  const qrSz = r(84);
-  const stubW = r(110);
+  const qrSz = r(72);
+  const stubW = r(100);
   const cols = size.cols || 1;
   const qrDataUrls = await Promise.all(tickets.map(t => QRCodeLib.toDataURL(t.id, { width: qrSz, margin: 1, color: { dark: '#000000', light: '#ffffff' } })));
   const tktHtml = (t, i) => {
@@ -1003,16 +1003,16 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .cut{height:0;border-top:1px dashed #bfb09a;margin:0.12in 0}
 .tkt{flex:1;${size.height?`height:${size.height};`:''}background:#1c1914;border:1.5px solid #c8922a;border-radius:5px;display:flex;overflow:hidden;position:relative}
 .gold-bar{position:absolute;top:0;left:0;right:0;height:4px;background:#c8922a;z-index:2}
-.tkt-body{flex:1;padding:${r(14)}px ${r(12)}px ${r(12)}px ${r(14)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.5);position:relative;z-index:1;min-width:0}
-.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(10)}px ${r(8)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(5)}px;position:relative;z-index:1}
-.brand{font-size:${r(12)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:2.5px;line-height:1}
-.brand-loc{font-size:${r(6.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:${r(2)}px}
-.evt-title{font-size:${r(16)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.6px;line-height:1.2;margin-bottom:${r(6)}px}
-.evt-bottom{font-size:${r(9)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px;line-height:1.4}
-.stub-tier{font-size:${r(7.5)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1px;text-align:center;line-height:1.3;word-break:break-word}
+.tkt-body{flex:1;padding:${r(10)}px ${r(9)}px ${r(9)}px ${r(11)}px;display:flex;flex-direction:column;justify-content:space-between;border-right:1.5px dashed rgba(200,146,42,.5);position:relative;z-index:1;min-width:0}
+.tkt-stub{width:${stubW}px;flex-shrink:0;padding:${r(8)}px ${r(7)}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${r(4)}px;position:relative;z-index:1}
+.brand{font-size:${r(11)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:2.5px;line-height:1}
+.brand-loc{font-size:${r(6)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:1.5px;margin-top:${r(1)}px}
+.evt-title{font-size:${r(13)}px;font-weight:800;color:#f0e9da;text-transform:uppercase;letter-spacing:.6px;line-height:1.2;margin-bottom:${r(4)}px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.evt-bottom{font-size:${r(8)}px;color:#b5a78a;text-transform:uppercase;letter-spacing:.5px;line-height:1.4}
+.stub-tier{font-size:${r(7)}px;font-weight:900;color:#c8922a;text-transform:uppercase;letter-spacing:1px;text-align:center;line-height:1.3;word-break:break-word}
 .stub-divider{width:70%;height:1px;background:rgba(200,146,42,.4);margin:${r(2)}px 0}
-.stub-price-lbl{font-size:${r(5.5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px}
-.stub-price{font-size:${r(21)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(2)}px}
+.stub-price-lbl{font-size:${r(5)}px;color:#7a6c54;text-transform:uppercase;letter-spacing:2px}
+.stub-price{font-size:${r(18)}px;font-weight:900;color:#f0e9da;line-height:1;margin-bottom:${r(2)}px}
 .qr-wrap{background:#fff;padding:4px;border-radius:3px}
 .tkt-id{font-size:${r(5.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
 @media print{.toolbar{display:none}.sheet{padding:0.25in 0.2in}.row{break-inside:avoid;page-break-inside:avoid}@page{size:letter portrait;margin:0}}
@@ -2460,7 +2460,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                 if (dashFilter==='custom') { const s=dashCustomStart?new Date(dashCustomStart+'T00:00:00'):null; const e=dashCustomEnd?new Date(dashCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
                 return true;
               };
-              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&inRange(o));
+              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&o.source!=='physical'&&inRange(o));
               const tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
               const ci=vo.filter(o=>o.checkedIn).length;
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
@@ -2652,7 +2652,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                 if (reportFilter==='custom') { const s=reportCustomStart?new Date(reportCustomStart+'T00:00:00'):null; const e=reportCustomEnd?new Date(reportCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
                 return true;
               };
-              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&inRange(o));
+              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&o.source!=='physical'&&inRange(o));
               const filterLabels={month:'This Month',prev_month:'Prev Month',ytd:'Year to Date',last_year:'Last Year',all:'All Time',custom:'Custom Range'};
 
               const typeMap={};
@@ -2672,7 +2672,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
               const doorRev=doorOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
               const onlineRev=onlineOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
 
-              const allVenueOrders=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled');
+              const allVenueOrders=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&o.source!=='physical');
               const buyerMap={};
               for(const o of allVenueOrders){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0,lastPurchase:null};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);if(!buyerMap[key].lastPurchase||new Date(o.date)>new Date(buyerMap[key].lastPurchase))buyerMap[key].lastPurchase=o.date;}
               const repeatBuyers=Object.values(buyerMap).filter(b=>b.orders>=2).sort((a,b)=>b.orders-a.orders);
@@ -2692,7 +2692,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
               const ciTypeRows=Object.entries(ciTypeMap).sort((a,b)=>b[1].sold-a[1].sold);
 
               // Bookkeeping calculations
-              const allDateOrders = orders.filter(o => o.status !== 'cancelled' && inRange(o));
+              const allDateOrders = orders.filter(o => o.status !== 'cancelled' && o.source !== 'physical' && inRange(o));
               const bkOrders = bkVenueFilter === 'all' ? allDateOrders : allDateOrders.filter(o => o.venueId === bkVenueFilter);
               const PLATFORM_PCT = platformFeePct / 100;
               const bkFees = (o) => {
@@ -2853,7 +2853,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
               wowWeekStart.setHours(0,0,0,0);
               const wowLastStart = new Date(wowWeekStart); wowLastStart.setDate(wowWeekStart.getDate()-7);
 
-              const allActive = orders.filter(o => o.venueId===venue.id && o.status!=='cancelled');
+              const allActive = orders.filter(o => o.venueId===venue.id && o.status!=='cancelled' && o.source!=='physical');
               const wowThis = allActive.filter(o => new Date(o.date) >= wowWeekStart);
               const wowLast = allActive.filter(o => { const d=new Date(o.date); return d>=wowLastStart && d<wowWeekStart; });
 
@@ -3202,7 +3202,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                   {(() => {
                     const trackerVenueId = bkVenueFilter === 'all' ? venue.id : bkVenueFilter;
                     const trackerVenueName = venues.find(v => v.id === trackerVenueId)?.name || 'Venue';
-                    const allTrackerOrders = orders.filter(o => o.venueId === trackerVenueId && o.status !== 'cancelled');
+                    const allTrackerOrders = orders.filter(o => o.venueId === trackerVenueId && o.status !== 'cancelled' && o.source !== 'physical');
                     const allTimeOwed = allTrackerOrders.reduce((s, o) => {
                       const f = bkFees(o);
                       const pf = Math.round(f.ticketSub * PLATFORM_PCT * 100) / 100;
@@ -3285,7 +3285,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                   })()}
 
                   {isSuperAdmin && (() => {
-                    const totalFeesCollected = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.serviceFees || 0), 0);
+                    const totalFeesCollected = orders.filter(o => o.status !== 'cancelled' && o.source !== 'physical').reduce((s, o) => s + (o.serviceFees || 0), 0);
                     const totalWithdrawn = platformWithdrawals.reduce((s, w) => s + Number(w.amount), 0);
                     const stripeTransferFees = Math.round(venuePayouts.length * 1.50 * 100) / 100;
                     const outstanding = Math.round((totalFeesCollected - totalWithdrawn - stripeTransferFees) * 100) / 100;
