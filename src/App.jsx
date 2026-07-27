@@ -1017,19 +1017,20 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .tkt-id{font-size:${r(5.5)}px;color:#7a6c54;font-family:monospace;letter-spacing:.5px;text-align:center}
 @media print{.toolbar{display:none}.sheet{padding:0.25in 0.2in}.row{break-inside:avoid;page-break-inside:avoid}@page{size:letter portrait;margin:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Set margins to <strong>None</strong> in the print dialog.</p></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p style="max-width:520px">${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel}<br>In the print dialog set <strong>Margins: None</strong>. In Chrome this works best — File → Print → Save as PDF.</p></div>
 <div class="sheet">
 ${rowsHtml.map((row, i) => i > 0 ? `<div class="cut"></div>${row}` : row).join('\n')}
 </div></body></html>`;
+  if (win) win.close();
   const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  if (win) {
-    win.location.href = url;
-  } else {
-    const opened = window.open(url, '_blank');
-    if (!opened) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 300000);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Tickets - ${ev.title}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
 const openPhotoPage = async (ev, tickets, venue, size = TICKET_SIZES[0], win = null) => {
@@ -1099,19 +1100,20 @@ body{background:#fff;font-family:'Helvetica Neue',Arial,sans-serif}
 .qr-box img{display:block}
 @media print{.toolbar{display:none}.sheet{padding:0.25in 0.2in}.row{break-inside:avoid;page-break-inside:avoid}.tkt{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cut{border-top-color:#b8a888}@page{size:letter portrait;margin:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p>${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel} &nbsp;·&nbsp; Set margins to <strong>None</strong> in the print dialog.</p></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button><p style="max-width:520px">${tickets.length} ticket${tickets.length!==1?'s':''} &nbsp;·&nbsp; ${size.sublabel}<br>In the print dialog set <strong>Margins: None</strong>. In Chrome this works best — File → Print → Save as PDF.</p></div>
 <div class="sheet">
 ${rowsHtml.map((row, i) => i > 0 ? `<div class="cut"></div>${row}` : row).join('\n')}
 </div></body></html>`;
+  if (win) win.close();
   const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  if (win) {
-    win.location.href = url;
-  } else {
-    const opened = window.open(url, '_blank');
-    if (!opened) { URL.revokeObjectURL(url); alert('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 300000);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Tickets - ${ev.title}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
 const fetchOrCreatePhysicalOrders = async (ev, consignee = '') => {
