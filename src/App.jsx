@@ -17,6 +17,7 @@ import MarketingPage from './components/MarketingPage';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import { Elements } from '@stripe/react-stripe-js';
 import { stripePromise } from './lib/stripe';
+import QRCodeLib from 'qrcode';
 
 // ── Logo as base64 PNG with transparency ──
 const LOGO_SRC = "/logo-simple.webp";
