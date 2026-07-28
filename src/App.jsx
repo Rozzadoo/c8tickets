@@ -94,8 +94,11 @@ const [resetError, setResetError] = useState('');
   const [ticketSizeCustomW, setTicketSizeCustomW] = useState('5.5');
   const [ticketSizeCustomH, setTicketSizeCustomH] = useState('2');
   const [physicalConsignee, setPhysicalConsignee] = useState('');
+  const [physicalBatchType, setPhysicalBatchType] = useState('consignment');
   const [physicalPreviewData, setPhysicalPreviewData] = useState(null);
   const [physicalDupeData, setPhysicalDupeData] = useState(null);
+  const [physicalNewBatchConsignee, setPhysicalNewBatchConsignee] = useState('');
+  const [physicalNewBatchType, setPhysicalNewBatchType] = useState('consignment');
   const [physicalVoidModal, setPhysicalVoidModal] = useState(null);
   const [physicalVoidCount, setPhysicalVoidCount] = useState('');
   const [physicalVoiding, setPhysicalVoiding] = useState(false);
@@ -264,7 +267,7 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     if (aTab !== 'events' || !session || !tenantId) return;
-    supabase.from('orders').select('event_id').eq('tenant_id', tenantId).eq('source', 'physical').neq('status', 'cancelled')
+    supabase.from('orders').select('event_id').eq('tenant_id', tenantId).like('source', 'physical%').neq('status', 'cancelled')
       .then(({ data }) => {
         if (!data) return;
         const counts = {};
@@ -1116,61 +1119,67 @@ ${rowsHtml.map((row, i) => i > 0 ? `<div class="cut"></div>${row}` : row).join('
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
-const fetchOrCreatePhysicalOrders = async (ev, consignee = '') => {
-  const { data: existing } = await supabase
-    .from('orders').select('id, order_items(ticket_type_name, unit_price), status, created_at')
-    .eq('event_id', ev.id).eq('source', 'physical').neq('status', 'cancelled');
-  if (existing && existing.length > 0) {
-    return { orders: existing.map(o => ({ id: o.id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket', price: o.order_items?.[0]?.unit_price != null ? Number(o.order_items[0].unit_price) : null })), wasExisting: true };
+const fetchOrCreatePhysicalOrders = async (ev, consignee = '', physicalType = 'consignment', createNew = false) => {
+  if (!createNew) {
+    const { data: existing } = await supabase
+      .from('orders').select('id, order_items(ticket_type_name, unit_price), status, created_at, source, buyer_name')
+      .eq('event_id', ev.id).like('source', 'physical%').neq('status', 'cancelled');
+    if (existing && existing.length > 0) {
+      return { orders: existing.map(o => ({ id: o.id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket', price: o.order_items?.[0]?.unit_price != null ? Number(o.order_items[0].unit_price) : null })), wasExisting: true, existingCount: existing.length };
+    }
   }
+  const source = physicalType === 'comp' ? 'physical_comp' : 'physical_consignment';
   const results = [];
   for (const tier of ev.tickets.filter(t => (t.physicalQty ?? 0) > 0)) {
     for (let n = 0; n < tier.physicalQty; n++) {
       const { data: order, error } = await supabase.from('orders').insert({
         tenant_id: tenantId, event_id: ev.id,
-        buyer_name: consignee || 'Physical Ticket', buyer_email: 'physical@c8tickets.com', buyer_phone: '',
-        status: 'confirmed', total_amount: tier.price, source: 'physical',
+        buyer_name: consignee || (physicalType === 'comp' ? 'Comp' : 'Physical Ticket'),
+        buyer_email: 'physical@c8tickets.com', buyer_phone: '',
+        status: 'confirmed', total_amount: physicalType === 'comp' ? 0 : tier.price, source,
       }).select().single();
       if (error) { console.error(error); continue; }
       await supabase.from('order_items').insert({
         order_id: order.id, ticket_type_id: tier.id,
-        ticket_type_name: tier.type, quantity: 1, unit_price: tier.price,
+        ticket_type_name: tier.type, quantity: 1, unit_price: physicalType === 'comp' ? 0 : tier.price,
       });
-      await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
-      results.push({ id: order.id, type: tier.type, price: tier.price });
+      if (physicalType !== 'comp') await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
+      results.push({ id: order.id, type: tier.type, price: physicalType === 'comp' ? 0 : tier.price });
     }
   }
   setPhysicalCounts(prev => ({ ...prev, [ev.id]: (prev[ev.id] || 0) + results.length }));
   return { orders: results, wasExisting: false };
 };
 
-const generatePhysicalTickets = async (ev, size, consignee) => {
+const generatePhysicalTickets = async (ev, size, consignee, physicalType = 'consignment') => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
   }
   const html = await generateTicketPreviewHtml(ev, size, 'print', venue);
-  setPhysicalPreviewData({ html, ev, size, mode: 'print', consignee });
+  setPhysicalPreviewData({ html, ev, size, mode: 'print', consignee, physicalType });
 };
 
-const generatePhotoTickets = async (ev, size, consignee) => {
+const generatePhotoTickets = async (ev, size, consignee, physicalType = 'consignment') => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
   }
   const html = await generateTicketPreviewHtml(ev, size, 'photo', venue);
-  setPhysicalPreviewData({ html, ev, size, mode: 'photo', consignee });
+  setPhysicalPreviewData({ html, ev, size, mode: 'photo', consignee, physicalType });
 };
 
-const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, win = null) => {
+const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'consignment', createNew = false, win = null) => {
   setPhysicalPreviewData(null);
   setPhysicalDupeData(null);
   setGeneratingPhysical(ev.id + (mode === 'photo' ? '-photo' : ''));
-  const { orders, wasExisting } = await fetchOrCreatePhysicalOrders(ev, consignee);
+  const { orders, wasExisting, existingCount } = await fetchOrCreatePhysicalOrders(ev, consignee, physicalType, createNew);
   setGeneratingPhysical(false);
-  if (wasExisting && !forceNew) {
+  if (wasExisting && !createNew) {
     if (win) win.close();
-    setPhysicalDupeData({ ev, size, mode, consignee, count: orders.length, existingOrders: orders });
+    setPhysicalNewBatchConsignee(consignee);
+    setPhysicalNewBatchType(physicalType);
+    setPhysicalDupeData({ ev, size, mode, consignee, physicalType, count: existingCount, existingOrders: orders });
     return;
   }
   if (orders.length === 0) { if (win) win.close(); alert('No tickets to generate.'); return; }
@@ -2460,7 +2469,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                 if (dashFilter==='custom') { const s=dashCustomStart?new Date(dashCustomStart+'T00:00:00'):null; const e=dashCustomEnd?new Date(dashCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
                 return true;
               };
-              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&o.source!=='physical'&&inRange(o));
+              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&!o.source?.startsWith('physical')&&inRange(o));
               const tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
               const ci=vo.filter(o=>o.checkedIn).length;
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
@@ -2652,7 +2661,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                 if (reportFilter==='custom') { const s=reportCustomStart?new Date(reportCustomStart+'T00:00:00'):null; const e=reportCustomEnd?new Date(reportCustomEnd+'T23:59:59'):null; if(s&&d<s)return false; if(e&&d>e)return false; return true; }
                 return true;
               };
-              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&o.source!=='physical'&&inRange(o));
+              const vo=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&!o.source?.startsWith('physical')&&inRange(o));
               const filterLabels={month:'This Month',prev_month:'Prev Month',ytd:'Year to Date',last_year:'Last Year',all:'All Time',custom:'Custom Range'};
 
               const typeMap={};
@@ -2672,7 +2681,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
               const doorRev=doorOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
               const onlineRev=onlineOrders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
 
-              const allVenueOrders=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&o.source!=='physical');
+              const allVenueOrders=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&!o.source?.startsWith('physical'));
               const buyerMap={};
               for(const o of allVenueOrders){const key=(o.buyer.email||'').toLowerCase().trim()||o.buyer.name;if(!buyerMap[key])buyerMap[key]={email:o.buyer.email,name:o.buyer.name,orders:0,total:0,tix:0,lastPurchase:null};buyerMap[key].orders++;buyerMap[key].total+=o.total;buyerMap[key].tix+=o.items.reduce((s,i)=>s+i.qty,0);if(!buyerMap[key].lastPurchase||new Date(o.date)>new Date(buyerMap[key].lastPurchase))buyerMap[key].lastPurchase=o.date;}
               const repeatBuyers=Object.values(buyerMap).filter(b=>b.orders>=2).sort((a,b)=>b.orders-a.orders);
@@ -2692,7 +2701,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
               const ciTypeRows=Object.entries(ciTypeMap).sort((a,b)=>b[1].sold-a[1].sold);
 
               // Bookkeeping calculations
-              const allDateOrders = orders.filter(o => o.status !== 'cancelled' && o.source !== 'physical' && inRange(o));
+              const allDateOrders = orders.filter(o => o.status !== 'cancelled' && !o.source?.startsWith('physical') && inRange(o));
               const bkOrders = bkVenueFilter === 'all' ? allDateOrders : allDateOrders.filter(o => o.venueId === bkVenueFilter);
               const PLATFORM_PCT = platformFeePct / 100;
               const bkFees = (o) => {
@@ -2853,7 +2862,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
               wowWeekStart.setHours(0,0,0,0);
               const wowLastStart = new Date(wowWeekStart); wowLastStart.setDate(wowWeekStart.getDate()-7);
 
-              const allActive = orders.filter(o => o.venueId===venue.id && o.status!=='cancelled' && o.source!=='physical');
+              const allActive = orders.filter(o => o.venueId===venue.id && o.status!=='cancelled' && !o.source?.startsWith('physical'));
               const wowThis = allActive.filter(o => new Date(o.date) >= wowWeekStart);
               const wowLast = allActive.filter(o => { const d=new Date(o.date); return d>=wowLastStart && d<wowWeekStart; });
 
@@ -2960,6 +2969,40 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                   <tr><td style={{fontWeight:600}}>Door — Card</td><td>{doorOrders.filter(o=>o.source==='door').length}</td><td>{doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0))}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:(venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0)+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0}%</span></div></td></tr>
                   <tr><td style={{fontWeight:600}}>Door — Cash</td><td>{doorOrders.filter(o=>o.source==='door_cash').length}</td><td>{doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0)}</td><td style={{color:"var(--gold)",fontWeight:700}}>{fmtCurrency(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0))}</td><td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:6,background:"var(--bg4)",borderRadius:99,minWidth:80}}><div style={{height:"100%",width:(venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0)+"%",background:"var(--gold)",borderRadius:99}}/></div><span style={{fontSize:12,minWidth:35,textAlign:"right"}}>{venueRev>0?Math.round(doorOrders.filter(o=>o.source==='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0)/venueRev*100):0}%</span></div></td></tr>
                 </tbody></table></div>
+
+                {(()=>{
+                  const physOrders=orders.filter(o=>o.venueId===venue.id&&o.status!=='cancelled'&&o.source?.startsWith('physical')&&inRange(o));
+                  if(physOrders.length===0)return null;
+                  const batchMap={};
+                  for(const o of physOrders){
+                    const typeLabel=o.source==='physical_comp'?'Comp':o.source==='physical_consignment'?'Consignment':'Consignment';
+                    const day=new Date(o.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+                    const key=`${typeLabel}|${o.buyer?.name||''}|${day}`;
+                    if(!batchMap[key])batchMap[key]={type:typeLabel,consignee:o.buyer?.name||'—',date:o.date,count:0,checkedIn:0,faceValue:0};
+                    batchMap[key].count++;
+                    if(o.checkedIn)batchMap[key].checkedIn++;
+                    batchMap[key].faceValue+=o.items.reduce((s,i)=>s+i.qty*i.price,0);
+                  }
+                  const batches=Object.values(batchMap).sort((a,b)=>new Date(b.date)-new Date(a.date));
+                  return <>
+                    <h3 className="dsp" style={{fontSize:18,marginBottom:4}}>Physical Ticket Batches</h3>
+                    <p style={{color:'var(--text3)',fontSize:12,marginBottom:12}}>Printed tickets — not counted in sales totals above. Face value shown for consignment batches.</p>
+                    <div style={{overflowX:'auto',marginBottom:32}}><table className="dt"><thead><tr><th>Date</th><th>Type</th><th>Consignee / Label</th><th>Printed</th><th>Checked In</th><th>Check-in Rate</th><th>Face Value</th></tr></thead><tbody>
+                      {batches.map((b,i)=>{
+                        const pct=b.count>0?Math.round(b.checkedIn/b.count*100):0;
+                        return <tr key={i}>
+                          <td style={{fontSize:12,color:'var(--text2)'}}>{new Date(b.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+                          <td><span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,background:b.type==='Comp'?'rgba(100,180,100,0.15)':'rgba(200,146,42,0.15)',color:b.type==='Comp'?'var(--green)':'var(--gold)'}}>{b.type}</span></td>
+                          <td style={{fontWeight:600}}>{b.consignee}</td>
+                          <td>{b.count}</td>
+                          <td>{b.checkedIn}</td>
+                          <td><div style={{display:'flex',alignItems:'center',gap:8}}><div style={{flex:1,height:6,background:'var(--bg4)',borderRadius:99,minWidth:60}}><div style={{height:'100%',width:pct+'%',background:pct>=80?'var(--green)':pct>=40?'var(--gold)':'var(--red)',borderRadius:99}}/></div><span style={{fontSize:12,minWidth:32,textAlign:'right'}}>{pct}%</span></div></td>
+                          <td style={{color:b.type==='Comp'?'var(--text3)':'var(--gold)',fontWeight:700}}>{b.type==='Comp'?'—':fmtCurrency(b.faceValue)}</td>
+                        </tr>;
+                      })}
+                    </tbody></table></div>
+                  </>;
+                })()}
 
                 <h3 className="dsp" style={{fontSize:18,marginBottom:12}}>Sales by Day of Week</h3>
                 {vo.length===0
@@ -3202,7 +3245,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                   {(() => {
                     const trackerVenueId = bkVenueFilter === 'all' ? venue.id : bkVenueFilter;
                     const trackerVenueName = venues.find(v => v.id === trackerVenueId)?.name || 'Venue';
-                    const allTrackerOrders = orders.filter(o => o.venueId === trackerVenueId && o.status !== 'cancelled' && o.source !== 'physical');
+                    const allTrackerOrders = orders.filter(o => o.venueId === trackerVenueId && o.status !== 'cancelled' && !o.source?.startsWith('physical'));
                     const allTimeOwed = allTrackerOrders.reduce((s, o) => {
                       const f = bkFees(o);
                       const pf = Math.round(f.ticketSub * PLATFORM_PCT * 100) / 100;
@@ -3285,7 +3328,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                   })()}
 
                   {isSuperAdmin && (() => {
-                    const totalFeesCollected = orders.filter(o => o.status !== 'cancelled' && o.source !== 'physical').reduce((s, o) => s + (o.serviceFees || 0), 0);
+                    const totalFeesCollected = orders.filter(o => o.status !== 'cancelled' && !o.source?.startsWith('physical')).reduce((s, o) => s + (o.serviceFees || 0), 0);
                     const totalWithdrawn = platformWithdrawals.reduce((s, w) => s + Number(w.amount), 0);
                     const stripeTransferFees = Math.round(venuePayouts.length * 1.50 * 100) / 100;
                     const outstanding = Math.round((totalFeesCollected - totalWithdrawn - stripeTransferFees) * 100) / 100;
@@ -3729,6 +3772,14 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-ticketsize-heading" onClick={e=>e.stopPropagation()} style={{maxWidth:540}}>
             <h2 id="dlg-ticketsize-heading" className="dsp" style={{fontSize:22,marginBottom:6}}>Choose Ticket Size</h2>
             <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>{ticketSizeModal.mode==='photo'?'Photo PDF — event image on left panel':'Text layout — event photo as subtle background texture'}</p>
+            <div style={{marginBottom:16}}>
+              <label className="fl" style={{marginBottom:8}}>Batch Type</label>
+              <div style={{display:'flex',gap:8}}>
+                {[['consignment','Consignment Sale'],['comp','Comp / Free Admission']].map(([val,lbl])=>(
+                  <button key={val} onClick={()=>setPhysicalBatchType(val)} style={{flex:1,padding:'10px 12px',border:`2px solid ${physicalBatchType===val?'var(--gold)':'var(--border)'}`,borderRadius:8,background:physicalBatchType===val?'rgba(200,146,42,0.1)':'var(--card)',cursor:'pointer',color:'var(--text)',fontWeight:physicalBatchType===val?700:400,fontSize:13}}>{lbl}</button>
+                ))}
+              </div>
+            </div>
             <div className="fg" style={{marginBottom:20}}>
               <label className="fl">Consignee / Batch Label <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
               <input className="fi" type="text" placeholder="e.g. UPS Store batch 1, Front desk" value={physicalConsignee} onChange={e=>setPhysicalConsignee(e.target.value)} />
@@ -3749,8 +3800,8 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
                 const size=ticketSizeSelected==='custom'?resolveCustomSize(ticketSizeCustomW,ticketSizeCustomH):TICKET_SIZES.find(s=>s.id===ticketSizeSelected);
                 const{ev,mode}=ticketSizeModal;
                 setTicketSizeModal(null);
-                if(mode==='print') await generatePhysicalTickets(ev,size,physicalConsignee);
-                else await generatePhotoTickets(ev,size,physicalConsignee);
+                if(mode==='print') await generatePhysicalTickets(ev,size,physicalConsignee,physicalBatchType);
+                else await generatePhotoTickets(ev,size,physicalConsignee,physicalBatchType);
               }}>{generatingPhysical?"Loading…":"Preview Ticket"}</button>
               <button className="btn" style={{padding:"10px 20px"}} onClick={()=>setTicketSizeModal(null)}>Cancel</button>
             </div>
@@ -3773,7 +3824,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
               <button className="buy" style={{flex:1}} disabled={!!generatingPhysical} onClick={()=>{
                 const win=window.open('about:blank','_blank');
                 if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
-                doGeneratePhysical(physicalPreviewData.ev,physicalPreviewData.size,physicalPreviewData.mode,physicalPreviewData.consignee,false,win);
+                doGeneratePhysical(physicalPreviewData.ev,physicalPreviewData.size,physicalPreviewData.mode,physicalPreviewData.consignee,physicalPreviewData.physicalType||'consignment',false,win);
               }}>
                 {generatingPhysical?'Generating…':`Generate All ${physicalPreviewData.ev.tickets.reduce((s,t)=>s+(t.physicalQty??0),0)} Tickets`}
               </button>
@@ -3783,30 +3834,43 @@ const doGeneratePhysical = async (ev, size, mode, consignee, forceNew = false, w
         </div>}
 
         {physicalDupeData && <div className="modal-bg" onClick={()=>setPhysicalDupeData(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:480}}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:520}}>
             <h2 className="dsp" style={{fontSize:20,marginBottom:8}}>Tickets Already Generated</h2>
-            <p style={{color:'var(--text2)',fontSize:14,marginBottom:24}}><strong style={{color:'var(--text)'}}>{physicalDupeData.count} physical tickets</strong> already exist for this event. Re-download the existing PDF, or generate a new batch.</p>
-            <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              <button className="buy" disabled={!!generatingPhysical} onClick={()=>{
+            <p style={{color:'var(--text2)',fontSize:14,marginBottom:20}}><strong style={{color:'var(--text)'}}>{physicalDupeData.count} physical tickets</strong> already exist for this event.</p>
+            <button className="buy" style={{width:'100%',marginBottom:24}} disabled={!!generatingPhysical} onClick={()=>{
+              const win=window.open('about:blank','_blank');
+              if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
+              const{ev,size,mode,existingOrders}=physicalDupeData;
+              setPhysicalDupeData(null);
+              setGeneratingPhysical(ev.id);
+              const mapped=existingOrders.map(o=>({...o,eventTitle:ev.title,date:fmtDate(ev.date),time:fmtTime(ev.time),doors:fmtTime(ev.doors||''),image:ev.image,focalX:ev.focalX,focalY:ev.focalY}));
+              (mode==='photo'?openPhotoPage(ev,mapped,venue,size,win):openPrintPage(ev,mapped,venue,size,win)).then(()=>setGeneratingPhysical(false));
+            }}>
+              {generatingPhysical?'Generating…':`↓ Re-download Existing PDF (${physicalDupeData.count} tickets)`}
+            </button>
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginBottom:16}}>
+              <p style={{fontWeight:700,fontSize:14,marginBottom:14,color:'var(--text)'}}>Generate a New Batch</p>
+              <div style={{marginBottom:12}}>
+                <label className="fl" style={{marginBottom:8}}>Batch Type</label>
+                <div style={{display:'flex',gap:8}}>
+                  {[['consignment','Consignment Sale'],['comp','Comp / Free Admission']].map(([val,lbl])=>(
+                    <button key={val} onClick={()=>setPhysicalNewBatchType(val)} style={{flex:1,padding:'9px 10px',border:`2px solid ${physicalNewBatchType===val?'var(--gold)':'var(--border)'}`,borderRadius:8,background:physicalNewBatchType===val?'rgba(200,146,42,0.1)':'var(--card)',cursor:'pointer',color:'var(--text)',fontWeight:physicalNewBatchType===val?700:400,fontSize:12}}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="fg" style={{marginBottom:16}}>
+                <label className="fl">Consignee / Batch Label <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
+                <input className="fi" type="text" placeholder="e.g. UPS Store batch 2" value={physicalNewBatchConsignee} onChange={e=>setPhysicalNewBatchConsignee(e.target.value)} />
+              </div>
+              <button className="btn" style={{width:'100%'}} disabled={!!generatingPhysical} onClick={()=>{
                 const win=window.open('about:blank','_blank');
                 if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
-                const{ev,size,mode,existingOrders}=physicalDupeData;
+                const{ev,size,mode}=physicalDupeData;
                 setPhysicalDupeData(null);
-                setGeneratingPhysical(ev.id);
-                const mapped=existingOrders.map(o=>({...o,eventTitle:ev.title,date:fmtDate(ev.date),time:fmtTime(ev.time),doors:fmtTime(ev.doors||''),image:ev.image,focalX:ev.focalX,focalY:ev.focalY}));
-                (mode==='photo'?openPhotoPage(ev,mapped,venue,size,win):openPrintPage(ev,mapped,venue,size,win)).then(()=>setGeneratingPhysical(false));
-              }}>
-                {generatingPhysical?'Generating…':`↓ Re-download PDF (${physicalDupeData.count} tickets)`}
-              </button>
-              <button className="btn" disabled={!!generatingPhysical} onClick={()=>{
-                const win=window.open('about:blank','_blank');
-                if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
-                const{ev,size,mode,consignee}=physicalDupeData;
-                setPhysicalDupeData(null);
-                doGeneratePhysical(ev,size,mode,consignee,true,win);
-              }}>Generate New Batch (creates additional tickets)</button>
-              <button className="btn" onClick={()=>setPhysicalDupeData(null)}>Cancel</button>
+                doGeneratePhysical(ev,size,mode,physicalNewBatchConsignee,physicalNewBatchType,true,win);
+              }}>{generatingPhysical?'Generating…':'+ Generate New Batch (creates additional tickets)'}</button>
             </div>
+            <button className="btn" style={{width:'100%'}} onClick={()=>setPhysicalDupeData(null)}>Cancel</button>
           </div>
         </div>}
 
