@@ -1141,10 +1141,10 @@ const fetchOrCreatePhysicalOrders = async (ev, consignee = '', physicalType = 'c
       if (error) { console.error(error); continue; }
       await supabase.from('order_items').insert({
         order_id: order.id, ticket_type_id: tier.id,
-        ticket_type_name: tier.type, quantity: 1, unit_price: physicalType === 'comp' ? 0 : tier.price,
+        ticket_type_name: tier.type, quantity: 1, unit_price: tier.price,
       });
       if (physicalType !== 'comp') await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
-      results.push({ id: order.id, type: tier.type, price: physicalType === 'comp' ? 0 : tier.price });
+      results.push({ id: order.id, type: tier.type, price: tier.price });
     }
   }
   setPhysicalCounts(prev => ({ ...prev, [ev.id]: (prev[ev.id] || 0) + results.length }));
