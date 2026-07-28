@@ -3910,16 +3910,20 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
                       onClick={async()=>{
                         if(!confirm(`Void ${currentN} ${batch.typeLabel} ticket${currentN!==1?'s':''} (${batch.consignee})? This cannot be undone.`))return;
                         setPhysicalVoiding(true);
-                        const toVoid = batch.orders.slice(-currentN);
-                        for(const o of toVoid){
-                          await supabase.from('orders').update({status:'cancelled'}).eq('id',o.id);
-                          if(batch.source!=='physical_comp') await supabase.rpc('decrement_sold',{tid:o.ticketTypeId,qty:1});
-                        }
-                        setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-currentN)}));
-                        setPhysicalVoiding(false);
-                        setPhysicalVoidModal(null);
-                        setPhysicalVoidCount('');
-                        reloadOrders();
+                        try {
+                          const toVoid = batch.orders.slice(-currentN);
+                          const ids = toVoid.map(o=>o.id);
+                          await supabase.from('orders').update({status:'cancelled'}).in('id',ids);
+                          if(batch.source!=='physical_comp'){
+                            const byTier={};
+                            toVoid.forEach(o=>{byTier[o.ticketTypeId]=(byTier[o.ticketTypeId]||0)+1;});
+                            await Promise.all(Object.entries(byTier).map(([tid,qty])=>supabase.rpc('decrement_sold',{tid,qty})));
+                          }
+                          setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-currentN)}));
+                          setPhysicalVoidModal(null);
+                          setPhysicalVoidCount('');
+                          reloadOrders();
+                        } finally { setPhysicalVoiding(false); }
                       }}>
                       {physicalVoiding?'Voiding…':`Void ${currentN>0?currentN:''}`}
                     </button>
@@ -3929,15 +3933,19 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
                         const n=batch.orders.length;
                         if(!confirm(`Void all ${n} ${batch.typeLabel} ticket${n!==1?'s':''} (${batch.consignee})? This cannot be undone.`))return;
                         setPhysicalVoiding(true);
-                        for(const o of batch.orders){
-                          await supabase.from('orders').update({status:'cancelled'}).eq('id',o.id);
-                          if(batch.source!=='physical_comp') await supabase.rpc('decrement_sold',{tid:o.ticketTypeId,qty:1});
-                        }
-                        setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-n)}));
-                        setPhysicalVoiding(false);
-                        setPhysicalVoidModal(null);
-                        setPhysicalVoidCount('');
-                        reloadOrders();
+                        try {
+                          const ids = batch.orders.map(o=>o.id);
+                          await supabase.from('orders').update({status:'cancelled'}).in('id',ids);
+                          if(batch.source!=='physical_comp'){
+                            const byTier={};
+                            batch.orders.forEach(o=>{byTier[o.ticketTypeId]=(byTier[o.ticketTypeId]||0)+1;});
+                            await Promise.all(Object.entries(byTier).map(([tid,qty])=>supabase.rpc('decrement_sold',{tid,qty})));
+                          }
+                          setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-n)}));
+                          setPhysicalVoidModal(null);
+                          setPhysicalVoidCount('');
+                          reloadOrders();
+                        } finally { setPhysicalVoiding(false); }
                       }}>
                       {physicalVoiding?'Voiding…':'Void All'}
                     </button>
