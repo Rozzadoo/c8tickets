@@ -2526,7 +2526,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><div style={{display:'flex',flexDirection:'column',gap:3}}>{(physicalCounts[ev.id]||0)>0&&<div style={{fontSize:10,color:'var(--gold)',fontWeight:700}}>{physicalCounts[ev.id]} physical printed</div>}<div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Loading…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Loading…":"📸 Photo PDF"}</button>{(physicalCounts[ev.id]||0)>0&&<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={async()=>{const{data}=await supabase.from('orders').select('id,order_items(ticket_type_id)').eq('event_id',ev.id).eq('source','physical').eq('status','confirmed').order('created_at',{ascending:true});setPhysicalVoidModal({ev,validOrders:(data||[]).map(o=>({id:o.id,ticketTypeId:o.order_items?.[0]?.ticket_type_id}))});setPhysicalVoidCount('');}}>Void Physical</button>}</div></div></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><div style={{display:'flex',flexDirection:'column',gap:3}}>{(physicalCounts[ev.id]||0)>0&&<div style={{fontSize:10,color:'var(--gold)',fontWeight:700}}>{physicalCounts[ev.id]} physical printed</div>}<div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Loading…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Loading…":"📸 Photo PDF"}</button>{(physicalCounts[ev.id]||0)>0&&<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={async()=>{const{data}=await supabase.from('orders').select('id,source,buyer_name,order_items(ticket_type_id)').eq('event_id',ev.id).like('source','physical%').eq('status','confirmed').order('created_at',{ascending:true});setPhysicalVoidModal({ev,validOrders:(data||[]).map(o=>({id:o.id,ticketTypeId:o.order_items?.[0]?.ticket_type_id,source:o.source,consignee:o.buyer_name}))});setPhysicalVoidCount('');}}>Void Physical</button>}</div></div></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
@@ -3876,42 +3876,75 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
 
         {physicalVoidModal && (() => {
           const { ev, validOrders } = physicalVoidModal;
-          const maxVoid = validOrders.length;
-          const voidN = Math.min(parseInt(physicalVoidCount) || 0, maxVoid);
+          // Group into batches by source + consignee
+          const batchMap = {};
+          for (const o of validOrders) {
+            const typeLabel = o.source==='physical_comp' ? 'Comp' : 'Consignment';
+            const key = `${o.source}|${o.consignee||''}`;
+            if (!batchMap[key]) batchMap[key] = { typeLabel, consignee: o.consignee||'—', source: o.source, orders: [] };
+            batchMap[key].orders.push(o);
+          }
+          const batches = Object.values(batchMap);
           return <div className="modal-bg" onClick={()=>setPhysicalVoidModal(null)}>
-            <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:460}}>
-              <h2 className="dsp" style={{fontSize:20,marginBottom:8}}>Void Physical Tickets</h2>
-              <p style={{color:'var(--text2)',fontSize:14,marginBottom:6}}>Event: <strong style={{color:'var(--text)'}}>{ev.title}</strong></p>
-              <p style={{color:'var(--text2)',fontSize:13,marginBottom:20}}>
-                <span style={{color:'var(--green)',fontWeight:700}}>{maxVoid}</span> valid tickets can be voided.
-                {(physicalCounts[ev.id]||0)-maxVoid>0&&<span style={{marginLeft:8,color:'var(--text3)'}}>{(physicalCounts[ev.id]||0)-maxVoid} already checked in — cannot void.</span>}
-              </p>
-              <div className="fg" style={{marginBottom:8}}>
-                <label className="fl">Number of tickets to void</label>
-                <input className="fi" type="number" min="1" max={maxVoid} value={physicalVoidCount} onChange={e=>setPhysicalVoidCount(e.target.value)} placeholder={`1 – ${maxVoid}`} />
-              </div>
-              <p style={{fontSize:11,color:'var(--text3)',marginBottom:20}}>Voids the most recently generated tickets first (least likely to have been distributed).</p>
-              <div style={{display:'flex',gap:10}}>
-                <button className="buy" style={{background:'var(--red)',borderColor:'var(--red)',flex:1}}
-                  disabled={physicalVoiding||voidN<=0||voidN>maxVoid}
-                  onClick={async()=>{
-                    if(!confirm(`Void ${voidN} physical ticket${voidN!==1?'s':''} for "${ev.title}"? This cannot be undone.`))return;
-                    setPhysicalVoiding(true);
-                    const toVoid=validOrders.slice(-voidN);
-                    for(const o of toVoid){
-                      await supabase.from('orders').update({status:'cancelled'}).eq('id',o.id);
-                      await supabase.rpc('decrement_sold',{tid:o.ticketTypeId,qty:1});
-                    }
-                    setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-voidN)}));
-                    setPhysicalVoiding(false);
-                    setPhysicalVoidModal(null);
-                    setPhysicalVoidCount('');
-                    reloadOrders();
-                  }}>
-                  {physicalVoiding?'Voiding…':`Void ${voidN>0?voidN:''} Ticket${voidN!==1?'s':''}`}
-                </button>
-                <button className="btn" style={{padding:'10px 20px'}} onClick={()=>setPhysicalVoidModal(null)}>Cancel</button>
-              </div>
+            <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:500}}>
+              <h2 className="dsp" style={{fontSize:20,marginBottom:4}}>Void Physical Tickets</h2>
+              <p style={{color:'var(--text2)',fontSize:13,marginBottom:20}}>Event: <strong style={{color:'var(--text)'}}>{ev.title}</strong></p>
+              {batches.length===0 && <p style={{color:'var(--text3)',fontSize:13,marginBottom:20}}>No voidable tickets found (all may be checked in).</p>}
+              {batches.map((batch,bi) => {
+                const batchKey = `${batch.source}|${batch.consignee}`;
+                const bVoidKey = batchKey;
+                const currentN = physicalVoidCount?.startsWith(bVoidKey+'|') ? Math.min(parseInt(physicalVoidCount.split('|')[2])||0, batch.orders.length) : 0;
+                return <div key={bi} style={{border:'1px solid var(--border)',borderRadius:8,padding:'14px 16px',marginBottom:12}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                    <span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,background:batch.typeLabel==='Comp'?'rgba(100,180,100,0.15)':'rgba(200,146,42,0.15)',color:batch.typeLabel==='Comp'?'var(--green)':'var(--gold)'}}>{batch.typeLabel}</span>
+                    <span style={{fontWeight:600,fontSize:14}}>{batch.consignee}</span>
+                    <span style={{marginLeft:'auto',fontSize:13,color:'var(--text2)'}}>{batch.orders.length} valid</span>
+                  </div>
+                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                    <input className="fi" type="number" min="1" max={batch.orders.length} style={{margin:0,flex:1}}
+                      value={physicalVoidCount?.startsWith(bVoidKey+'|') ? physicalVoidCount.split('|')[2] : ''}
+                      placeholder={`1 – ${batch.orders.length}`}
+                      onChange={e=>setPhysicalVoidCount(bVoidKey+'|'+e.target.value)} />
+                    <button className="buy" style={{background:'var(--red)',borderColor:'var(--red)',whiteSpace:'nowrap',padding:'9px 16px'}}
+                      disabled={physicalVoiding||currentN<=0}
+                      onClick={async()=>{
+                        if(!confirm(`Void ${currentN} ${batch.typeLabel} ticket${currentN!==1?'s':''} (${batch.consignee})? This cannot be undone.`))return;
+                        setPhysicalVoiding(true);
+                        const toVoid = batch.orders.slice(-currentN);
+                        for(const o of toVoid){
+                          await supabase.from('orders').update({status:'cancelled'}).eq('id',o.id);
+                          if(batch.source!=='physical_comp') await supabase.rpc('decrement_sold',{tid:o.ticketTypeId,qty:1});
+                        }
+                        setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-currentN)}));
+                        setPhysicalVoiding(false);
+                        setPhysicalVoidModal(null);
+                        setPhysicalVoidCount('');
+                        reloadOrders();
+                      }}>
+                      {physicalVoiding?'Voiding…':`Void ${currentN>0?currentN:''}`}
+                    </button>
+                    <button className="buy" style={{background:'var(--red)',borderColor:'var(--red)',whiteSpace:'nowrap',padding:'9px 16px'}}
+                      disabled={physicalVoiding}
+                      onClick={async()=>{
+                        const n=batch.orders.length;
+                        if(!confirm(`Void all ${n} ${batch.typeLabel} ticket${n!==1?'s':''} (${batch.consignee})? This cannot be undone.`))return;
+                        setPhysicalVoiding(true);
+                        for(const o of batch.orders){
+                          await supabase.from('orders').update({status:'cancelled'}).eq('id',o.id);
+                          if(batch.source!=='physical_comp') await supabase.rpc('decrement_sold',{tid:o.ticketTypeId,qty:1});
+                        }
+                        setPhysicalCounts(prev=>({...prev,[ev.id]:Math.max(0,(prev[ev.id]||0)-n)}));
+                        setPhysicalVoiding(false);
+                        setPhysicalVoidModal(null);
+                        setPhysicalVoidCount('');
+                        reloadOrders();
+                      }}>
+                      {physicalVoiding?'Voiding…':'Void All'}
+                    </button>
+                  </div>
+                </div>;
+              })}
+              <button className="btn" style={{width:'100%',marginTop:4}} onClick={()=>setPhysicalVoidModal(null)}>Cancel</button>
             </div>
           </div>;
         })()}
