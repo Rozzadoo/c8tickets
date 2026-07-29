@@ -93,6 +93,8 @@ const [resetError, setResetError] = useState('');
   const [ticketSizeSelected, setTicketSizeSelected] = useState('strip');
   const [ticketSizeCustomW, setTicketSizeCustomW] = useState('5.5');
   const [ticketSizeCustomH, setTicketSizeCustomH] = useState('2');
+  const [physicalManageModal, setPhysicalManageModal] = useState(null);
+  const [physicalManageLayout, setPhysicalManageLayout] = useState('print');
   const [physicalConsignee, setPhysicalConsignee] = useState('');
   const [physicalBatchType, setPhysicalBatchType] = useState('consignment');
   const [physicalPreviewData, setPhysicalPreviewData] = useState(null);
@@ -480,10 +482,11 @@ const [resetError, setResetError] = useState('');
       if (cancelTarget && !cancelling) { setCancelTarget(null); setRefundMode('full'); setPartialRefundAmt(''); return; }
       if (compModal) { setCompModal(false); return; }
       if (ticketSizeModal) { setTicketSizeModal(null); return; }
+      if (physicalManageModal) { setPhysicalManageModal(null); return; }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [modal, editEmailOrder, cancelTarget, cancelling, compModal, ticketSizeModal]);
+  }, [modal, editEmailOrder, cancelTarget, cancelling, compModal, ticketSizeModal, physicalManageModal]);
 
   useEffect(() => {
     const email = buyer?.email?.toLowerCase().trim();
@@ -1151,22 +1154,22 @@ const fetchOrCreatePhysicalOrders = async (ev, consignee = '', physicalType = 'c
   return { orders: results, wasExisting: false };
 };
 
-const generatePhysicalTickets = async (ev, size, consignee, physicalType = 'consignment') => {
+const generatePhysicalTickets = async (ev, size, consignee, physicalType = 'consignment', forceNew = false) => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
   }
   const html = await generateTicketPreviewHtml(ev, size, 'print', venue);
-  setPhysicalPreviewData({ html, ev, size, mode: 'print', consignee, physicalType });
+  setPhysicalPreviewData({ html, ev, size, mode: 'print', consignee, physicalType, forceNew });
 };
 
-const generatePhotoTickets = async (ev, size, consignee, physicalType = 'consignment') => {
+const generatePhotoTickets = async (ev, size, consignee, physicalType = 'consignment', forceNew = false) => {
   if (!ev.tickets.some(t => (t.physicalQty ?? 0) > 0)) {
     alert('No physical tickets allocated. Edit the event and set a "Physical" quantity on at least one ticket tier.');
     return;
   }
   const html = await generateTicketPreviewHtml(ev, size, 'photo', venue);
-  setPhysicalPreviewData({ html, ev, size, mode: 'photo', consignee, physicalType });
+  setPhysicalPreviewData({ html, ev, size, mode: 'photo', consignee, physicalType, forceNew });
 };
 
 const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'consignment', createNew = false, win = null) => {
@@ -1187,6 +1190,31 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
   if (mode === 'photo') await openPhotoPage(ev, mapped, venue, size, win);
   else await openPrintPage(ev, mapped, venue, size, win);
 };
+
+const openPhysicalManage = async (ev) => {
+  const { data } = await supabase
+    .from('orders').select('id, source, buyer_name, checked_in, order_items(ticket_type_id, ticket_type_name, unit_price)')
+    .eq('event_id', ev.id).like('source', 'physical%').neq('status', 'cancelled')
+    .order('created_at', { ascending: true });
+  const batchMap = {};
+  for (const o of data || []) {
+    const key = `${o.source}|${o.buyer_name||''}`;
+    if (!batchMap[key]) batchMap[key] = {
+      source: o.source, consignee: o.buyer_name || '—',
+      typeLabel: o.source === 'physical_comp' ? 'Comp' : 'Consignment',
+      allOrders: [], voidableOrders: [],
+    };
+    const mapped = { id: o.id, ticketTypeId: o.order_items?.[0]?.ticket_type_id, type: o.order_items?.[0]?.ticket_type_name || 'Ticket', price: o.order_items?.[0]?.unit_price != null ? Number(o.order_items[0].unit_price) : null, source: o.source, consignee: o.buyer_name || '—' };
+    batchMap[key].allOrders.push(mapped);
+    if (!o.checked_in) batchMap[key].voidableOrders.push(mapped);
+  }
+  setPhysicalConsignee('');
+  setPhysicalBatchType('consignment');
+  setPhysicalManageLayout('print');
+  setTicketSizeSelected('strip');
+  setPhysicalManageModal({ ev, batches: Object.values(batchMap) });
+};
+
   const vEvents = events.filter(e => e.venueId === venue.id);
   const allPublicEvents = events.filter(e => e.published !== false);
   const publicEvents = venueFilter === 'All' ? allPublicEvents : allPublicEvents.filter(e => e.venueId === venueFilter);
@@ -2526,7 +2554,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<><div style={{display:'flex',flexDirection:'column',gap:3}}>{(physicalCounts[ev.id]||0)>0&&<div style={{fontSize:10,color:'var(--gold)',fontWeight:700}}>{physicalCounts[ev.id]} physical printed</div>}<div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'print'});}}>{generatingPhysical===ev.id?"Loading…":"🖨 Print"}</button><button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} disabled={!!generatingPhysical} onClick={()=>{setPhysicalConsignee('');setTicketSizeSelected('strip');setTicketSizeModal({ev,mode:'photo'});}}>{generatingPhysical===ev.id+'-photo'?"Loading…":"📸 Photo PDF"}</button>{(physicalCounts[ev.id]||0)>0&&<button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={async()=>{const{data}=await supabase.from('orders').select('id,source,buyer_name,order_items(ticket_type_id)').eq('event_id',ev.id).like('source','physical%').eq('status','confirmed').order('created_at',{ascending:true});setPhysicalVoidModal({ev,validOrders:(data||[]).map(o=>({id:o.id,ticketTypeId:o.order_items?.[0]?.ticket_type_id,source:o.source,consignee:o.buyer_name}))});setPhysicalVoidCount('');}}>Void Physical</button>}</div></div></>}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>openPhysicalManage(ev)}>🎫 Physical{(physicalCounts[ev.id]||0)>0?` (${physicalCounts[ev.id]})`:'…'}</button>}}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
@@ -3768,45 +3796,85 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
           </div>
         </div>}
 
-        {ticketSizeModal && <div className="modal-bg" onClick={()=>setTicketSizeModal(null)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="dlg-ticketsize-heading" onClick={e=>e.stopPropagation()} style={{maxWidth:540}}>
-            <h2 id="dlg-ticketsize-heading" className="dsp" style={{fontSize:22,marginBottom:6}}>Choose Ticket Size</h2>
-            <p style={{color:"var(--text2)",fontSize:13,marginBottom:20}}>{ticketSizeModal.mode==='photo'?'Photo PDF — event image on left panel':'Text layout — event photo as subtle background texture'}</p>
-            <div style={{marginBottom:16}}>
-              <label className="fl" style={{marginBottom:8}}>Batch Type</label>
-              <div style={{display:'flex',gap:8}}>
-                {[['consignment','Consignment Sale'],['comp','Comp / Free Admission']].map(([val,lbl])=>(
-                  <button key={val} onClick={()=>setPhysicalBatchType(val)} style={{flex:1,padding:'10px 12px',border:`2px solid ${physicalBatchType===val?'var(--gold)':'var(--border)'}`,borderRadius:8,background:physicalBatchType===val?'rgba(200,146,42,0.1)':'var(--card)',cursor:'pointer',color:'var(--text)',fontWeight:physicalBatchType===val?700:400,fontSize:13}}>{lbl}</button>
+        {physicalManageModal && (() => {
+          const { ev, batches } = physicalManageModal;
+          const totalPrinted = batches.reduce((s,b)=>s+b.allOrders.length,0);
+          const size = ticketSizeSelected==='custom' ? resolveCustomSize(ticketSizeCustomW,ticketSizeCustomH) : TICKET_SIZES.find(s=>s.id===ticketSizeSelected);
+          const TypeToggle = ({val,set}) => <div style={{display:'flex',gap:8,marginBottom:16}}>
+            {[['consignment','Consignment Sale'],['comp','Comp / Free Admission']].map(([v,lbl])=>(
+              <button key={v} onClick={()=>set(v)} style={{flex:1,padding:'9px 10px',border:`2px solid ${val===v?'var(--gold)':'var(--border)'}`,borderRadius:8,background:val===v?'rgba(200,146,42,0.1)':'var(--card)',cursor:'pointer',color:'var(--text)',fontWeight:val===v?700:400,fontSize:12}}>{lbl}</button>
+            ))}
+          </div>;
+          return <div className="modal-bg" onClick={()=>setPhysicalManageModal(null)}>
+            <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:580,maxHeight:'90vh',overflowY:'auto'}}>
+              <h2 className="dsp" style={{fontSize:22,marginBottom:4}}>Physical Tickets</h2>
+              <p style={{color:'var(--text2)',fontSize:13,marginBottom:20}}>{ev.title}{totalPrinted>0?` · ${totalPrinted} printed across ${batches.length} batch${batches.length!==1?'es':''}`:''}</p>
+
+              <h3 className="dsp" style={{fontSize:15,marginBottom:12}}>Generate New Batch</h3>
+              <label className="fl" style={{marginBottom:6}}>Batch Type</label>
+              <TypeToggle val={physicalBatchType} set={setPhysicalBatchType}/>
+              <div className="fg" style={{marginBottom:14}}>
+                <label className="fl">Consignee / Batch Label <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
+                <input className="fi" type="text" placeholder="e.g. UPS Store batch 1, Front desk" value={physicalConsignee} onChange={e=>setPhysicalConsignee(e.target.value)}/>
+              </div>
+              <label className="fl" style={{marginBottom:8}}>Layout</label>
+              <div style={{display:'flex',gap:8,marginBottom:14}}>
+                {[['print','🖨 Text Layout'],['photo','📸 Photo Layout']].map(([v,lbl])=>(
+                  <button key={v} onClick={()=>setPhysicalManageLayout(v)} style={{flex:1,padding:'9px 10px',border:`2px solid ${physicalManageLayout===v?'var(--gold)':'var(--border)'}`,borderRadius:8,background:physicalManageLayout===v?'rgba(200,146,42,0.1)':'var(--card)',cursor:'pointer',color:'var(--text)',fontWeight:physicalManageLayout===v?700:400,fontSize:12}}>{lbl}</button>
                 ))}
               </div>
+              <label className="fl" style={{marginBottom:8}}>Ticket Size</label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                {TICKET_SIZES.map(s=><button key={s.id} onClick={()=>setTicketSizeSelected(s.id)} style={{padding:"12px 14px",textAlign:"left",border:`2px solid ${ticketSizeSelected===s.id?"var(--gold)":"var(--border)"}`,borderRadius:8,background:ticketSizeSelected===s.id?"rgba(200,146,42,0.1)":"var(--card)",cursor:"pointer",color:"var(--text)"}}>
+                  <div style={{fontWeight:700,fontSize:12}}>{s.label}</div>
+                  <div style={{fontSize:10,color:"var(--text2)",marginTop:2}}>{s.sublabel}</div>
+                </button>)}
+              </div>
+              {ticketSizeSelected==='custom'&&<div style={{display:"flex",gap:12,marginBottom:14,alignItems:"flex-end"}}>
+                <div className="fg" style={{margin:0,flex:1}}><label className="fl">Width (in)</label><input className="fi" type="number" step="0.25" min="2" max="8.5" value={ticketSizeCustomW} onChange={e=>setTicketSizeCustomW(e.target.value)}/></div>
+                <div style={{fontSize:20,paddingBottom:10,color:"var(--text2)"}}>×</div>
+                <div className="fg" style={{margin:0,flex:1}}><label className="fl">Height (in)</label><input className="fi" type="number" step="0.25" min="1" max="10" value={ticketSizeCustomH} onChange={e=>setTicketSizeCustomH(e.target.value)}/></div>
+              </div>}
+              <button className="buy" style={{width:'100%',marginBottom:batches.length>0?28:0}} disabled={!!generatingPhysical} onClick={async()=>{
+                setPhysicalManageModal(null);
+                if(physicalManageLayout==='print') await generatePhysicalTickets(ev,size,physicalConsignee,physicalBatchType,true);
+                else await generatePhotoTickets(ev,size,physicalConsignee,physicalBatchType,true);
+              }}>{generatingPhysical?'Loading…':'Preview Ticket'}</button>
+
+              {batches.length>0&&<>
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:4}}>
+                  <h3 className="dsp" style={{fontSize:15,marginBottom:14}}>Existing Batches</h3>
+                  {batches.map((batch,bi)=>{
+                    const checkedIn = batch.allOrders.length - batch.voidableOrders.length;
+                    return <div key={bi} style={{border:'1px solid var(--border)',borderRadius:8,padding:'14px 16px',marginBottom:10}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                        <span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,background:batch.typeLabel==='Comp'?'rgba(100,180,100,0.15)':'rgba(200,146,42,0.15)',color:batch.typeLabel==='Comp'?'var(--green)':'var(--gold)'}}>{batch.typeLabel}</span>
+                        <span style={{fontWeight:600,fontSize:13}}>{batch.consignee}</span>
+                        <span style={{marginLeft:'auto',fontSize:12,color:'var(--text2)'}}>{batch.allOrders.length} tickets{checkedIn>0?` · ${checkedIn} checked in`:''}</span>
+                      </div>
+                      <div style={{display:'flex',gap:8}}>
+                        <button className="btn" style={{flex:1,fontSize:12,padding:'7px 12px'}} disabled={!!generatingPhysical} onClick={async()=>{
+                          setPhysicalManageModal(null);
+                          setGeneratingPhysical(ev.id);
+                          const mapped=batch.allOrders.map(o=>({...o,eventTitle:ev.title,date:fmtDate(ev.date),time:fmtTime(ev.time),doors:fmtTime(ev.doors||''),image:ev.image,focalX:ev.focalX,focalY:ev.focalY}));
+                          if(physicalManageLayout==='photo') await openPhotoPage(ev,mapped,venue,size,null);
+                          else await openPrintPage(ev,mapped,venue,size,null);
+                          setGeneratingPhysical(false);
+                        }}>↓ Re-download</button>
+                        <button className="btn" style={{fontSize:12,padding:'7px 12px',color:'var(--red)'}} onClick={async()=>{
+                          setPhysicalManageModal(null);
+                          setPhysicalVoidModal({ev,validOrders:batch.voidableOrders});
+                          setPhysicalVoidCount('');
+                        }}>Void</button>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              </>}
+              <button className="btn" style={{width:'100%',marginTop:8}} onClick={()=>setPhysicalManageModal(null)}>Close</button>
             </div>
-            <div className="fg" style={{marginBottom:20}}>
-              <label className="fl">Consignee / Batch Label <span style={{fontWeight:400,color:'var(--text3)'}}>(optional)</span></label>
-              <input className="fi" type="text" placeholder="e.g. UPS Store batch 1, Front desk" value={physicalConsignee} onChange={e=>setPhysicalConsignee(e.target.value)} />
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
-              {TICKET_SIZES.map(s=><button key={s.id} onClick={()=>setTicketSizeSelected(s.id)} style={{padding:"14px 16px",textAlign:"left",border:`2px solid ${ticketSizeSelected===s.id?"var(--gold)":"var(--border)"}`,borderRadius:8,background:ticketSizeSelected===s.id?"rgba(200,146,42,0.1)":"var(--card)",cursor:"pointer",color:"var(--text)"}}>
-                <div style={{fontWeight:700,fontSize:13}}>{s.label}</div>
-                <div style={{fontSize:11,color:"var(--text2)",marginTop:3}}>{s.sublabel}</div>
-              </button>)}
-            </div>
-            {ticketSizeSelected==='custom'&&<div style={{display:"flex",gap:12,marginBottom:20,alignItems:"flex-end"}}>
-              <div className="fg" style={{margin:0,flex:1}}><label className="fl">Width (inches)</label><input className="fi" type="number" step="0.25" min="2" max="8.5" value={ticketSizeCustomW} onChange={e=>setTicketSizeCustomW(e.target.value)}/></div>
-              <div style={{fontSize:22,paddingBottom:10,color:"var(--text2)"}}>×</div>
-              <div className="fg" style={{margin:0,flex:1}}><label className="fl">Height (inches)</label><input className="fi" type="number" step="0.25" min="1" max="10" value={ticketSizeCustomH} onChange={e=>setTicketSizeCustomH(e.target.value)}/></div>
-            </div>}
-            <div style={{display:"flex",gap:10}}>
-              <button className="buy" style={{flex:1}} disabled={!!generatingPhysical} onClick={async()=>{
-                const size=ticketSizeSelected==='custom'?resolveCustomSize(ticketSizeCustomW,ticketSizeCustomH):TICKET_SIZES.find(s=>s.id===ticketSizeSelected);
-                const{ev,mode}=ticketSizeModal;
-                setTicketSizeModal(null);
-                if(mode==='print') await generatePhysicalTickets(ev,size,physicalConsignee,physicalBatchType);
-                else await generatePhotoTickets(ev,size,physicalConsignee,physicalBatchType);
-              }}>{generatingPhysical?"Loading…":"Preview Ticket"}</button>
-              <button className="btn" style={{padding:"10px 20px"}} onClick={()=>setTicketSizeModal(null)}>Cancel</button>
-            </div>
-          </div>
-        </div>}
+          </div>;
+        })()}
 
         {physicalPreviewData && <div className="modal-bg" onClick={()=>setPhysicalPreviewData(null)}>
           <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:680,width:'95vw'}}>
@@ -3824,7 +3892,7 @@ const doGeneratePhysical = async (ev, size, mode, consignee, physicalType = 'con
               <button className="buy" style={{flex:1}} disabled={!!generatingPhysical} onClick={()=>{
                 const win=window.open('about:blank','_blank');
                 if(!win){alert('Pop-up blocked. Please allow pop-ups for this site and try again.');return;}
-                doGeneratePhysical(physicalPreviewData.ev,physicalPreviewData.size,physicalPreviewData.mode,physicalPreviewData.consignee,physicalPreviewData.physicalType||'consignment',false,win);
+                doGeneratePhysical(physicalPreviewData.ev,physicalPreviewData.size,physicalPreviewData.mode,physicalPreviewData.consignee,physicalPreviewData.physicalType||'consignment',physicalPreviewData.forceNew||false,win);
               }}>
                 {generatingPhysical?'Generating…':`Generate All ${physicalPreviewData.ev.tickets.reduce((s,t)=>s+(t.physicalQty??0),0)} Tickets`}
               </button>
