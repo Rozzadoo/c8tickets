@@ -22,14 +22,6 @@ const GateView = ({ events, onLogout }) => {
 
   const next = () => { setResult(null); setGroupConfirm(false); setGroupCount(1); setScanning(true); };
 
-  // Auto-advance after successful check-in (2s) or non-actionable errors like not-found / wrong event (3s)
-  useEffect(() => {
-    if (!result || result === 'loading') return;
-    const autoNext = (!result.found) || result.wrongEvent;
-    if (!autoNext) return;
-    const t = setTimeout(next, 3000);
-    return () => clearTimeout(t);
-  }, [result]);
 
   const handleScan = async (rawId) => {
     setScanning(false);
@@ -97,7 +89,7 @@ const GateView = ({ events, onLogout }) => {
       // Legacy order-level (no individual ticket rows)
       await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
     }
-    setResult({ ...result, alreadyIn: false, done: true });
+    setResult({ ...result, alreadyIn: false, done: true, checkedInAt: new Date().toISOString() });
   };
 
   const doGroupCheckin = async (count) => {
@@ -116,7 +108,7 @@ const GateView = ({ events, onLogout }) => {
       await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
     }
     setGroupConfirm(false);
-    setResult({ ...result, alreadyIn: false, done: true, checkedInCount: actualCheckedIn });
+    setResult({ ...result, alreadyIn: false, done: true, checkedInCount: actualCheckedIn, checkedInAt: new Date().toISOString() });
   };
 
   const upcomingEvents = events.filter(e => e.published !== false);
@@ -196,26 +188,40 @@ const GateView = ({ events, onLogout }) => {
                   <p style={{color:'var(--text2)',fontSize:13,marginTop:4}}>This order has been cancelled and refunded. Entry denied.</p>
                 </div>
               )}
-              {result.found && !result.cancelled && !result.wrongEvent && result.alreadyIn && (
-                <div style={{position:'fixed',inset:0,zIndex:9999,background:'#6b3000',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:32}}>
-                  <div style={{fontSize:96,marginBottom:16,lineHeight:1}}>⚠️</div>
-                  <h2 className="dsp" style={{color:'#fff',fontSize:42,marginBottom:12,lineHeight:1.1}}>Already Checked In</h2>
-                  <p style={{color:'#fff',fontWeight:700,fontSize:24,marginBottom:6}}>{result.order?.buyer_name}</p>
-                  <p style={{color:'rgba(255,255,255,0.7)',fontSize:16,marginBottom:40}}>{result.event?.title}</p>
-                  <button className="buy" style={{fontSize:18,padding:'14px 40px',background:'rgba(255,255,255,0.2)',borderColor:'rgba(255,255,255,0.4)',color:'#fff',width:'100%',maxWidth:320}} onClick={next}>Scan Next Ticket →</button>
-                </div>
-              )}
-              {result.found && !result.cancelled && !result.wrongEvent && result.done && (
-                <div style={{position:'fixed',inset:0,zIndex:9999,background:'#2d5a1b',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:32}}>
-                  <div style={{fontSize:96,marginBottom:16,lineHeight:1}}>✅</div>
-                  <h2 className="dsp" style={{color:'#fff',fontSize:42,marginBottom:12,lineHeight:1.1}}>
-                    {result.checkedInCount ? `${result.checkedInCount} Checked In!` : 'Checked In!'}
-                  </h2>
-                  <p style={{color:'#fff',fontWeight:700,fontSize:24,marginBottom:6}}>{result.order?.buyer_name}</p>
-                  <p style={{color:'rgba(255,255,255,0.7)',fontSize:16,marginBottom:40}}>{result.event?.title}</p>
-                  <button className="buy" style={{fontSize:18,padding:'14px 40px',background:'rgba(255,255,255,0.2)',borderColor:'rgba(255,255,255,0.4)',color:'#fff',width:'100%',maxWidth:320}} onClick={next}>Scan Next Ticket →</button>
-                </div>
-              )}
+              {result.found && !result.cancelled && !result.wrongEvent && result.alreadyIn && (() => {
+                const ticketType = result.ticket?.ticket_type_name
+                  || (result.orderTickets || result.order?.order_items || []).map(t => t.ticket_type_name).filter(Boolean).join(', ');
+                const originalTime = result.ticket?.checked_in_at
+                  || result.orderTickets?.find(t => t.checked_in_at)?.checked_in_at;
+                return (
+                  <div style={{position:'fixed',inset:0,zIndex:9999,background:'#6b3000',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:32}}>
+                    <div style={{fontSize:96,marginBottom:16,lineHeight:1}}>⚠️</div>
+                    <h2 className="dsp" style={{color:'#fff',fontSize:42,marginBottom:12,lineHeight:1.1}}>Already Checked In</h2>
+                    <p style={{color:'#fff',fontWeight:700,fontSize:24,marginBottom:4}}>{result.order?.buyer_name}</p>
+                    {ticketType && <p style={{color:'rgba(255,255,255,0.75)',fontSize:18,marginBottom:4}}>{ticketType}</p>}
+                    {originalTime && <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,marginBottom:4}}>Checked in at {new Date(originalTime).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</p>}
+                    <p style={{color:'rgba(255,255,255,0.5)',fontSize:14,marginBottom:40}}>{result.event?.title}</p>
+                    <button className="buy" style={{fontSize:18,padding:'14px 40px',background:'rgba(255,255,255,0.2)',borderColor:'rgba(255,255,255,0.4)',color:'#fff',width:'100%',maxWidth:320}} onClick={next}>Scan Next Ticket →</button>
+                  </div>
+                );
+              })()}
+              {result.found && !result.cancelled && !result.wrongEvent && result.done && (() => {
+                const ticketType = result.ticket?.ticket_type_name
+                  || (result.order?.order_items || []).map(i => `${i.quantity}× ${i.ticket_type_name}`).join(', ');
+                return (
+                  <div style={{position:'fixed',inset:0,zIndex:9999,background:'#2d5a1b',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:32}}>
+                    <div style={{fontSize:96,marginBottom:16,lineHeight:1}}>✅</div>
+                    <h2 className="dsp" style={{color:'#fff',fontSize:42,marginBottom:12,lineHeight:1.1}}>
+                      {result.checkedInCount ? `${result.checkedInCount} Checked In!` : 'Checked In!'}
+                    </h2>
+                    <p style={{color:'#fff',fontWeight:700,fontSize:24,marginBottom:4}}>{result.order?.buyer_name}</p>
+                    {ticketType && <p style={{color:'rgba(255,255,255,0.75)',fontSize:18,marginBottom:4}}>{ticketType}</p>}
+                    {result.checkedInAt && <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,marginBottom:4}}>{new Date(result.checkedInAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</p>}
+                    <p style={{color:'rgba(255,255,255,0.5)',fontSize:14,marginBottom:40}}>{result.event?.title}</p>
+                    <button className="buy" style={{fontSize:18,padding:'14px 40px',background:'rgba(255,255,255,0.2)',borderColor:'rgba(255,255,255,0.4)',color:'#fff',width:'100%',maxWidth:320}} onClick={next}>Scan Next Ticket →</button>
+                  </div>
+                );
+              })()}
               {/* Individual ticket: valid, ready to check in */}
               {result.found && !result.cancelled && !result.wrongEvent && !result.alreadyIn && !result.done && !result.isGroupOrder && (
                 <div>
