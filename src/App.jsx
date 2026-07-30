@@ -1616,7 +1616,7 @@ const openPhysicalManage = async (ev) => {
                           {pastEvents.length>0&&<button className="btn gold" onClick={()=>document.getElementById('past-events-section')?.scrollIntoView({behavior:'smooth'})}>View Past Events ↓</button>}
                         </div>
                       </div>
-                    : <div className="empty"><div className="ic">📭</div><p>No events in this category</p></div>
+                    : <div className="empty"><p>No events in this category</p></div>
                 ):
                   <div className="grid">{gridEvents.map(ev=>{const mp=ev.tickets.length>0?Math.min(...ev.tickets.map(t=>t.price)):0;const soldOut=ev.tickets.every(t=>oa(t)<=0);const totalAvail=ev.tickets.reduce((s,t)=>s+oa(t),0);const totalCap=ev.tickets.reduce((s,t)=>s+(t.total??t.available),0);const lowTickets=!soldOut&&totalCap>0&&totalAvail/totalCap<=0.25;return(
                     <div key={ev.id} className="card" role="button" tabIndex={0} onClick={()=>open(ev.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open(ev.id);}}} style={soldOut?{opacity:.55,filter:'grayscale(0.3)'}:{}}>
@@ -2501,9 +2501,9 @@ const openPhysicalManage = async (ev) => {
               const tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
               const ci=vo.filter(o=>o.checkedIn).length;
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
-              const salesTax=Math.round(venueRev*0.06*100)/100;
-              const serviceFees=tix*2;
-              const processingFees=Math.max(0,Math.round((vo.reduce((s,o)=>s+o.total,0)-venueRev-salesTax-serviceFees)*100)/100);
+              const salesTax=Math.round(vo.reduce((s,o)=>s+(o.salesTax||0),0)*100)/100;
+              const serviceFees=Math.round(vo.reduce((s,o)=>s+(o.serviceFees||0),0)*100)/100;
+              const processingFees=Math.round(vo.reduce((s,o)=>s+(o.processingFee||0),0)*100)/100;
               const inRangeDate=dateStr=>{const d=new Date(dateStr);if(dashFilter==='month')return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();if(dashFilter==='prev_month'){const p=new Date(now.getFullYear(),now.getMonth()-1,1);return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear();}if(dashFilter==='ytd')return d.getFullYear()===now.getFullYear();if(dashFilter==='last_year')return d.getFullYear()===now.getFullYear()-1;if(dashFilter==='custom'){const s=dashCustomStart?new Date(dashCustomStart+'T00:00:00'):null;const e=dashCustomEnd?new Date(dashCustomEnd+'T23:59:59'):null;if(s&&d<s)return false;if(e&&d>e)return false;return true;}return true;};
               const regRev=Math.round(dashRegData.filter(r=>inRangeDate(r.created_at)).reduce((s,r)=>s+(parseFloat(r.amount_paid)||0),0)*100)/100;
               const posRev=Math.round(dashPosData.filter(p=>inRangeDate(p.created_at)).reduce((s,p)=>s+(parseFloat(p.total)||0),0)*100)/100;
@@ -2533,9 +2533,9 @@ const openPhysicalManage = async (ev) => {
                   if(!eo.length) return null;
                   const etix=eo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
                   const erev=eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
-                  const etax=Math.round(erev*0.06*100)/100;
-                  const esvc=etix*2;
-                  const eproc=Math.max(0,Math.round((eo.reduce((s,o)=>s+o.total,0)-erev-etax-esvc)*100)/100);
+                  const etax=Math.round(eo.reduce((s,o)=>s+(o.salesTax||0),0)*100)/100;
+                  const esvc=Math.round(eo.reduce((s,o)=>s+(o.serviceFees||0),0)*100)/100;
+                  const eproc=Math.round(eo.reduce((s,o)=>s+(o.processingFee||0),0)*100)/100;
                   const eci=eo.filter(o=>o.checkedIn).length;
                   return {ev,eo,etix,erev,etax,esvc,eproc,eci};
                 }).filter(Boolean);
