@@ -13,7 +13,7 @@ const ScannerWidget = ({ scannerId, onResult }) => {
     qr.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 250, height: 250 } },
-      (text) => { stop(); onResultRef.current(text.trim()); },
+      (text) => { onResultRef.current(text.trim()); },
       () => {}
     ).catch(e => {
       console.error(e);

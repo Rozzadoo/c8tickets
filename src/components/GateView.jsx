@@ -1,15 +1,26 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from '../lib/supabase';
 import ScannerWidget from './ScannerWidget';
 
 const LOGO_SRC = "/logo-simple.webp";
 
+const OVERLAY = {
+  success:     { bg: 'rgba(45,90,27,0.95)',   icon: '✅', title: 'Checked In'        },
+  already_in:  { bg: 'rgba(107,48,0,0.95)',   icon: '⚠️', title: 'Already Checked In' },
+  not_found:   { bg: 'rgba(122,26,26,0.95)',  icon: '❌', title: 'Ticket Not Found'   },
+  wrong_event: { bg: 'rgba(122,26,26,0.95)',  icon: '⚠️', title: 'Wrong Event'        },
+  cancelled:   { bg: 'rgba(122,26,26,0.95)',  icon: '🚫', title: 'Entry Denied'       },
+};
+
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
 const GateView = ({ events, onLogout }) => {
-  const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState(null);
   const [selGateEventId, setSelGateEventId] = useState('');
-  const [groupConfirm, setGroupConfirm] = useState(false);
-  const [groupCount, setGroupCount] = useState(1);
+  const [result, setResult] = useState(null);
+  const cooldown = useRef(false);
+  const lastId = useRef(null);
+  const lastIdTime = useRef(0);
+  const dismissTimer = useRef(null);
 
   useEffect(() => {
     if (selGateEventId || events.length === 0) return;
@@ -20,113 +31,92 @@ const GateView = ({ events, onLogout }) => {
     if (upcoming) setSelGateEventId(upcoming.id);
   }, [events, selGateEventId]);
 
-  const next = () => { setResult(null); setGroupConfirm(false); setGroupCount(1); setScanning(true); };
+  const dismiss = useCallback(() => {
+    if (dismissTimer.current) { clearTimeout(dismissTimer.current); dismissTimer.current = null; }
+    cooldown.current = false;
+    setResult(null);
+  }, []);
 
+  const showResult = useCallback((res) => {
+    if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    setResult(res);
+    cooldown.current = true;
+    dismissTimer.current = setTimeout(() => { cooldown.current = false; setResult(null); }, 2500);
+  }, []);
 
-  const handleScan = async (rawId) => {
-    setScanning(false);
-    setResult('loading');
-    setGroupCount(1);
-
-    // Strip full URL prefix if scanned from a URL-format QR (e.g. https://c8tickets.com/t/{uuid}?receipt=1)
+  const handleScan = useCallback(async (rawId) => {
+    if (cooldown.current) return;
     const id = rawId.replace(/^https?:\/\/[^/]+\/t\//, '').split('?')[0].trim();
+    // Ignore the same QR code for 10 seconds to prevent re-triggering while camera lingers
+    const now = Date.now();
+    if (id === lastId.current && now - lastIdTime.current < 10000) return;
+    lastId.current = id;
+    lastIdTime.current = now;
+    cooldown.current = true;
 
     // Try individual ticket lookup first
-    const { data: ticket } = await supabase
-      .from('tickets').select('*').eq('id', id).single();
+    const { data: ticket } = await supabase.from('tickets').select('*').eq('id', id).single();
 
     if (ticket) {
       const { data: order } = await supabase.from('orders').select('*, order_items(*)').eq('id', ticket.order_id).single();
       const ev = events.find(e => e.id === ticket.event_id);
 
       if (selGateEventId && ticket.event_id !== selGateEventId) {
-        setResult({ found: true, wrongEvent: true, ticket, order, event: ev }); return;
+        showResult({ type: 'wrong_event', name: order?.buyer_name, event: ev?.title }); return;
       }
       if (ticket.status === 'cancelled' || order?.status === 'cancelled') {
-        setResult({ found: true, cancelled: true, ticket, order }); return;
+        showResult({ type: 'cancelled', name: order?.buyer_name }); return;
       }
-      const { count } = await supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('order_id', ticket.order_id);
-      setResult({ found: true, ticket, order, event: ev, alreadyIn: ticket.status === 'checked_in', done: false, ticketTotal: count });
-      return;
+      if (ticket.status === 'checked_in') {
+        showResult({ type: 'already_in', name: order?.buyer_name, ticketType: ticket.ticket_type_name, checkedInAt: ticket.checked_in_at }); return;
+      }
+      const checkedAt = new Date().toISOString();
+      const { data: updated } = await supabase.from('tickets')
+        .update({ status: 'checked_in', checked_in_at: checkedAt })
+        .eq('id', ticket.id).eq('status', 'valid').select('id');
+      if (!updated || updated.length === 0) {
+        showResult({ type: 'already_in', name: order?.buyer_name, ticketType: ticket.ticket_type_name }); return;
+      }
+      showResult({ type: 'success', name: order?.buyer_name, ticketType: ticket.ticket_type_name, checkedInAt: checkedAt }); return;
     }
 
     // Fall back to order-level lookup (group / legacy QR)
     const { data: order, error } = await supabase.from('orders').select('*, order_items(*)').eq('id', id).single();
-    if (error || !order) { setResult({ found: false }); return; }
+    if (error || !order) { showResult({ type: 'not_found' }); return; }
 
     const ev = events.find(e => e.id === order.event_id);
-
     if (selGateEventId && order.event_id !== selGateEventId) {
-      setResult({ found: true, wrongEvent: true, order, event: ev }); return;
+      showResult({ type: 'wrong_event', name: order.buyer_name, event: ev?.title }); return;
     }
-    if (order.status === 'cancelled') { setResult({ found: true, cancelled: true, order }); return; }
+    if (order.status === 'cancelled') { showResult({ type: 'cancelled', name: order.buyer_name }); return; }
 
-    // Fetch individual ticket rows so we can do partial group check-in
     const { data: orderTickets } = await supabase.from('tickets').select('*').eq('order_id', id).order('ticket_number');
     const unchecked = (orderTickets || []).filter(t => t.status !== 'checked_in' && t.status !== 'cancelled');
 
-    if (orderTickets && orderTickets.length > 0) {
-      setResult({ found: true, isGroupOrder: true, order, event: ev, orderTickets, uncheckedCount: unchecked.length, alreadyIn: unchecked.length === 0, done: false });
-    } else {
-      // Legacy: no individual ticket rows
-      setResult({ found: true, order, event: ev, alreadyIn: order.status === 'checked_in', done: false });
+    if (unchecked.length === 0) {
+      const firstIn = (orderTickets || []).find(t => t.checked_in_at);
+      showResult({ type: 'already_in', name: order.buyer_name, ticketType: orderTickets?.[0]?.ticket_type_name, checkedInAt: firstIn?.checked_in_at }); return;
     }
-  };
 
-  const doCheckin = async () => {
-    const now = new Date().toISOString();
-    if (result.ticket) {
+    const checkedAt = new Date().toISOString();
+    let checkedInCount = 0;
+    for (const t of unchecked) {
       const { data: updated } = await supabase.from('tickets')
-        .update({ status: 'checked_in', checked_in_at: now })
-        .eq('id', result.ticket.id)
-        .eq('status', 'valid')
-        .select('id');
-      if (!updated || updated.length === 0) {
-        setResult({ ...result, alreadyIn: true, done: false });
-        return;
-      }
-    } else {
-      // Legacy order-level (no individual ticket rows)
-      await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
+        .update({ status: 'checked_in', checked_in_at: checkedAt })
+        .eq('id', t.id).eq('status', 'valid').select('id');
+      if (updated && updated.length > 0) checkedInCount++;
     }
-    setResult({ ...result, alreadyIn: false, done: true, checkedInAt: new Date().toISOString() });
-  };
-
-  const doGroupCheckin = async (count) => {
-    const now = new Date().toISOString();
-    const toCheckin = result.orderTickets.filter(t => t.status !== 'checked_in' && t.status !== 'cancelled').slice(0, count);
-    let actualCheckedIn = 0;
-    for (const t of toCheckin) {
-      const { data: updated } = await supabase.from('tickets')
-        .update({ status: 'checked_in', checked_in_at: now })
-        .eq('id', t.id)
-        .eq('status', 'valid')
-        .select('id');
-      if (updated && updated.length > 0) actualCheckedIn++;
+    if (checkedInCount > 0 && unchecked.length <= checkedInCount) {
+      await supabase.from('orders').update({ status: 'checked_in' }).eq('id', order.id);
     }
-    if (result.uncheckedCount - actualCheckedIn <= 0) {
-      await supabase.from('orders').update({ status: 'checked_in' }).eq('id', result.order.id);
-    }
-    setGroupConfirm(false);
-    setResult({ ...result, alreadyIn: false, done: true, checkedInCount: actualCheckedIn, checkedInAt: new Date().toISOString() });
-  };
+    showResult({ type: 'success', name: order.buyer_name, ticketType: unchecked[0]?.ticket_type_name, count: checkedInCount, checkedInAt: checkedAt });
+  }, [events, selGateEventId, showResult]);
 
   const upcomingEvents = events.filter(e => e.published !== false);
+  const ov = result ? OVERLAY[result.type] : null;
 
   return (
     <div className="app">
-      {groupConfirm && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div style={{background:'var(--bg2)',border:'1px solid var(--gold)',borderRadius:12,padding:28,maxWidth:320,width:'100%',textAlign:'center'}}>
-            <h3 className="dsp" style={{fontSize:20,marginBottom:12}}>Check In All?</h3>
-            <p style={{color:'var(--text2)',fontSize:14,marginBottom:24}}>Check in all <strong style={{color:'var(--text)'}}>{result?.uncheckedCount} tickets</strong> for <strong style={{color:'var(--text)'}}>{result?.order?.buyer_name}</strong>?</p>
-            <div style={{display:'flex',gap:10}}>
-              <button className="btn" style={{flex:1}} onClick={() => setGroupConfirm(false)}>Cancel</button>
-              <button className="buy" style={{flex:1}} onClick={() => doGroupCheckin(result.uncheckedCount)}>Yes, Check In All</button>
-            </div>
-          </div>
-        </div>
-      )}
       <nav className="nav">
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <img src={LOGO_SRC} alt="" style={{height:40,filter:'invert(1)',opacity:.9}} />
@@ -134,164 +124,44 @@ const GateView = ({ events, onLogout }) => {
         </div>
         <button className="btn" onClick={onLogout}>Logout</button>
       </nav>
-      <div style={{maxWidth:440,margin:'0 auto',padding:'24px 16px',width:'100%'}}>
-        {!scanning && !result && (
-          <div style={{textAlign:'center',paddingTop:40}} className="fade">
-            <div style={{fontSize:64,marginBottom:16}}>🎟️</div>
-            <h2 className="dsp" style={{fontSize:28,marginBottom:8}}>Ready to Scan</h2>
-            <p style={{color:'var(--text2)',fontSize:14,marginBottom:24}}>Point the camera at a buyer's QR code to check them in.</p>
-            {upcomingEvents.length > 0 && (
-              <div style={{marginBottom:28,textAlign:'left'}}>
-                <label style={{fontSize:12,color:'var(--text2)',marginBottom:6,display:'block',textTransform:'uppercase',letterSpacing:1}}>Event Filter (optional)</label>
-                <select className="fi" value={selGateEventId} onChange={e => setSelGateEventId(e.target.value)}>
-                  <option value="">All Events</option>
-                  {upcomingEvents.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-                </select>
+      <div style={{maxWidth:440,margin:'0 auto',padding:'16px',width:'100%'}}>
+        {upcomingEvents.length > 0 && (
+          <div style={{marginBottom:10}}>
+            <select className="fi" value={selGateEventId} onChange={e => setSelGateEventId(e.target.value)} style={{margin:0,fontSize:13}}>
+              <option value="">All Events</option>
+              {upcomingEvents.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{position:'relative',borderRadius:'var(--r)',overflow:'hidden'}}>
+          <ScannerWidget scannerId="gate-scanner" onResult={handleScan} />
+          {result && ov && (
+            <div onClick={dismiss} style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:28,background:ov.bg,cursor:'pointer'}}>
+              <div style={{fontSize:64,marginBottom:10,lineHeight:1}}>{ov.icon}</div>
+              <div className="dsp" style={{color:'#fff',fontSize:32,fontWeight:700,marginBottom:8,lineHeight:1.1}}>
+                {result.type === 'success' && result.count ? `${result.count} Checked In` : ov.title}
               </div>
-            )}
-            <button className="buy" style={{width:'100%'}} onClick={() => setScanning(true)}>Start Scanner</button>
-          </div>
-        )}
-        {scanning && (
-          <div className="fade">
-            <h3 className="dsp" style={{fontSize:18,marginBottom:12,textAlign:'center'}}>Scan QR Code</h3>
-            <ScannerWidget scannerId="gate-scanner" onResult={handleScan} />
-            <button className="btn" style={{width:'100%',marginTop:10}} onClick={() => setScanning(false)}>Cancel</button>
-          </div>
-        )}
-        {result === 'loading' && (
-          <div style={{textAlign:'center',padding:60}}><p style={{color:'var(--text2)'}}>Looking up ticket...</p></div>
-        )}
-        {result && result !== 'loading' && (
-          <div className="fade">
-            <div className="tkt-sec" style={{marginBottom:14}}>
-              {!result.found && (
-                <div style={{textAlign:'center',padding:'20px 0'}}>
-                  <div style={{fontSize:48,marginBottom:10}}>❌</div>
-                  <h3 className="dsp" style={{color:'var(--red)',fontSize:22,marginBottom:8}}>Ticket Not Found</h3>
-                  <p style={{color:'var(--text2)',fontSize:13}}>This QR code doesn't match any order.</p>
-                </div>
+              {result.name && <div style={{color:'#fff',fontWeight:700,fontSize:20,marginBottom:4}}>{result.name}</div>}
+              {result.ticketType && <div style={{color:'rgba(255,255,255,0.8)',fontSize:16,marginBottom:4}}>{result.ticketType}</div>}
+              {result.type === 'success' && result.checkedInAt && (
+                <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>{fmtTime(result.checkedInAt)}</div>
               )}
-              {result.found && result.wrongEvent && (
-                <div style={{textAlign:'center',padding:'20px 0'}}>
-                  <div style={{fontSize:48,marginBottom:10}}>⚠️</div>
-                  <h3 className="dsp" style={{color:'var(--gold)',fontSize:22,marginBottom:8}}>Wrong Event</h3>
-                  <p style={{fontWeight:700,fontSize:16}}>{result.order?.buyer_name}</p>
-                  <p style={{color:'var(--text2)',fontSize:13,marginTop:6}}>This ticket is for <strong style={{color:'var(--gold)'}}>{result.event?.title || 'a different event'}</strong>.</p>
-                </div>
+              {result.type === 'already_in' && result.checkedInAt && (
+                <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>First checked in at {fmtTime(result.checkedInAt)}</div>
               )}
-              {result.found && result.cancelled && (
-                <div style={{textAlign:'center',padding:'20px 0'}}>
-                  <div style={{fontSize:48,marginBottom:10}}>🚫</div>
-                  <h3 className="dsp" style={{color:'var(--red)',fontSize:22,marginBottom:8}}>Order Cancelled</h3>
-                  <p style={{fontWeight:700,fontSize:16}}>{result.order?.buyer_name}</p>
-                  <p style={{color:'var(--text2)',fontSize:13,marginTop:4}}>This order has been cancelled and refunded. Entry denied.</p>
-                </div>
+              {result.type === 'wrong_event' && result.event && (
+                <div style={{color:'rgba(255,255,255,0.7)',fontSize:14,marginBottom:4}}>Ticket is for: <strong>{result.event}</strong></div>
               )}
-              {result.found && !result.cancelled && !result.wrongEvent && result.alreadyIn && (() => {
-                const ticketType = result.ticket?.ticket_type_name
-                  || (result.orderTickets || result.order?.order_items || []).map(t => t.ticket_type_name).filter(Boolean).join(', ');
-                const originalTime = result.ticket?.checked_in_at
-                  || result.orderTickets?.find(t => t.checked_in_at)?.checked_in_at;
-                return (
-                  <div style={{position:'fixed',inset:0,zIndex:9999,background:'#6b3000',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:32}}>
-                    <div style={{fontSize:96,marginBottom:16,lineHeight:1}}>⚠️</div>
-                    <h2 className="dsp" style={{color:'#fff',fontSize:42,marginBottom:12,lineHeight:1.1}}>Already Checked In</h2>
-                    <p style={{color:'#fff',fontWeight:700,fontSize:24,marginBottom:4}}>{result.order?.buyer_name}</p>
-                    {ticketType && <p style={{color:'rgba(255,255,255,0.75)',fontSize:18,marginBottom:4}}>{ticketType}</p>}
-                    {originalTime && <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,marginBottom:4}}>Checked in at {new Date(originalTime).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</p>}
-                    <p style={{color:'rgba(255,255,255,0.5)',fontSize:14,marginBottom:40}}>{result.event?.title}</p>
-                    <button className="buy" style={{fontSize:18,padding:'14px 40px',background:'rgba(255,255,255,0.2)',borderColor:'rgba(255,255,255,0.4)',color:'#fff',width:'100%',maxWidth:320}} onClick={next}>Scan Next Ticket →</button>
-                  </div>
-                );
-              })()}
-              {result.found && !result.cancelled && !result.wrongEvent && result.done && (() => {
-                const ticketType = result.ticket?.ticket_type_name
-                  || (result.order?.order_items || []).map(i => `${i.quantity}× ${i.ticket_type_name}`).join(', ');
-                return (
-                  <div style={{position:'fixed',inset:0,zIndex:9999,background:'#2d5a1b',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:32}}>
-                    <div style={{fontSize:96,marginBottom:16,lineHeight:1}}>✅</div>
-                    <h2 className="dsp" style={{color:'#fff',fontSize:42,marginBottom:12,lineHeight:1.1}}>
-                      {result.checkedInCount ? `${result.checkedInCount} Checked In!` : 'Checked In!'}
-                    </h2>
-                    <p style={{color:'#fff',fontWeight:700,fontSize:24,marginBottom:4}}>{result.order?.buyer_name}</p>
-                    {ticketType && <p style={{color:'rgba(255,255,255,0.75)',fontSize:18,marginBottom:4}}>{ticketType}</p>}
-                    {result.checkedInAt && <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,marginBottom:4}}>{new Date(result.checkedInAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</p>}
-                    <p style={{color:'rgba(255,255,255,0.5)',fontSize:14,marginBottom:40}}>{result.event?.title}</p>
-                    <button className="buy" style={{fontSize:18,padding:'14px 40px',background:'rgba(255,255,255,0.2)',borderColor:'rgba(255,255,255,0.4)',color:'#fff',width:'100%',maxWidth:320}} onClick={next}>Scan Next Ticket →</button>
-                  </div>
-                );
-              })()}
-              {/* Individual ticket: valid, ready to check in */}
-              {result.found && !result.cancelled && !result.wrongEvent && !result.alreadyIn && !result.done && !result.isGroupOrder && (
-                <div>
-                  <div style={{textAlign:'center',marginBottom:16}}>
-                    <div style={{fontSize:48,marginBottom:10}}>✅</div>
-                    <h3 className="dsp" style={{color:'var(--green)',fontSize:22,marginBottom:4}}>Valid Ticket</h3>
-                    {result.ticket && <p style={{color:'var(--gold)',fontWeight:700,fontSize:13}}>Ticket {result.ticket.ticket_number}{result.ticketTotal ? ` of ${result.ticketTotal}` : ''}</p>}
-                  </div>
-                  <p style={{fontWeight:700,fontSize:17,marginBottom:2}}>{result.order?.buyer_name}</p>
-                  <p style={{color:'var(--text2)',fontSize:13,marginBottom:4}}>{result.order?.buyer_email}</p>
-                  <p style={{color:'var(--gold)',fontWeight:700,fontSize:14,marginBottom:14}}>{result.event?.title || 'Event'}</p>
-                  <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'10px 14px',marginBottom:16}}>
-                    {result.ticket
-                      ? <div style={{fontSize:13,color:'var(--text2)'}}>{result.ticket.ticket_type_name}</div>
-                      : (result.order?.order_items || []).map((item, i) => (
-                          <div key={i} style={{fontSize:13,color:'var(--text2)',padding:'2px 0'}}>{item.quantity}× {item.ticket_type_name}</div>
-                        ))
-                    }
-                  </div>
-                  <button className="buy" onClick={doCheckin}>✓ Check In</button>
-                </div>
+              {result.type === 'not_found' && (
+                <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>QR code not recognized.</div>
               )}
-              {/* Group order: partial or full check-in */}
-              {result.found && !result.cancelled && !result.wrongEvent && !result.alreadyIn && !result.done && result.isGroupOrder && (
-                <div>
-                  <div style={{textAlign:'center',marginBottom:16}}>
-                    <div style={{fontSize:48,marginBottom:10}}>🎫</div>
-                    <h3 className="dsp" style={{color:'var(--gold)',fontSize:22,marginBottom:4}}>Group Ticket</h3>
-                    <p style={{color:'var(--text2)',fontSize:13}}>{result.uncheckedCount} of {result.orderTickets.length} not yet checked in</p>
-                  </div>
-                  <p style={{fontWeight:700,fontSize:17,marginBottom:2}}>{result.order?.buyer_name}</p>
-                  <p style={{color:'var(--text2)',fontSize:13,marginBottom:4}}>{result.order?.buyer_email}</p>
-                  <p style={{color:'var(--gold)',fontWeight:700,fontSize:14,marginBottom:14}}>{result.event?.title || 'Event'}</p>
-                  <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'10px 14px',marginBottom:16}}>
-                    {result.orderTickets.map((t, i) => (
-                      <div key={t.id} style={{fontSize:13,padding:'4px 0',display:'flex',justifyContent:'space-between',borderBottom: i < result.orderTickets.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none'}}>
-                        <span style={{color:'var(--text2)'}}>#{t.ticket_number} {t.ticket_type_name}</span>
-                        <span className={`badge ${t.status === 'checked_in' ? 'badge-done' : 'badge-ok'}`} style={{fontSize:11}}>{t.status === 'checked_in' ? 'In' : 'Waiting'}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {result.uncheckedCount > 1 && (
-                    <div style={{marginBottom:14,display:'flex',alignItems:'center',gap:10}}>
-                      <span style={{color:'var(--text2)',fontSize:13,flexShrink:0}}>How many entering?</span>
-                      <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <button className="btn" style={{padding:'4px 12px',fontSize:18,lineHeight:1}} onClick={() => setGroupCount(c => Math.max(1, c - 1))}>−</button>
-                        <span style={{fontWeight:700,fontSize:20,minWidth:28,textAlign:'center'}}>{groupCount}</span>
-                        <button className="btn" style={{padding:'4px 12px',fontSize:18,lineHeight:1}} onClick={() => setGroupCount(c => Math.min(result.uncheckedCount, c + 1))}>+</button>
-                        <span style={{color:'var(--text3)',fontSize:12}}>/ {result.uncheckedCount}</span>
-                      </div>
-                    </div>
-                  )}
-                  <div style={{display:'flex',gap:10}}>
-                    {result.uncheckedCount > 1 && (
-                      <button className="btn" style={{flex:1}} onClick={() => doGroupCheckin(groupCount)}>Check In {groupCount}</button>
-                    )}
-                    <button className="buy" style={{flex:1}} onClick={() => result.uncheckedCount > 1 ? setGroupConfirm(true) : doGroupCheckin(1)}>
-                      Check In All ({result.uncheckedCount})
-                    </button>
-                  </div>
-                </div>
+              {result.type === 'cancelled' && (
+                <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>This order has been cancelled. Entry denied.</div>
               )}
+              <div style={{color:'rgba(255,255,255,0.35)',fontSize:12,marginTop:16}}>Tap to dismiss early</div>
             </div>
-            {!result.done && !result.alreadyIn && (
-              <button className="btn" style={{width:'100%'}} onClick={next}>
-                {result.found && !result.cancelled && !result.wrongEvent ? 'Cancel' : 'Scan Next Ticket'}
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
