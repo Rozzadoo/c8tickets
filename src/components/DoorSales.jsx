@@ -30,7 +30,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
   const [readers, setReaders] = useState([]);
   const [connectedReader, setConnectedReader] = useState(null);
   const [readerDiscovering, setReaderDiscovering] = useState(false);
-  const [readerConnecting, setReaderConnecting] = useState(false);
+  const [connectingReaderId, setConnectingReaderId] = useState(null);
   const [readerError, setReaderError] = useState('');
   const [terminalPaymentStatus, setTerminalPaymentStatus] = useState('idle');
   const [terminalAmounts, setTerminalAmounts] = useState(null);
@@ -106,10 +106,10 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
 
   const connectToReader = async (reader) => {
     if (!terminal) return;
-    setReaderConnecting(true);
+    setConnectingReaderId(reader.id);
     setReaderError('');
     const result = await terminal.connectReader(reader, { fail_if_in_use: false });
-    setReaderConnecting(false);
+    setConnectingReaderId(null);
     if (result.error) {
       setReaderError(result.error.message);
     } else {
@@ -446,8 +446,8 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
                     {readers.map(r => (
                       <div key={r.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--surface)',borderRadius:6,padding:'6px 10px'}}>
                         <span style={{fontSize:13}}>{r.label || r.serial_number}</span>
-                        <button className="btn" style={{padding:'4px 10px',fontSize:12}} disabled={readerConnecting} onClick={() => connectToReader(r)}>
-                          {readerConnecting ? 'Connecting…' : 'Connect'}
+                        <button className="btn" style={{padding:'4px 10px',fontSize:12}} disabled={connectingReaderId !== null} onClick={() => connectToReader(r)}>
+                          {connectingReaderId === r.id ? 'Connecting…' : 'Connect'}
                         </button>
                       </div>
                     ))}
