@@ -225,9 +225,17 @@ const [resetError, setResetError] = useState('');
   useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
 
   const reloadOrders = useCallback(async () => {
-    const { data, error } = await supabase.from('orders').select('*, order_items(*)').eq('tenant_id', tenantId);
-    if (error) { console.error(error); return; }
-    setOrders((data || []).map(o => ({
+    const PAGE = 1000;
+    let all = [], from = 0;
+    while (true) {
+      const { data, error } = await supabase.from('orders').select('*, order_items(*)').eq('tenant_id', tenantId).range(from, from + PAGE - 1);
+      if (error) { console.error(error); break; }
+      if (!data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    setOrders(all.map(o => ({
       id: o.id,
       eventId: o.event_id,
       venueId: o.tenant_id,
