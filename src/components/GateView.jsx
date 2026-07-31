@@ -16,6 +16,7 @@ const fmtTime = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'nume
 
 const GateView = ({ events, onLogout }) => {
   const [selGateEventId, setSelGateEventId] = useState('');
+  const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState(null);
   const cooldown = useRef(false);
   const lastId = useRef(null);
@@ -127,41 +128,56 @@ const GateView = ({ events, onLogout }) => {
       <div style={{maxWidth:440,margin:'0 auto',padding:'16px',width:'100%'}}>
         {upcomingEvents.length > 0 && (
           <div style={{marginBottom:10}}>
-            <select className="fi" value={selGateEventId} onChange={e => setSelGateEventId(e.target.value)} style={{margin:0,fontSize:13}}>
+            <select className="fi" value={selGateEventId} onChange={e => { setSelGateEventId(e.target.value); }} style={{margin:0,fontSize:13}}>
               <option value="">All Events</option>
               {upcomingEvents.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
           </div>
         )}
-        <div style={{position:'relative',borderRadius:'var(--r)',overflow:'hidden'}}>
-          <ScannerWidget scannerId="gate-scanner" onResult={handleScan} />
-          {result && ov && (
-            <div onClick={dismiss} style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:28,background:ov.bg,cursor:'pointer'}}>
-              <div style={{fontSize:64,marginBottom:10,lineHeight:1}}>{ov.icon}</div>
-              <div className="dsp" style={{color:'#fff',fontSize:32,fontWeight:700,marginBottom:8,lineHeight:1.1}}>
-                {result.type === 'success' && result.count ? `${result.count} Checked In` : ov.title}
+
+        {!scanning ? (
+          <div style={{textAlign:'center',paddingTop:40}}>
+            <div style={{fontSize:64,marginBottom:16}}>🎟️</div>
+            <h2 className="dsp" style={{fontSize:28,marginBottom:8}}>Ready to Scan</h2>
+            <p style={{color:'var(--text2)',fontSize:14,marginBottom:28}}>Tap below to open the camera and start checking in tickets.</p>
+            <button className="buy" style={{width:'100%',fontSize:18,padding:'16px'}} onClick={() => setScanning(true)}>
+              Start Scanning
+            </button>
+          </div>
+        ) : (
+          <div style={{position:'relative',borderRadius:'var(--r)',overflow:'hidden'}}>
+            <ScannerWidget scannerId="gate-scanner" onResult={handleScan} />
+            {result && ov && (
+              <div onClick={dismiss} style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:28,background:ov.bg,cursor:'pointer'}}>
+                <div style={{fontSize:64,marginBottom:10,lineHeight:1}}>{ov.icon}</div>
+                <div className="dsp" style={{color:'#fff',fontSize:32,fontWeight:700,marginBottom:8,lineHeight:1.1}}>
+                  {result.type === 'success' && result.count ? `${result.count} Checked In` : ov.title}
+                </div>
+                {result.name && <div style={{color:'#fff',fontWeight:700,fontSize:20,marginBottom:4}}>{result.name}</div>}
+                {result.ticketType && <div style={{color:'rgba(255,255,255,0.8)',fontSize:16,marginBottom:4}}>{result.ticketType}</div>}
+                {result.type === 'success' && result.checkedInAt && (
+                  <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>{fmtTime(result.checkedInAt)}</div>
+                )}
+                {result.type === 'already_in' && result.checkedInAt && (
+                  <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>First checked in at {fmtTime(result.checkedInAt)}</div>
+                )}
+                {result.type === 'wrong_event' && result.event && (
+                  <div style={{color:'rgba(255,255,255,0.7)',fontSize:14,marginBottom:4}}>Ticket is for: <strong>{result.event}</strong></div>
+                )}
+                {result.type === 'not_found' && (
+                  <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>QR code not recognized.</div>
+                )}
+                {result.type === 'cancelled' && (
+                  <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>This order has been cancelled. Entry denied.</div>
+                )}
+                <div style={{color:'rgba(255,255,255,0.35)',fontSize:12,marginTop:16}}>Tap to dismiss early</div>
               </div>
-              {result.name && <div style={{color:'#fff',fontWeight:700,fontSize:20,marginBottom:4}}>{result.name}</div>}
-              {result.ticketType && <div style={{color:'rgba(255,255,255,0.8)',fontSize:16,marginBottom:4}}>{result.ticketType}</div>}
-              {result.type === 'success' && result.checkedInAt && (
-                <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>{fmtTime(result.checkedInAt)}</div>
-              )}
-              {result.type === 'already_in' && result.checkedInAt && (
-                <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>First checked in at {fmtTime(result.checkedInAt)}</div>
-              )}
-              {result.type === 'wrong_event' && result.event && (
-                <div style={{color:'rgba(255,255,255,0.7)',fontSize:14,marginBottom:4}}>Ticket is for: <strong>{result.event}</strong></div>
-              )}
-              {result.type === 'not_found' && (
-                <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>QR code not recognized.</div>
-              )}
-              {result.type === 'cancelled' && (
-                <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>This order has been cancelled. Entry denied.</div>
-              )}
-              <div style={{color:'rgba(255,255,255,0.35)',fontSize:12,marginTop:16}}>Tap to dismiss early</div>
-            </div>
-          )}
-        </div>
+            )}
+            <button className="btn" style={{width:'100%',marginTop:8}} onClick={() => { dismiss(); setScanning(false); }}>
+              Stop Scanner
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
