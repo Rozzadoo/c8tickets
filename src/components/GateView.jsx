@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from '../lib/supabase';
+import { API_BASE } from '../constants';
 import ScannerWidget from './ScannerWidget';
 
 const LOGO_SRC = "/logo-simple.webp";
@@ -55,62 +56,56 @@ const GateView = ({ events, onLogout }) => {
     lastIdTime.current = now;
     cooldown.current = true;
 
-    // Try individual ticket lookup first
-    const { data: ticket } = await supabase.from('tickets').select('*').eq('id', id).single();
+    // Route through server-side API so the gate account's RLS restrictions don't block the lookup.
+    // get-order resolves both order IDs and individual ticket IDs, and uses the service role key.
+    const { data: { session: gateSess } } = await supabase.auth.getSession();
+    const fetchHeaders = { 'Content-Type': 'application/json' };
+    if (gateSess?.access_token) fetchHeaders['Authorization'] = `Bearer ${gateSess.access_token}`;
 
-    if (ticket) {
-      const { data: order } = await supabase.from('orders').select('*, order_items(*)').eq('id', ticket.order_id).single();
-      const ev = events.find(e => e.id === ticket.event_id);
+    const lookupRes = await fetch(`${API_BASE}/api/get-order?id=${encodeURIComponent(id)}`, { headers: fetchHeaders });
+    if (!lookupRes.ok) { showResult({ type: 'not_found' }); return; }
 
-      if (selGateEventId && ticket.event_id !== selGateEventId) {
-        showResult({ type: 'wrong_event', name: order?.buyer_name, event: ev?.title }); return;
-      }
-      if (ticket.status === 'cancelled' || order?.status === 'cancelled') {
-        showResult({ type: 'cancelled', name: order?.buyer_name }); return;
-      }
-      if (ticket.status === 'checked_in') {
-        showResult({ type: 'already_in', name: order?.buyer_name, ticketType: ticket.ticket_type_name, checkedInAt: ticket.checked_in_at }); return;
-      }
-      const checkedAt = new Date().toISOString();
-      const { data: updated } = await supabase.from('tickets')
-        .update({ status: 'checked_in', checked_in_at: checkedAt })
-        .eq('id', ticket.id).eq('status', 'valid').select('id');
-      if (!updated || updated.length === 0) {
-        showResult({ type: 'already_in', name: order?.buyer_name, ticketType: ticket.ticket_type_name }); return;
-      }
-      showResult({ type: 'success', name: order?.buyer_name, ticketType: ticket.ticket_type_name, checkedInAt: checkedAt }); return;
-    }
-
-    // Fall back to order-level lookup (group / legacy QR)
-    const { data: order, error } = await supabase.from('orders').select('*, order_items(*)').eq('id', id).single();
-    if (error || !order) { showResult({ type: 'not_found' }); return; }
-
+    const { order, tickets, scannedTicketId } = await lookupRes.json();
     const ev = events.find(e => e.id === order.event_id);
+
     if (selGateEventId && order.event_id !== selGateEventId) {
       showResult({ type: 'wrong_event', name: order.buyer_name, event: ev?.title }); return;
     }
     if (order.status === 'cancelled') { showResult({ type: 'cancelled', name: order.buyer_name }); return; }
 
-    const { data: orderTickets } = await supabase.from('tickets').select('*').eq('order_id', id).order('ticket_number');
-    const unchecked = (orderTickets || []).filter(t => t.status !== 'checked_in' && t.status !== 'cancelled');
+    if (scannedTicketId) {
+      // Individual ticket QR was scanned — check in just that one ticket
+      const ticket = tickets.find(t => t.id === scannedTicketId);
+      if (!ticket) { showResult({ type: 'not_found' }); return; }
+      if (ticket.status === 'cancelled') { showResult({ type: 'cancelled', name: order.buyer_name }); return; }
+      if (ticket.status === 'checked_in') {
+        showResult({ type: 'already_in', name: order.buyer_name, ticketType: ticket.ticket_type_name, checkedInAt: ticket.checked_in_at }); return;
+      }
+      const ciRes = await fetch(`${API_BASE}/api/gate-checkin`, {
+        method: 'POST', headers: fetchHeaders,
+        body: JSON.stringify({ ticketId: ticket.id }),
+      });
+      const ciData = await ciRes.json();
+      if (ciData.alreadyIn) {
+        showResult({ type: 'already_in', name: order.buyer_name, ticketType: ticket.ticket_type_name }); return;
+      }
+      showResult({ type: 'success', name: order.buyer_name, ticketType: ticket.ticket_type_name, checkedInAt: new Date().toISOString() });
+      return;
+    }
 
+    // Order-level QR — check in all unchecked tickets for this order
+    const unchecked = tickets.filter(t => t.status !== 'checked_in' && t.status !== 'cancelled');
     if (unchecked.length === 0) {
-      const firstIn = (orderTickets || []).find(t => t.checked_in_at);
-      showResult({ type: 'already_in', name: order.buyer_name, ticketType: orderTickets?.[0]?.ticket_type_name, checkedInAt: firstIn?.checked_in_at }); return;
+      const firstIn = tickets.find(t => t.checked_in_at);
+      showResult({ type: 'already_in', name: order.buyer_name, ticketType: tickets[0]?.ticket_type_name, checkedInAt: firstIn?.checked_in_at }); return;
     }
 
-    const checkedAt = new Date().toISOString();
-    let checkedInCount = 0;
-    for (const t of unchecked) {
-      const { data: updated } = await supabase.from('tickets')
-        .update({ status: 'checked_in', checked_in_at: checkedAt })
-        .eq('id', t.id).eq('status', 'valid').select('id');
-      if (updated && updated.length > 0) checkedInCount++;
-    }
-    if (checkedInCount > 0 && unchecked.length <= checkedInCount) {
-      await supabase.from('orders').update({ status: 'checked_in' }).eq('id', order.id);
-    }
-    showResult({ type: 'success', name: order.buyer_name, ticketType: unchecked[0]?.ticket_type_name, count: checkedInCount, checkedInAt: checkedAt });
+    const ciRes = await fetch(`${API_BASE}/api/gate-checkin`, {
+      method: 'POST', headers: fetchHeaders,
+      body: JSON.stringify({ groupTicketIds: unchecked.map(t => t.id), orderId: order.id }),
+    });
+    const ciData = await ciRes.json();
+    showResult({ type: 'success', name: order.buyer_name, ticketType: unchecked[0]?.ticket_type_name, count: ciData.checkedIn ?? unchecked.length, checkedInAt: new Date().toISOString() });
   }, [events, selGateEventId, showResult]);
 
   const upcomingEvents = events.filter(e => e.published !== false);

@@ -24,16 +24,38 @@ export default async function handler(req, res) {
     if (userRes.ok) isAdmin = true;
   }
 
+  let scannedTicketId = null;
+
   const orderRes = await fetch(
     `${supaUrl}/rest/v1/orders?id=eq.${id}&select=*,order_items(*)&limit=1`,
     { headers }
   );
   const orders = await orderRes.json();
-  const order = Array.isArray(orders) ? orders[0] : null;
+  let order = Array.isArray(orders) ? orders[0] : null;
+
+  // If not found as an order ID, try looking up as an individual ticket ID
+  if (!order) {
+    const ticketLookupRes = await fetch(
+      `${supaUrl}/rest/v1/tickets?id=eq.${id}&select=*&limit=1`,
+      { headers }
+    );
+    const ticketLookupData = await ticketLookupRes.json();
+    const matchedTicket = Array.isArray(ticketLookupData) ? ticketLookupData[0] : null;
+    if (matchedTicket) {
+      const orderByTicketRes = await fetch(
+        `${supaUrl}/rest/v1/orders?id=eq.${matchedTicket.order_id}&select=*,order_items(*)&limit=1`,
+        { headers }
+      );
+      const orderByTicketData = await orderByTicketRes.json();
+      order = Array.isArray(orderByTicketData) ? orderByTicketData[0] : null;
+      if (order) scannedTicketId = id;
+    }
+  }
+
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
   let ticketsRes = await fetch(
-    `${supaUrl}/rest/v1/tickets?order_id=eq.${id}&order=ticket_number.asc`,
+    `${supaUrl}/rest/v1/tickets?order_id=eq.${order.id}&order=ticket_number.asc`,
     { headers }
   );
   let tickets = await ticketsRes.json();
@@ -71,5 +93,5 @@ export default async function handler(req, res) {
     delete order.buyer_phone;
   }
 
-  return res.status(200).json({ order, tickets });
+  return res.status(200).json({ order, tickets, ...(scannedTicketId ? { scannedTicketId } : {}) });
 }
