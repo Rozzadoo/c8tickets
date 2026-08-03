@@ -2511,9 +2511,9 @@ const openPhysicalManage = async (ev) => {
               const tix=vo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
               const ci=vo.filter(o=>o.checkedIn).length;
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
-              const salesTax=Math.round(vo.reduce((s,o)=>s+(o.salesTax||0),0)*100)/100;
-              const serviceFees=Math.round(vo.reduce((s,o)=>s+(o.serviceFees||0),0)*100)/100;
-              const processingFees=Math.round(vo.reduce((s,o)=>s+(o.processingFee||0),0)*100)/100;
+              const salesTax=Math.round(vo.reduce((s,o)=>s+Math.round(o.items.reduce((a,i)=>a+i.qty*i.price,0)*0.06*100)/100,0)*100)/100;
+              const serviceFees=Math.round(vo.filter(o=>o.source!=='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0)*2,0)*100)/100;
+              const processingFees=Math.round(vo.reduce((s,o)=>{if(o.source==='door_cash')return s;const ts=o.items.reduce((a,i)=>a+i.qty*i.price,0);const tx=Math.round(ts*0.06*100)/100;const sv=o.items.reduce((a,i)=>a+i.qty,0)*2;return s+Math.max(0,Math.round((o.total-ts-tx-sv)*100)/100);},0)*100)/100;
               const inRangeDate=dateStr=>{const d=new Date(dateStr);if(dashFilter==='month')return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();if(dashFilter==='prev_month'){const p=new Date(now.getFullYear(),now.getMonth()-1,1);return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear();}if(dashFilter==='ytd')return d.getFullYear()===now.getFullYear();if(dashFilter==='last_year')return d.getFullYear()===now.getFullYear()-1;if(dashFilter==='custom'){const s=dashCustomStart?new Date(dashCustomStart+'T00:00:00'):null;const e=dashCustomEnd?new Date(dashCustomEnd+'T23:59:59'):null;if(s&&d<s)return false;if(e&&d>e)return false;return true;}return true;};
               const regRev=Math.round(dashRegData.filter(r=>inRangeDate(r.created_at)).reduce((s,r)=>s+(parseFloat(r.amount_paid)||0),0)*100)/100;
               const posRev=Math.round(dashPosData.filter(p=>inRangeDate(p.created_at)).reduce((s,p)=>s+(parseFloat(p.total)||0),0)*100)/100;
@@ -2535,7 +2535,7 @@ const openPhysicalManage = async (ev) => {
                 <button className="btn" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>setATab('registrations')}>Registration Forms</button>
                 <button className="btn" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>setATab('pos')}>Open POS</button>
               </div>
-              <div className="sg">{platformRev>0&&<div className="sc" style={{gridColumn:'span 2'}}><div className="l">Platform Revenue</div><div className="v gd" style={{fontSize:28}}>{fmtCurrency(platformRev)}</div><div className="s">Tickets + Registrations + POS</div></div>}{regRev>0&&<div className="sc"><div className="l">Registration Revenue</div><div className="v gd">{fmtCurrency(regRev)}</div><div className="s">Registration fees collected</div></div>}{posRev>0&&<div className="sc"><div className="l">POS Revenue</div><div className="v gd">{fmtCurrency(posRev)}</div><div className="s">Point-of-sale total</div></div>}<div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Owed to organizer</div></div>{!isVenueUser&&<><div className="sc"><div className="l">Service Revenue</div><div className="v gd">{serviceFees===0?"$0":"$"+serviceFees.toFixed(2)}</div><div className="s">Service fees</div></div><div className="sc"><div className="l">Processing Fees</div><div className="v">{processingFees===0?"$0":"$"+processingFees.toFixed(2)}</div><div className="s">Remit to Stripe</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
+              <div className="sg">{platformRev>0&&<div className="sc" style={{gridColumn:'span 2'}}><div className="l">Platform Revenue</div><div className="v gd" style={{fontSize:28}}>{fmtCurrency(platformRev)}</div><div className="s">Tickets + Registrations + POS</div></div>}{regRev>0&&<div className="sc"><div className="l">Registration Revenue</div><div className="v gd">{fmtCurrency(regRev)}</div><div className="s">Registration fees collected</div></div>}{posRev>0&&<div className="sc"><div className="l">POS Revenue</div><div className="v gd">{fmtCurrency(posRev)}</div><div className="s">Point-of-sale total</div></div>}<div className="sc"><div className="l">Venue Revenue</div><div className="v gd">{venueRev===0?"$0":"$"+venueRev.toFixed(2)}</div><div className="s">Gross ticket revenue</div></div>{!isVenueUser&&<><div className="sc"><div className="l">Service Revenue</div><div className="v gd">{serviceFees===0?"$0":"$"+serviceFees.toFixed(2)}</div><div className="s">Service fees</div></div><div className="sc"><div className="l">Processing Fees</div><div className="v">{processingFees===0?"$0":"$"+processingFees.toFixed(2)}</div><div className="s">Remit to Stripe</div></div><div className="sc"><div className="l">Sales Tax</div><div className="v">{salesTax===0?"$0":"$"+salesTax.toFixed(2)}</div><div className="s">Remit to Idaho</div></div></>}<div className="sc"><div className="l">Tickets Sold</div><div className="v">{tix}</div></div><div className="sc"><div className="l">Orders</div><div className="v">{vo.length}</div></div><div className="sc"><div className="l">Checked In</div><div className="v">{ci}</div><div className="s">{vo.length>0?Math.round(ci/vo.length*100):0}%</div></div><div className="sc"><div className="l">Active Events</div><div className="v">{vEvents.length}</div></div></div>
               <h3 className="dsp" style={{fontSize:20,marginBottom:14}}>By Event</h3>
               {(()=>{
                 const evRows=vEvents.map(ev=>{
@@ -2543,9 +2543,9 @@ const openPhysicalManage = async (ev) => {
                   if(!eo.length) return null;
                   const etix=eo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
                   const erev=eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
-                  const etax=Math.round(eo.reduce((s,o)=>s+(o.salesTax||0),0)*100)/100;
-                  const esvc=Math.round(eo.reduce((s,o)=>s+(o.serviceFees||0),0)*100)/100;
-                  const eproc=Math.round(eo.reduce((s,o)=>s+(o.processingFee||0),0)*100)/100;
+                  const etax=Math.round(eo.reduce((s,o)=>s+Math.round(o.items.reduce((a,i)=>a+i.qty*i.price,0)*0.06*100)/100,0)*100)/100;
+                  const esvc=Math.round(eo.filter(o=>o.source!=='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0)*2,0)*100)/100;
+                  const eproc=Math.round(eo.reduce((s,o)=>{if(o.source==='door_cash')return s;const ts=o.items.reduce((a,i)=>a+i.qty*i.price,0);const tx=Math.round(ts*0.06*100)/100;const sv=o.items.reduce((a,i)=>a+i.qty,0)*2;return s+Math.max(0,Math.round((o.total-ts-tx-sv)*100)/100);},0)*100)/100;
                   const eci=eo.filter(o=>o.checkedIn).length;
                   return {ev,eo,etix,erev,etax,esvc,eproc,eci};
                 }).filter(Boolean);
@@ -2709,7 +2709,7 @@ const openPhysicalManage = async (ev) => {
 
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
               const avgOrderTotal=vo.length>0?vo.reduce((s,o)=>s+o.total,0)/vo.length:0;
-              const evAvgRows=[...new Set(vo.map(o=>o.eventId))].map(evId=>{const ev=vEvents.find(e=>e.id===evId);const eo=vo.filter(o=>o.eventId===evId);if(!eo.length)return null;const capacity=ev?ev.tickets.reduce((s,t)=>s+(t.total??t.available),0):null;const evTotalSold=ev?ev.tickets.reduce((s,t)=>s+(t.sold??0),0):null;const sellThru=capacity?Math.round(evTotalSold/capacity*100):0;const remaining=capacity!=null?Math.max(0,capacity-evTotalSold):null;return{ev:ev||{id:evId,title:'[Deleted Event]',date:''},count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru,remaining};}).filter(Boolean);
+              const evAvgRows=[...new Set(vo.map(o=>o.eventId))].map(evId=>{const ev=vEvents.find(e=>e.id===evId);const eo=vo.filter(o=>o.eventId===evId);if(!eo.length)return null;const capacity=ev?ev.tickets.reduce((s,t)=>s+(t.total??t.available),0):null;const evTotalSold=orders.filter(o=>o.eventId===evId&&o.status!=='cancelled').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);const sellThru=capacity?Math.round(evTotalSold/capacity*100):0;const remaining=capacity!=null?Math.max(0,capacity-evTotalSold):null;return{ev:ev||{id:evId,title:'[Deleted Event]',date:''},count:eo.length,totalTix:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0),totalRev:eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0),capacity,evTotalSold,sellThru,remaining};}).filter(Boolean);
 
               const isDoor = o => o.source==='door'||o.source==='door_cash';
               const doorOrders=vo.filter(isDoor);
@@ -2772,7 +2772,7 @@ const openPhysicalManage = async (ev) => {
                 const k=weekStart(o.date);
                 if(!weekMap[k])weekMap[k]={orders:0,tickets:0,ticketRev:0,svcFees:0};
                 const f=bkFees(o);
-                weekMap[k].orders++; weekMap[k].tickets+=o.items.reduce((s,i)=>s+i.qty,0); weekMap[k].ticketRev+=f.ticketSub; weekMap[k].svcFees+=f.svc;
+                weekMap[k].orders++; weekMap[k].tickets+=o.items.reduce((s,i)=>s+i.qty,0); weekMap[k].ticketRev+=f.ticketSub; weekMap[k].svcFees+=f.isCash?0:f.svc;
               }
               const weekRows=Object.entries(weekMap).sort(([a],[b])=>a.localeCompare(b)).map(([wk,d])=>{
                 const pf=Math.round(d.ticketRev*PLATFORM_PCT*100)/100;
