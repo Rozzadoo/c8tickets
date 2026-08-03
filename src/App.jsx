@@ -3446,9 +3446,14 @@ const openPhysicalManage = async (ev) => {
                         <h3 className="dsp" style={{fontSize:18,marginBottom:16}}>Venue Payment Tracker</h3>
                         <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
-                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>All-Time Owed</div>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Total Venue Earnings</div>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(trackerVenueGross)}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>Incl. {fmtCurrency(trackerHoldback)} holdback</div>
+                          </div>
+                          <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Payable Now</div>
                             <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(allTimeOwed)}</div>
-                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{trackerVenueName}</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>Excl. holdback</div>
                           </div>
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Total Paid</div>
