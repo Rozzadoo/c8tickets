@@ -51,8 +51,8 @@ export default function App() {
   const [reportPosLoaded, setReportPosLoaded] = useState(false);
   const [dashRegData, setDashRegData] = useState([]);
   const [dashPosData, setDashPosData] = useState([]);
-  const [holdbackPct, setHoldbackPct] = useState(() => Number(localStorage.getItem('c8_holdbackPct') ?? 10) || 10);
-  const [platformFeePct, setPlatformFeePct] = useState(() => Number(localStorage.getItem('c8_platformFeePct') ?? 2.5) || 2.5);
+  const [holdbackPct, setHoldbackPct] = useState(() => { const v = localStorage.getItem('c8_holdbackPct'); return v !== null ? Number(v) : 10; });
+  const [platformFeePct, setPlatformFeePct] = useState(() => { const v = localStorage.getItem('c8_platformFeePct'); return v !== null ? Number(v) : 2.5; });
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
   const [reportEventId, setReportEventId] = useState('');
   const [filter, setFilter] = useState("All");
@@ -3461,9 +3461,29 @@ const openPhysicalManage = async (ev) => {
                             <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{outstandingBalance<=0.005?'All paid up':'Balance due'}</div>
                           </div>
                         </div>
-                        <p style={{fontSize:11,color:'var(--text3)',marginBottom:20,lineHeight:1.6}}>
-                          Based on all-time non-cancelled orders using current platform fee ({platformFeePct}%) and holdback ({holdbackPct}%) settings. Changing these settings will update the calculation.
-                        </p>
+                        <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px',marginBottom:16,fontSize:13}}>
+                          <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:1,color:'var(--text3)',marginBottom:10}}>How It's Calculated</div>
+                          <div style={{display:'grid',gridTemplateColumns:'1fr auto',rowGap:5}}>
+                            <span style={{color:'var(--text2)'}}>All-time ticket revenue</span>
+                            <span style={{fontWeight:600,textAlign:'right'}}>{fmtCurrency(trackerTicketRev)}</span>
+                            {trackerPlatformFee > 0 && <>
+                              <span style={{color:'var(--text3)',paddingLeft:12}}>Less platform fee ({platformFeePct}%)</span>
+                              <span style={{color:'var(--text3)',textAlign:'right'}}>−{fmtCurrency(trackerPlatformFee)}</span>
+                            </>}
+                            <span style={{color:'var(--text2)',borderTop:'1px solid var(--border)',paddingTop:5,marginTop:2}}>Venue gross</span>
+                            <span style={{fontWeight:600,textAlign:'right',borderTop:'1px solid var(--border)',paddingTop:5,marginTop:2}}>{fmtCurrency(trackerVenueGross)}</span>
+                            {trackerHoldback > 0 && <>
+                              <span style={{color:'var(--text3)',paddingLeft:12}}>Less holdback retained ({holdbackPct}%)</span>
+                              <span style={{color:'var(--text3)',textAlign:'right'}}>−{fmtCurrency(trackerHoldback)}</span>
+                            </>}
+                            <span style={{color:'var(--text)',fontWeight:700,borderTop:'1px solid var(--border)',paddingTop:5,marginTop:2}}>All-Time Payout</span>
+                            <span style={{fontWeight:700,textAlign:'right',borderTop:'1px solid var(--border)',paddingTop:5,marginTop:2}}>{fmtCurrency(allTimeOwed)}</span>
+                            <span style={{color:'var(--text3)',paddingLeft:12}}>Less total paid out</span>
+                            <span style={{color:'var(--text3)',textAlign:'right'}}>−{fmtCurrency(totalEverPaid)}</span>
+                            <span style={{color:outstandingBalance>0.005?'var(--gold)':'var(--green)',fontWeight:700,borderTop:'1px solid var(--border)',paddingTop:5,marginTop:2}}>Outstanding Balance</span>
+                            <span style={{color:outstandingBalance>0.005?'var(--gold)':'var(--green)',fontWeight:700,textAlign:'right',borderTop:'1px solid var(--border)',paddingTop:5,marginTop:2}}>{fmtCurrency(outstandingBalance)}</span>
+                          </div>
+                        </div>
                         <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'16px 18px',marginBottom:20}}>
                           <div style={{fontSize:12,fontWeight:700,color:'var(--text)',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>Record a Payment</div>
                           <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
