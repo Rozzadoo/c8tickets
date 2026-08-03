@@ -2746,8 +2746,8 @@ const openPhysicalManage = async (ev) => {
                 const ticketSub = o.items.reduce((s,i)=>s+i.qty*i.price,0);
                 const qty = o.items.reduce((s,i)=>s+i.qty,0);
                 const tax = Math.round(ticketSub*0.06*100)/100;
+                const svc = qty*2;
                 const isCash = o.source==='door_cash';
-                const svc = isCash ? 0 : qty*2;
                 const proc = isCash ? 0 : Math.max(0, Math.round((o.total-ticketSub-tax-svc)*100)/100);
                 return {ticketSub, tax, svc, proc, isCash};
               };
@@ -3515,11 +3515,11 @@ const openPhysicalManage = async (ev) => {
                   {isSuperAdmin && (() => {
                     // Use bkFees computed values — o.service_fees DB column is null for many orders (cash, old orders)
                     const allPaidOrders = orders.filter(o => o.status !== 'cancelled' && !o.source?.startsWith('physical'));
-                    const wdBk = allPaidOrders.reduce((acc, o) => {
-                      const f = bkFees(o); acc.ticketRev += f.ticketSub; acc.svc += f.svc; return acc;
-                    }, { ticketRev: 0, svc: 0 });
-                    const wdPlatformFee = Math.round(wdBk.ticketRev * PLATFORM_PCT * 100) / 100;
-                    const totalFeesCollected = Math.round((wdBk.svc + wdPlatformFee) * 100) / 100;
+                    // Only count service fees on card/online orders — cash customers don't pay the $2 service fee
+                    const totalFeesCollected = allPaidOrders.reduce((s, o) => {
+                      const f = bkFees(o);
+                      return s + (f.isCash ? 0 : f.svc);
+                    }, 0);
                     const totalWithdrawn = platformWithdrawals.reduce((s, w) => s + Number(w.amount), 0);
                     const stripeTransferFees = Math.round(venuePayouts.length * 1.50 * 100) / 100;
                     const outstanding = Math.round((totalFeesCollected - totalWithdrawn - stripeTransferFees) * 100) / 100;
@@ -3531,7 +3531,7 @@ const openPhysicalManage = async (ev) => {
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>C8Tickets Revenue</div>
                             <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(totalFeesCollected)}</div>
-                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>Svc fees + {platformFeePct}% platform fee</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>$2/ticket on online + card orders</div>
                           </div>
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Stripe Transfer Fees</div>
