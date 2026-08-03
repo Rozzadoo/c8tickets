@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import * as XLSX from 'xlsx';
 import { supabase } from './lib/supabase';
 import { API_BASE, APP_URL } from './constants';
 import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs } from './lib/utils';
@@ -2851,122 +2852,135 @@ const openPhysicalManage = async (ev) => {
                 if (!ev) return;
                 const allEvOrders = orders.filter(o => o.venueId === venue.id && o.eventId === reportEventId && o.status !== 'cancelled');
                 const paidOrders = allEvOrders.filter(o => !o.source?.startsWith('physical'));
-                const physOrders = allEvOrders.filter(o => o.source?.startsWith('physical'));
+                const physOrders  = allEvOrders.filter(o => o.source?.startsWith('physical'));
 
-                const fmt = n => '$' + Number(n).toFixed(2);
-                const fmtN = n => Number(n).toFixed(2);
-                const q = s => `"${String(s).replace(/"/g,'""')}"`;
-                const row = r => r.map(c => { const s = String(c ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? q(s) : s; }).join(',');
-                const rows = [];
-                const blank = () => rows.push('');
-                const section = (title) => { blank(); rows.push(row([title])); };
+                const dollar = n => Number(n).toFixed(2);
+                const pct    = (n, d) => d > 0 ? Math.round(n / d * 100) + '%' : '—';
 
-                // Per-ticket-type counts derived from order data (DB quantity_sold mixes paid + physical)
-                const paidTypeMap = {}, physTypeMap = {};
-                for (const o of paidOrders) for (const i of o.items) { paidTypeMap[i.type] = (paidTypeMap[i.type] ?? 0) + i.qty; }
-                for (const o of physOrders) for (const i of o.items) { physTypeMap[i.type] = (physTypeMap[i.type] ?? 0) + i.qty; }
+                // Per-type qty AND revenue from actual order data
+                const paidTypeMap = {}, paidTypeRevMap = {}, physTypeMap = {};
+                for (const o of paidOrders) for (const i of o.items) {
+                  paidTypeMap[i.type]    = (paidTypeMap[i.type]    ?? 0) + i.qty;
+                  paidTypeRevMap[i.type] = (paidTypeRevMap[i.type] ?? 0) + i.qty * i.price;
+                }
+                for (const o of physOrders) for (const i of o.items) {
+                  physTypeMap[i.type] = (physTypeMap[i.type] ?? 0) + i.qty;
+                }
 
-                const totalCap = ev.tickets.reduce((s, t) => s + (t.total ?? t.available), 0);
+                const totalCap      = ev.tickets.reduce((s, t) => s + (t.total ?? t.available), 0);
                 const totalPaidSold = paidOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
-                const totalPhysSold = physOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
-                const ciOrds = paidOrders.filter(o => o.checkedIn).length;
-                const ciTix = paidOrders.filter(o => o.checkedIn).reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
+                const ciTix         = paidOrders.filter(o => o.checkedIn).reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
 
-                // Financial calculations using same formulas as on-screen Bookkeeping section
+                // Financial — same formulas as on-screen Bookkeeping section
                 const evBk = paidOrders.reduce((acc, o) => {
                   const f = bkFees(o);
                   acc.ticketRev += f.ticketSub; acc.tax += f.tax; acc.svc += f.svc; acc.proc += f.proc;
                   return acc;
                 }, { ticketRev: 0, tax: 0, svc: 0, proc: 0 });
                 const evPlatformFee = Math.round(evBk.ticketRev * PLATFORM_PCT * 100) / 100;
-                const evVenueGross = Math.round((evBk.ticketRev - evPlatformFee) * 100) / 100;
-                const evHoldback = Math.round(evVenueGross * hbRate * 100) / 100;
+                const evVenueGross  = Math.round((evBk.ticketRev - evPlatformFee) * 100) / 100;
+                const evHoldback    = Math.round(evVenueGross * hbRate * 100) / 100;
                 const evVenuePayout = Math.round((evVenueGross - evHoldback) * 100) / 100;
 
-                // Channel stats helper
-                const chStats = (arr) => ({
+                // Channel stats — fixed: s + o.items.reduce(...)
+                const chStats = arr => ({
                   orders: arr.length,
                   tix: arr.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0),
-                  rev: arr.reduce((s, o) => o.items.reduce((a, i) => a + i.qty * i.price, 0), 0),
+                  rev: arr.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty * i.price, 0), 0),
                 });
-                const online = chStats(paidOrders.filter(o => o.source === 'online'));
+                const online   = chStats(paidOrders.filter(o => o.source === 'online'));
                 const doorCard = chStats(paidOrders.filter(o => o.source === 'door'));
                 const doorCash = chStats(paidOrders.filter(o => o.source === 'door_cash'));
 
-                // ── EVENT HEADER ──────────────────────────────────────────────
-                rows.push(row(['EVENT REPORT — C8 TICKETS']));
-                rows.push(row([ev.title]));
-                rows.push(row([`${fmtDate(ev.date)}${ev.time ? '  |  Show: ' + fmtTime(ev.time) : ''}${ev.doors ? '  |  Doors: ' + fmtTime(ev.doors) : ''}`]));
-                rows.push(row([`Venue: ${venue.name}   |   Category: ${ev.category || '—'}`]));
-                rows.push(row([`Generated: ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}`]));
-                blank();
+                // Physical breakdown
+                const compTix = physOrders.filter(o => o.source === 'physical_comp')
+                  .reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
+                const consTix = physOrders.filter(o => o.source === 'physical_consignment')
+                  .reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
 
-                // ── TICKET SALES BY TYPE ──────────────────────────────────────
-                section('TICKET SALES BY TYPE');
-                rows.push(row(['Ticket Type', 'Price', 'Capacity', 'Sold', 'Sell-Through', 'Revenue']));
+                // ── SHEET 1: EVENT SUMMARY ────────────────────────────────────
+                const s1 = [
+                  ['C8 TICKETS — EVENT REPORT', '', '', '', '', ''],
+                  [],
+                  ['EVENT', ev.title],
+                  ['DATE',  `${fmtDate(ev.date)}${ev.time ? '  •  Show: ' + fmtTime(ev.time) : ''}${ev.doors ? '  •  Doors: ' + fmtTime(ev.doors) : ''}`],
+                  ['VENUE', venue.name],
+                  ['CATEGORY', ev.category || '—'],
+                  ['GENERATED', new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })],
+                  [],
+                  ['━━━ TICKET SALES BY TYPE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'],
+                  ['Ticket Type', 'Capacity', 'Sold', 'Sell-Through', 'Revenue'],
+                ];
                 for (const t of ev.tickets) {
-                  const cap = t.total ?? t.available;
-                  const paid = paidTypeMap[t.type] ?? 0;
-                  rows.push(row([t.type, fmt(t.price), cap, paid, cap > 0 ? Math.round(paid / cap * 100) + '%' : '—', fmt(paid * t.price)]));
+                  const cap  = t.total ?? t.available;
+                  const sold = paidTypeMap[t.type] ?? 0;
+                  const rev  = paidTypeRevMap[t.type] ?? 0;
+                  s1.push([t.type, cap, sold, pct(sold, cap), '$' + dollar(rev)]);
                 }
-                rows.push(row(['TOTAL', '', totalCap, totalPaidSold, totalCap > 0 ? Math.round(totalPaidSold / totalCap * 100) + '%' : '—', fmt(evBk.ticketRev)]));
-                blank();
-                rows.push(row([`Attendance: ${ciTix} checked in of ${totalPaidSold} sold (${totalPaidSold > 0 ? Math.round(ciTix / totalPaidSold * 100) : 0}%)`]));
-
-                // ── SALES BY CHANNEL ──────────────────────────────────────────
-                section('SALES BY CHANNEL');
-                rows.push(row(['Channel', 'Orders', 'Tickets', 'Revenue']));
-                if (online.orders > 0)   rows.push(row(['Online',       online.orders,   online.tix,   fmt(online.rev)]));
-                if (doorCard.orders > 0) rows.push(row(['Door  – Card', doorCard.orders, doorCard.tix, fmt(doorCard.rev)]));
-                if (doorCash.orders > 0) rows.push(row(['Door  – Cash', doorCash.orders, doorCash.tix, fmt(doorCash.rev)]));
-                rows.push(row(['TOTAL', paidOrders.length, totalPaidSold, fmt(evBk.ticketRev)]));
-
-                // ── FINANCIAL SUMMARY ─────────────────────────────────────────
-                section('FINANCIAL SUMMARY');
-                rows.push(row(['', '']));
-                rows.push(row(['Ticket Revenue (face value)', fmt(evBk.ticketRev)]));
-                rows.push(row(['  Idaho Sales Tax (6%)', fmt(evBk.tax)]));
-                rows.push(row(['  Service Fees ($2 / ticket)', fmt(evBk.svc)]));
-                rows.push(row([`  C8Tickets Platform Fee (${platformFeePct}%)`, fmt(evPlatformFee)]));
-                rows.push(row(['', '']));
-                rows.push(row(['Venue Gross (after platform fee)', fmt(evVenueGross)]));
-                if (evHoldback > 0) rows.push(row([`  Holdback Retained (${holdbackPct}%)`, '-' + fmtN(evHoldback)]));
-                rows.push(row(['VENUE PAYOUT', fmt(evVenuePayout)]));
-                rows.push(row(['', '']));
-                rows.push(row(['Note: Sales tax ($' + fmtN(evBk.tax) + ') remitted by C8Tickets to Idaho State Tax Commission.']));
-
-                // ── PHYSICAL TICKETS (informational only) ─────────────────────
+                s1.push(['TOTAL', totalCap, totalPaidSold, pct(totalPaidSold, totalCap), '$' + dollar(evBk.ticketRev)]);
+                s1.push([`Attendance: ${ciTix} of ${totalPaidSold} checked in (${pct(ciTix, totalPaidSold)})`]);
+                s1.push([]);
+                s1.push(['━━━ SALES BY CHANNEL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━']);
+                s1.push(['Channel', 'Orders', 'Tickets', 'Revenue']);
+                if (online.orders   > 0) s1.push(['Online',       online.orders,   online.tix,   '$' + dollar(online.rev)]);
+                if (doorCard.orders > 0) s1.push(['Door – Card',  doorCard.orders, doorCard.tix, '$' + dollar(doorCard.rev)]);
+                if (doorCash.orders > 0) s1.push(['Door – Cash',  doorCash.orders, doorCash.tix, '$' + dollar(doorCash.rev)]);
+                s1.push(['TOTAL', paidOrders.length, totalPaidSold, '$' + dollar(evBk.ticketRev)]);
+                s1.push([]);
+                s1.push(['━━━ FINANCIAL SUMMARY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━']);
+                s1.push(['', '']);
+                s1.push(['Ticket Revenue (at prices charged)', '$' + dollar(evBk.ticketRev)]);
+                s1.push(['  Idaho Sales Tax (6%)',             '$' + dollar(evBk.tax)]);
+                s1.push(['  Service Fees ($2 / ticket)',       '$' + dollar(evBk.svc)]);
+                s1.push([`  C8Tickets Platform Fee (${platformFeePct}%)`, '$' + dollar(evPlatformFee)]);
+                s1.push(['', '']);
+                s1.push(['Venue Gross (after platform fee)',   '$' + dollar(evVenueGross)]);
+                if (evHoldback > 0) s1.push([`  Holdback Retained (${holdbackPct}%)`, '-$' + dollar(evHoldback)]);
+                s1.push(['VENUE PAYOUT',                       '$' + dollar(evVenuePayout)]);
+                s1.push(['', '']);
+                s1.push([`Note: Sales tax remitted by C8Tickets to Idaho State Tax Commission.`]);
                 if (physOrders.length > 0) {
-                  const compOrds = physOrders.filter(o => o.source === 'physical_comp');
-                  const consOrds = physOrders.filter(o => o.source === 'physical_consignment');
-                  const compTix = compOrds.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
-                  const consTix = consOrds.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
-                  section('PHYSICAL TICKETS ISSUED  (not included in revenue above)');
-                  rows.push(row(['Type', 'Qty']));
-                  if (compTix > 0)  rows.push(row(['Comps (complimentary)', compTix]));
-                  if (consTix > 0)  rows.push(row(['Consignment', consTix]));
-                  rows.push(row(['Total Physical', totalPhysSold]));
+                  s1.push([]);
+                  s1.push(['━━━ PHYSICAL TICKETS ISSUED (not in revenue) ━━━━━━━━━━━━━━━━━']);
+                  s1.push(['Type', 'Qty']);
+                  if (compTix > 0) s1.push(['Comps (complimentary)', compTix]);
+                  if (consTix > 0) s1.push(['Consignment',           consTix]);
+                  s1.push(['Total Physical', compTix + consTix]);
                 }
 
-                // ── TRANSACTION LOG (no personal data) ───────────────────────
-                section('TRANSACTION LOG');
-                rows.push(row(['Date', 'Order ID', 'Items', 'Qty', 'Channel', 'Ticket Rev', 'Grand Total']));
+                // ── SHEET 2: TRANSACTION LOG ──────────────────────────────────
+                const s2 = [
+                  ['C8 TICKETS — TRANSACTION LOG', '', '', '', '', '', ''],
+                  [`${ev.title}  •  ${fmtDate(ev.date)}`],
+                  [],
+                  ['Date', 'Order ID', 'Items', 'Qty', 'Channel', 'Ticket Rev', 'Grand Total'],
+                ];
                 for (const o of paidOrders.slice().sort((a, b) => new Date(a.date) - new Date(b.date))) {
-                  const src = o.source === 'door_cash' ? 'Door – Cash' : o.source === 'door' ? 'Door – Card' : 'Online';
+                  const src   = o.source === 'door_cash' ? 'Door – Cash' : o.source === 'door' ? 'Door – Card' : 'Online';
                   const items = o.items.map(i => `${i.qty}x ${i.type}`).join('; ');
-                  const qty = o.items.reduce((s, i) => s + i.qty, 0);
-                  const tRev = o.items.reduce((s, i) => s + i.qty * i.price, 0);
-                  rows.push(row([new Date(o.date).toLocaleDateString('en-US'), o.id.slice(0, 8).toUpperCase(), items, qty, src, fmt(tRev), fmt(o.total)]));
+                  const qty   = o.items.reduce((s, i) => s + i.qty, 0);
+                  const tRev  = o.items.reduce((s, i) => s + i.qty * i.price, 0);
+                  s2.push([
+                    new Date(o.date).toLocaleDateString('en-US'),
+                    o.id.slice(0, 8).toUpperCase(),
+                    items, qty, src,
+                    '$' + dollar(tRev),
+                    '$' + dollar(o.total),
+                  ]);
                 }
+                s2.push([]);
+                s2.push(['TOTALS', '', '', totalPaidSold, '', '$' + dollar(evBk.ticketRev), '']);
 
-                const csv = rows.join('\n');
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `event-report-${ev.title.toLowerCase().replace(/[^\w]+/g,'-').replace(/-+$/,'')}-${ev.date}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
+                // Build workbook
+                const wb = XLSX.utils.book_new();
+                const ws1 = XLSX.utils.aoa_to_sheet(s1);
+                const ws2 = XLSX.utils.aoa_to_sheet(s2);
+                ws1['!cols'] = [{wch:42},{wch:12},{wch:8},{wch:13},{wch:14}];
+                ws2['!cols'] = [{wch:12},{wch:12},{wch:30},{wch:6},{wch:13},{wch:12},{wch:12}];
+                XLSX.utils.book_append_sheet(wb, ws1, 'Event Summary');
+                XLSX.utils.book_append_sheet(wb, ws2, 'Transaction Log');
+                const slug = ev.title.toLowerCase().replace(/[^\w]+/g,'-').replace(/-+$/,'');
+                XLSX.writeFile(wb, `event-report-${slug}-${ev.date}.xlsx`);
               };
 
               const downloadSalesCSV = () => {
@@ -3418,13 +3432,12 @@ const openPhysicalManage = async (ev) => {
                     const trackerVenueId = bkVenueFilter === 'all' ? venue.id : bkVenueFilter;
                     const trackerVenueName = venues.find(v => v.id === trackerVenueId)?.name || 'Venue';
                     const allTrackerOrders = orders.filter(o => o.venueId === trackerVenueId && o.status !== 'cancelled' && !o.source?.startsWith('physical'));
-                    const allTimeOwed = allTrackerOrders.reduce((s, o) => {
-                      const f = bkFees(o);
-                      const pf = Math.round(f.ticketSub * PLATFORM_PCT * 100) / 100;
-                      const vg = f.ticketSub - pf;
-                      const hb = Math.round(vg * hbRate * 100) / 100;
-                      return s + (vg - hb);
-                    }, 0);
+                    // Aggregate approach — matches Bookkeeping section exactly (avoids per-order rounding drift)
+                    const trackerTicketRev = allTrackerOrders.reduce((s, o) => s + bkFees(o).ticketSub, 0);
+                    const trackerPlatformFee = Math.round(trackerTicketRev * PLATFORM_PCT * 100) / 100;
+                    const trackerVenueGross  = Math.round((trackerTicketRev - trackerPlatformFee) * 100) / 100;
+                    const trackerHoldback    = Math.round(trackerVenueGross * hbRate * 100) / 100;
+                    const allTimeOwed = Math.round((trackerVenueGross - trackerHoldback) * 100) / 100;
                     const trackerPayouts = venuePayouts.filter(p => p.tenant_id === trackerVenueId);
                     const totalEverPaid = trackerPayouts.reduce((s, p) => s + Number(p.amount), 0);
                     const outstandingBalance = Math.round((allTimeOwed - totalEverPaid) * 100) / 100;
@@ -3500,7 +3513,13 @@ const openPhysicalManage = async (ev) => {
                   })()}
 
                   {isSuperAdmin && (() => {
-                    const totalFeesCollected = orders.filter(o => o.status !== 'cancelled' && !o.source?.startsWith('physical')).reduce((s, o) => s + (o.serviceFees || 0), 0);
+                    // Use bkFees computed values — o.service_fees DB column is null for many orders (cash, old orders)
+                    const allPaidOrders = orders.filter(o => o.status !== 'cancelled' && !o.source?.startsWith('physical'));
+                    const wdBk = allPaidOrders.reduce((acc, o) => {
+                      const f = bkFees(o); acc.ticketRev += f.ticketSub; acc.svc += f.svc; return acc;
+                    }, { ticketRev: 0, svc: 0 });
+                    const wdPlatformFee = Math.round(wdBk.ticketRev * PLATFORM_PCT * 100) / 100;
+                    const totalFeesCollected = Math.round((wdBk.svc + wdPlatformFee) * 100) / 100;
                     const totalWithdrawn = platformWithdrawals.reduce((s, w) => s + Number(w.amount), 0);
                     const stripeTransferFees = Math.round(venuePayouts.length * 1.50 * 100) / 100;
                     const outstanding = Math.round((totalFeesCollected - totalWithdrawn - stripeTransferFees) * 100) / 100;
@@ -3510,9 +3529,9 @@ const openPhysicalManage = async (ev) => {
                         <p style={{fontSize:12,color:'var(--text3)',marginBottom:16}}>Visible to platform owner only — track when you transfer collected service fees to yourself.</p>
                         <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
-                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Service Fees Collected</div>
+                            <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>C8Tickets Revenue</div>
                             <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(totalFeesCollected)}</div>
-                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>All-time, non-cancelled orders</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>Svc fees + {platformFeePct}% platform fee</div>
                           </div>
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Stripe Transfer Fees</div>
