@@ -53,6 +53,7 @@ export default function App() {
   const [holdbackPct, setHoldbackPct] = useState(() => Number(localStorage.getItem('c8_holdbackPct') ?? 10) || 10);
   const [platformFeePct, setPlatformFeePct] = useState(() => Number(localStorage.getItem('c8_platformFeePct') ?? 2.5) || 2.5);
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
+  const [reportEventId, setReportEventId] = useState('');
   const [filter, setFilter] = useState("All");
   const [venueFilter, setVenueFilter] = useState('All');
   const [venueProfileId, setVenueProfileId] = useState(null);
@@ -2845,6 +2846,83 @@ const openPhysicalManage = async (ev) => {
                 URL.revokeObjectURL(url);
               };
 
+              const downloadEventReportCSV = () => {
+                const ev = vEvents.find(e => e.id === reportEventId);
+                if (!ev) return;
+                const evOrders = orders.filter(o => o.venueId === venue.id && o.eventId === reportEventId && o.status !== 'cancelled');
+                const fmt = n => Number(n).toFixed(2);
+                const q = s => `"${String(s).replace(/"/g,'""')}"`;
+                const row = r => r.map(c => { const s = String(c ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? q(s) : s; }).join(',');
+                const rows = [];
+
+                // Header
+                rows.push(row(['EVENT SUMMARY REPORT']));
+                rows.push(row([ev.title]));
+                rows.push(row([`Date: ${fmtDate(ev.date)}${ev.time ? ' at ' + fmtTime(ev.time) : ''}${ev.doors ? ' (Doors ' + fmtTime(ev.doors) + ')' : ''}`]));
+                rows.push(row([`Category: ${ev.category || '—'}`]));
+                rows.push(row([`Venue: ${venue.name}`]));
+                rows.push(row([`Generated: ${new Date().toLocaleDateString('en-US')}`]));
+                rows.push('');
+
+                // Ticket overview
+                const totalCap = ev.tickets.reduce((s, t) => s + (t.total ?? t.available), 0);
+                const totalSold = ev.tickets.reduce((s, t) => s + (t.sold ?? 0), 0);
+                const totalRev = evOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty * i.price, 0), 0);
+                rows.push(row(['TICKET OVERVIEW']));
+                rows.push(row(['Ticket Type', 'Price', 'Capacity', 'Sold', 'Remaining', 'Sell-Through', 'Revenue']));
+                for (const t of ev.tickets) {
+                  const cap = t.total ?? t.available; const sold = t.sold ?? 0; const rem = Math.max(0, cap - sold);
+                  rows.push(row([t.type, '$' + fmt(t.price), cap, sold, rem, cap > 0 ? Math.round(sold / cap * 100) + '%' : '—', '$' + fmt(sold * t.price)]));
+                }
+                rows.push(row(['TOTAL', '', totalCap, totalSold, Math.max(0, totalCap - totalSold), totalCap > 0 ? Math.round(totalSold / totalCap * 100) + '%' : '—', '$' + fmt(totalRev)]));
+                rows.push('');
+
+                // Sales summary
+                const totalTixSold = evOrders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
+                const totalGross = evOrders.reduce((s, o) => s + o.total, 0);
+                const ciOrds = evOrders.filter(o => o.checkedIn).length;
+                rows.push(row(['SALES SUMMARY']));
+                rows.push(row(['Metric', 'Value']));
+                rows.push(row(['Total Orders', evOrders.length]));
+                rows.push(row(['Total Tickets Sold', totalTixSold]));
+                rows.push(row(['Ticket Revenue', '$' + fmt(totalRev)]));
+                rows.push(row(['Total Gross Collected (incl. fees & tax)', '$' + fmt(totalGross)]));
+                rows.push(row(['Orders Checked In', ciOrds]));
+                rows.push(row(['Check-In Rate', evOrders.length > 0 ? Math.round(ciOrds / evOrders.length * 100) + '%' : '—']));
+                rows.push('');
+
+                // Channel breakdown
+                const ch = (src) => evOrders.filter(o => src === 'online' ? o.source === 'online' : o.source === src);
+                const chStats = (arr) => ({ orders: arr.length, tix: arr.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0), rev: arr.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0) });
+                const online = chStats(ch('online')), doorCard = chStats(ch('door')), doorCash = chStats(ch('door_cash'));
+                rows.push(row(['SALES BY CHANNEL']));
+                rows.push(row(['Channel', 'Orders', 'Tickets', 'Revenue']));
+                rows.push(row(['Online', online.orders, online.tix, '$' + fmt(online.rev)]));
+                rows.push(row(['Door — Card', doorCard.orders, doorCard.tix, '$' + fmt(doorCard.rev)]));
+                rows.push(row(['Door — Cash', doorCash.orders, doorCash.tix, '$' + fmt(doorCash.rev)]));
+                rows.push('');
+
+                // Order list
+                rows.push(row(['ORDER LIST']));
+                rows.push(row(['Date', 'Order ID', 'Buyer Name', 'Buyer Email', 'Buyer Phone', 'Items', 'Qty', 'Ticket Revenue', 'Total Paid', 'Source', 'Status']));
+                for (const o of evOrders.slice().sort((a, b) => new Date(a.date) - new Date(b.date))) {
+                  const src = o.source === 'door_cash' ? 'Door – Cash' : o.source === 'door' ? 'Door – Card' : 'Online';
+                  const items = o.items.map(i => `${i.qty}× ${i.type}`).join('; ');
+                  const qty = o.items.reduce((s, i) => s + i.qty, 0);
+                  const tRev = o.items.reduce((s, i) => s + i.qty * i.price, 0);
+                  rows.push(row([new Date(o.date).toLocaleDateString('en-US'), o.id.slice(0, 8).toUpperCase(), o.buyer.name, o.buyer.email || '', o.buyer.phone || '', items, qty, '$' + fmt(tRev), '$' + fmt(o.total), src, o.checkedIn ? 'Checked In' : 'Valid']));
+                }
+
+                const csv = rows.join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `event-report-${ev.title.toLowerCase().replace(/[^\w]+/g,'-').replace(/-+$/,'')}-${ev.date}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              };
+
               const downloadSalesCSV = () => {
                 const fmt = n => Number(n).toFixed(2);
                 const q = s => `"${String(s).replace(/"/g,'""')}"`;
@@ -3157,7 +3235,19 @@ const openPhysicalManage = async (ev) => {
                   </>;
                 })()}
 
-                <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:8,marginBottom:isVenueUser?0:28}}>
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginTop:8,marginBottom:24}}>
+                  <h3 className="dsp" style={{fontSize:18,marginBottom:6}}>Event Summary Report</h3>
+                  <p style={{color:'var(--text3)',fontSize:12,marginBottom:14}}>Per-event CSV for organizers: ticket type breakdown, channel split, attendance, and full order list.</p>
+                  <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <select className="fi" style={{margin:0,flex:1,minWidth:220}} value={reportEventId} onChange={e=>setReportEventId(e.target.value)}>
+                      <option value="">Select an event…</option>
+                      {[...vEvents].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(ev=><option key={ev.id} value={ev.id}>{ev.title} — {fmtDate(ev.date)}</option>)}
+                    </select>
+                    <button className="btn gold" disabled={!reportEventId} onClick={downloadEventReportCSV}>Download Event Report</button>
+                  </div>
+                </div>
+
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:20,marginBottom:isVenueUser?0:28}}>
                   <button className="btn gold" onClick={downloadSalesCSV} disabled={vo.length===0}>Download Sales Report CSV</button>
                   <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Exports performance summary, ticket type breakdown, event performance, sales channel, and day-of-week data for the selected period.</p>
                 </div>
