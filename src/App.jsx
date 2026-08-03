@@ -2746,8 +2746,8 @@ const openPhysicalManage = async (ev) => {
                 const ticketSub = o.items.reduce((s,i)=>s+i.qty*i.price,0);
                 const qty = o.items.reduce((s,i)=>s+i.qty,0);
                 const tax = Math.round(ticketSub*0.06*100)/100;
-                const svc = qty*2;
                 const isCash = o.source==='door_cash';
+                const svc = isCash ? 0 : qty*2;
                 const proc = isCash ? 0 : Math.max(0, Math.round((o.total-ticketSub-tax-svc)*100)/100);
                 return {ticketSub, tax, svc, proc, isCash};
               };
