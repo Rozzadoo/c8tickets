@@ -3432,8 +3432,12 @@ const openPhysicalManage = async (ev) => {
                     const trackerVenueId = bkVenueFilter === 'all' ? venue.id : bkVenueFilter;
                     const trackerVenueName = venues.find(v => v.id === trackerVenueId)?.name || 'Venue';
                     const allTrackerOrders = orders.filter(o => o.venueId === trackerVenueId && o.status !== 'cancelled' && !o.source?.startsWith('physical'));
-                    // Aggregate approach — matches Bookkeeping section exactly (avoids per-order rounding drift)
-                    const trackerTicketRev = allTrackerOrders.reduce((s, o) => s + bkFees(o).ticketSub, 0);
+                    // Cash was collected by venue directly — only card/online went through Stripe (C8 Tickets holds it)
+                    const trackerCardOrders = allTrackerOrders.filter(o => o.source !== 'door_cash');
+                    const trackerCashOrders = allTrackerOrders.filter(o => o.source === 'door_cash');
+                    const trackerCashRev = trackerCashOrders.reduce((s, o) => s + bkFees(o).ticketSub, 0);
+                    // All owed calculations use card/online only
+                    const trackerTicketRev = trackerCardOrders.reduce((s, o) => s + bkFees(o).ticketSub, 0);
                     const trackerPlatformFee = Math.round(trackerTicketRev * PLATFORM_PCT * 100) / 100;
                     const trackerVenueGross  = Math.round((trackerTicketRev - trackerPlatformFee) * 100) / 100;
                     const trackerHoldback    = Math.round(trackerVenueGross * hbRate * 100) / 100;
@@ -3448,7 +3452,7 @@ const openPhysicalManage = async (ev) => {
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Total Venue Earnings</div>
                             <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{fmtCurrency(trackerVenueGross)}</div>
-                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>Incl. {fmtCurrency(trackerHoldback)} holdback</div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>Card/online only · incl. {fmtCurrency(trackerHoldback)} holdback</div>
                           </div>
                           <div style={{flex:1,minWidth:130,background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px'}}>
                             <div style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Payable Now</div>
@@ -3469,8 +3473,14 @@ const openPhysicalManage = async (ev) => {
                         <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 18px',marginBottom:16,fontSize:13}}>
                           <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:1,color:'var(--text3)',marginBottom:10}}>How It's Calculated</div>
                           <div style={{display:'grid',gridTemplateColumns:'1fr auto',rowGap:5}}>
-                            <span style={{color:'var(--text2)'}}>All-time ticket revenue</span>
+                            <span style={{color:'var(--text2)'}}>Stripe-collected ticket revenue</span>
                             <span style={{fontWeight:600,textAlign:'right'}}>{fmtCurrency(trackerTicketRev)}</span>
+                            <span style={{color:'var(--text3)',paddingLeft:12,fontSize:12}}>(online + door card only)</span>
+                            <span style={{color:'var(--text3)',textAlign:'right',fontSize:12}}></span>
+                            {trackerCashRev > 0 && <>
+                              <span style={{color:'var(--text3)',paddingLeft:12,fontSize:12}}>Door cash — collected by venue directly</span>
+                              <span style={{color:'var(--text3)',textAlign:'right',fontSize:12}}>{fmtCurrency(trackerCashRev)} (not included)</span>
+                            </>}
                             {trackerPlatformFee > 0 && <>
                               <span style={{color:'var(--text3)',paddingLeft:12}}>Less platform fee ({platformFeePct}%)</span>
                               <span style={{color:'var(--text3)',textAlign:'right'}}>−{fmtCurrency(trackerPlatformFee)}</span>
