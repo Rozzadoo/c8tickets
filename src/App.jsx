@@ -2458,7 +2458,7 @@ const openPhysicalManage = async (ev) => {
 <button className="btn" style={{width:"100%",marginTop:8}} onClick={() => setView("forgot")}>Forgot Password?</button>
   </div>
 </div>}
-        {view === "gate" && <GateView events={events} onLogout={logout} />}
+        {view === "gate" && <GateView events={events} onLogout={logout} venue={venue} tenantId={tenantId} updateOrders={updateOrders} updateEvents={updateEvents} reloadOrders={reloadOrders} />}
 
         {view === "register" && regFormId && (
           <div className="sec fade" style={{maxWidth:620,paddingTop:32,paddingBottom:48}}>
