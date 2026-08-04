@@ -36,6 +36,9 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
   const [checkingInId, setCheckingInId] = useState(null);
   const [manualToast, setManualToast] = useState(null);
 
+  // Live check-in stats for the selected event
+  const [stats, setStats] = useState(null);
+
   useEffect(() => {
     if (selGateEventId || events.length === 0) return;
     const todayStr = new Date().toLocaleDateString('en-CA');
@@ -64,6 +67,23 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
     if (session?.access_token) h['Authorization'] = `Bearer ${session.access_token}`;
     return h;
   }, []);
+
+  const loadStats = useCallback(async () => {
+    if (!selGateEventId) { setStats(null); return; }
+    try {
+      const h = await authHeaders();
+      const res = await fetch(`${API_BASE}/api/gate-stats?eventId=${encodeURIComponent(selGateEventId)}`, { headers: h });
+      if (res.ok) setStats(await res.json());
+    } catch {}
+  }, [selGateEventId, authHeaders]);
+
+  // Poll stats every 20s while an event is selected, and refresh immediately when it changes
+  useEffect(() => {
+    loadStats();
+    if (!selGateEventId) return;
+    const t = setInterval(loadStats, 20000);
+    return () => clearInterval(t);
+  }, [selGateEventId, loadStats]);
 
   const handleScan = useCallback(async (rawId) => {
     if (cooldown.current) return;
@@ -105,6 +125,7 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
         showResult({ type: 'already_in', name: order.buyer_name, ticketType: ticket.ticket_type_name }); return;
       }
       showResult({ type: 'success', name: order.buyer_name, ticketType: ticket.ticket_type_name, checkedInAt: new Date().toISOString() });
+      loadStats();
       return;
     }
 
@@ -119,8 +140,18 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
       body: JSON.stringify({ groupTicketIds: unchecked.map(t => t.id), orderId: order.id }),
     });
     const ciData = await ciRes.json();
-    showResult({ type: 'success', name: order.buyer_name, ticketType: unchecked[0]?.ticket_type_name, count: ciData.checkedIn ?? unchecked.length, checkedInAt: new Date().toISOString() });
-  }, [events, selGateEventId, showResult, authHeaders]);
+    // Build a per-type breakdown for the group overlay (e.g., "3× GA, 2× VIP")
+    const typeCounts = {};
+    for (const t of unchecked) typeCounts[t.ticket_type_name] = (typeCounts[t.ticket_type_name] || 0) + 1;
+    const typeBreakdown = Object.entries(typeCounts).map(([k, v]) => `${v}× ${k}`).join(', ');
+    showResult({
+      type: 'success', name: order.buyer_name,
+      ticketType: Object.keys(typeCounts).length > 1 ? typeBreakdown : unchecked[0]?.ticket_type_name,
+      count: ciData.checkedIn ?? unchecked.length,
+      checkedInAt: new Date().toISOString(),
+    });
+    loadStats();
+  }, [events, selGateEventId, showResult, authHeaders, loadStats]);
 
   const doSearch = useCallback(async () => {
     const q = manualQ.trim();
@@ -170,6 +201,7 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
         showManualToast(data.checkedIn ? `Checked in ${data.checkedIn}` : (data.alreadyIn ? 'Already checked in' : 'Checked in'));
         // Refresh the current search to reflect updated statuses
         doSearch();
+        loadStats();
       }
     } catch (e) {
       showManualToast('Network error', false);
@@ -208,6 +240,26 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
       </nav>
 
       <div style={{maxWidth:520,margin:'0 auto',padding:'12px 16px 16px',width:'100%'}}>
+        {stats && selGateEventId && mode !== 'sell' && (
+          <div style={{
+            display:'flex',alignItems:'center',justifyContent:'space-between',
+            padding:'10px 14px',marginBottom:10,
+            background:'linear-gradient(90deg, rgba(200,146,42,0.15), rgba(200,146,42,0.05))',
+            border:'1px solid rgba(200,146,42,0.3)',
+            borderRadius:'var(--rs)',
+          }}>
+            <div>
+              <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,fontWeight:700}}>Checked In</div>
+              <div style={{fontSize:20,fontWeight:700,color:'var(--gold)',lineHeight:1.1}}>
+                {stats.totalCheckedIn} <span style={{color:'var(--text3)',fontSize:14,fontWeight:500}}>/ {stats.totalCheckedIn + stats.totalValid}</span>
+              </div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:1.5,fontWeight:700}}>Remaining</div>
+              <div style={{fontSize:20,fontWeight:700,color:stats.totalValid > 0 ? 'var(--text)' : 'var(--green)',lineHeight:1.1}}>{stats.totalValid}</div>
+            </div>
+          </div>
+        )}
         <div style={{display:'flex',gap:6,marginBottom:12}}>
           <TabButton id="scan" label="Scan" />
           <TabButton id="manual" label="Manual" />
@@ -216,10 +268,18 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
 
         {mode !== 'sell' && upcomingEvents.length > 0 && (
           <div style={{marginBottom:10}}>
-            <select className="fi" value={selGateEventId} onChange={e => setSelGateEventId(e.target.value)} style={{margin:0,fontSize:13}}>
+            <select className="fi" value={selGateEventId} onChange={e => setSelGateEventId(e.target.value)} style={{margin:0,fontSize:13,minHeight:44}}>
               <option value="">All Events</option>
               {upcomingEvents.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
+          </div>
+        )}
+
+        {mode !== 'sell' && upcomingEvents.length === 0 && (
+          <div style={{textAlign:'center',padding:'50px 20px',background:'var(--bg3)',borderRadius:'var(--rs)',marginBottom:12}}>
+            <div style={{fontSize:44,marginBottom:12,opacity:0.6}}>📅</div>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:6}}>No published events</div>
+            <div style={{color:'var(--text3)',fontSize:13,lineHeight:1.5}}>The scanner needs at least one published event to check tickets against. Ask an admin to publish an event, then reload.</div>
           </div>
         )}
 

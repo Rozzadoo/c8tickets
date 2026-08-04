@@ -567,6 +567,12 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
 
           {!loaded
             ? <div className="empty"><p>Loading items…</p></div>
+            : items.length === 0
+            ? <div className="empty" style={{padding:'40px 20px',textAlign:'center'}}>
+                <div style={{fontSize:44,marginBottom:12,opacity:0.6}}>🛒</div>
+                <div style={{fontWeight:700,fontSize:16,marginBottom:6}}>No POS items yet</div>
+                <p style={{color:'var(--text3)',fontSize:13,lineHeight:1.5,maxWidth:340,margin:'0 auto'}}>Ask an admin to add items in the POS Admin tab (drinks, food, merch). Once added they'll appear here for sale.</p>
+              </div>
             : filteredItems.length === 0
             ? <div className="empty"><p>No items available{catFilter !== 'all' ? ' in this category' : ''}.</p></div>
             : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>

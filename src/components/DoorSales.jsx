@@ -375,15 +375,21 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
     if (!q || !selEventId) return;
     setLookupLoading(true);
     setLookupResults(null);
+    // Fetch a wide net for this event, then filter locally so we can token-match
+    // (e.g. "john smi" matches "John Smith" even though it isn't a contiguous substring).
     const { data } = await supabase
       .from('orders')
       .select('id,buyer_name,buyer_email,status,total_amount,created_at,order_items(ticket_type_name,quantity)')
       .eq('event_id', selEventId)
-      .or(`buyer_email.ilike.%${q}%,buyer_name.ilike.%${q}%`)
       .neq('status', 'cancelled')
       .order('created_at', { ascending: false })
-      .limit(10);
-    setLookupResults(data || []);
+      .limit(500);
+    const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const filtered = (data || []).filter(o => {
+      const hay = ((o.buyer_name || '') + ' ' + (o.buyer_email || '')).toLowerCase();
+      return tokens.every(t => hay.includes(t));
+    }).slice(0, 20);
+    setLookupResults(filtered);
     setLookupLoading(false);
   };
 
