@@ -639,7 +639,14 @@ const saveComp = async () => {
       order_id: order.id, ticket_type_id: compForm.ticketTypeId,
       ticket_type_name: tt.type, quantity: compForm.qty, unit_price: 0,
     }]);
-    await supabase.rpc('increment_sold', { tid: compForm.ticketTypeId, qty: compForm.qty });
+    const { error: incErr } = await supabase.rpc('increment_sold', { tid: compForm.ticketTypeId, qty: compForm.qty });
+    if (incErr) {
+      // Best-effort rollback so the DB isn't left with a comp order that doesn't count toward sold
+      await supabase.from('order_items').delete().eq('order_id', order.id);
+      await supabase.from('orders').delete().eq('id', order.id);
+      alert('Comp failed — capacity exceeded for this ticket type. ' + incErr.message);
+      return;
+    }
     if (compForm.email.trim()) {
       fetch(API_BASE + '/api/send-email', {
         method: 'POST',
@@ -1156,7 +1163,17 @@ const fetchOrCreatePhysicalOrders = async (ev, consignee = '', physicalType = 'c
         order_id: order.id, ticket_type_id: tier.id,
         ticket_type_name: tier.type, quantity: 1, unit_price: tier.price,
       });
-      if (physicalType !== 'comp') await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
+      if (physicalType !== 'comp') {
+        const { error: incErr } = await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
+        if (incErr) {
+          // Roll back this specific batch entry so we don't leave a physical ticket without capacity accounting
+          await supabase.from('order_items').delete().eq('order_id', order.id);
+          await supabase.from('orders').delete().eq('id', order.id);
+          alert(`Physical ticket generation stopped — capacity exceeded for "${tier.type}". Generated ${results.length} ticket(s) before hitting the limit.`);
+          setPhysicalCounts(prev => ({ ...prev, [ev.id]: (prev[ev.id] || 0) + results.length }));
+          return { orders: results, wasExisting: false };
+        }
+      }
       results.push({ id: order.id, type: tier.type, price: tier.price });
     }
   }
