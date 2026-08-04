@@ -48,23 +48,33 @@ export default async function handler(req, res) {
   const processingFee = Number(m.processing_fee || 0);
   const ticketSubtotal = pi.amount / 100 - salesTax - serviceFees - processingFee;
 
+  const isDoorSale = m.is_door_sale === 'true';
+  // Door sales are checked in at time of purchase unless the operator marked it a pre-sale
+  const status = isDoorSale
+    ? (req.body?.isPreSale ? 'valid' : 'checked_in')
+    : 'confirmed';
+  // Door sales don't send buyer info to create-payment-intent, so accept overrides in the save request
+  const doorBuyerName = isDoorSale ? (req.body?.buyerName || '').trim() : '';
+  const doorBuyerEmail = isDoorSale ? (req.body?.buyerEmail || '').trim() : '';
+  const doorBuyerPhone = isDoorSale ? (req.body?.buyerPhone || '').trim() : '';
+
   const orderRes = await fetch(`${supaUrl}/rest/v1/orders`, {
     method: 'POST',
     headers: { ...headers, Prefer: 'return=representation' },
     body: JSON.stringify({
       tenant_id: m.tenant_id,
       event_id: m.event_id,
-      buyer_name: m.buyer_name || '',
-      buyer_email: m.buyer_email,
-      buyer_phone: m.buyer_phone || '',
-      status: 'confirmed',
+      buyer_name: (isDoorSale ? doorBuyerName : m.buyer_name) || (isDoorSale ? 'Walk-In' : ''),
+      buyer_email: (isDoorSale ? doorBuyerEmail : m.buyer_email) || '',
+      buyer_phone: (isDoorSale ? doorBuyerPhone : m.buyer_phone) || '',
+      status,
       total_amount: pi.amount / 100,
       ticket_subtotal: ticketSubtotal,
       sales_tax: salesTax,
       service_fees: serviceFees,
       processing_fee: processingFee,
       stripe_payment_intent_id: pi.id,
-      source: 'online',
+      source: isDoorSale ? 'door' : 'online',
       promo_code_id: m.promo_code_id || null,
     }),
   });

@@ -36,6 +36,11 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
   const [terminalAmounts, setTerminalAmounts] = useState(null);
   // Ref-based submit guard — prevents double-taps racing state updates
   const submittingRef = useRef(false);
+  // Pending recovery — if the DB save fails after Stripe succeeds (or cash), we hold the payload
+  // here so the operator can retry rather than losing the sale. Shape:
+  // { kind: 'card'|'cash', paymentIntentId | clientRef, soldItems, eff, buyerName, buyerEmail, isPreSale }
+  const [pendingSave, setPendingSave] = useState(null);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (selEventId || events.length === 0) return;
@@ -196,67 +201,47 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
     setTerminalPaymentStatus('idle');
   };
 
-  const handleSuccess = async (paymentIntentId, amountsData) => {
-    const eff = amountsData || amounts;
-    const { data: { session: doorSession } } = await supabase.auth.getSession();
-    const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
-    const { data: order, error: orderError } = await supabase.from('orders').insert({
-      tenant_id: tenantId, event_id: selEventId,
-      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
-      status: isPreSale ? 'valid' : 'checked_in', total_amount: eff.grandTotal,
-      ticket_subtotal: eff.ticketTotal, sales_tax: eff.salesTax,
-      service_fees: eff.serviceFees, processing_fee: eff.processingFee,
-      stripe_payment_intent_id: paymentIntentId, source: 'door',
-    }).select().single();
-    if (orderError) { alert('Order save failed. Payment ref: ' + paymentIntentId); return; }
-    await supabase.from('order_items').insert(soldItems.map(i => ({
-      order_id: order.id, ticket_type_id: i.ticketTypeId,
-      ticket_type_name: i.type, quantity: i.qty, unit_price: i.price,
-    })));
-    for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
-    fetch(API_BASE+'/api/stripe-orders', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
-      body: JSON.stringify({
-        action: 'tag',
-        paymentIntentId,
-        orderId: order.id,
-        buyerName: buyerName.trim() || 'Walk-In',
-        eventTitle: ev?.title || '',
-        ticketSummary: soldItems.map(i => `${i.qty}x ${i.type}`).join(', '),
-      }),
-    }).catch(() => {});
-    if (buyerEmail.trim()) {
+  // Post-save side effects: stripe tag + email + local state. Runs AFTER the atomic DB save succeeds.
+  const finalizeSale = (kind, orderId, { paymentIntentId, soldItems, eff, buyerName: bn, buyerEmail: be, isPreSale: ip, doorSession }) => {
+    if (kind === 'card' && paymentIntentId) {
+      fetch(API_BASE+'/api/stripe-orders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
+        body: JSON.stringify({
+          action: 'tag', paymentIntentId, orderId,
+          buyerName: bn || 'Walk-In',
+          eventTitle: ev?.title || '',
+          ticketSummary: soldItems.map(i => `${i.qty}x ${i.type}`).join(', '),
+        }),
+      }).catch(() => {});
+    }
+    if (be) {
       fetch(API_BASE + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
         body: JSON.stringify({
           order: {
-            id: order.id,
+            id: orderId,
             items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
-            salesTax: eff.salesTax,
-            serviceFees: eff.serviceFees,
-            processingFee: eff.processingFee,
+            salesTax: eff.salesTax, serviceFees: eff.serviceFees, processingFee: eff.processingFee,
             total: eff.grandTotal,
           },
           event: {
-            title: ev?.title || '',
-            category: ev?.category || '',
-            date: fmtDate(ev?.date || ''),
-            time: fmtTime(ev?.time || ''),
-            doors: fmtTime(ev?.doors || ''),
+            title: ev?.title || '', category: ev?.category || '',
+            date: fmtDate(ev?.date || ''), time: fmtTime(ev?.time || ''), doors: fmtTime(ev?.doors || ''),
           },
           venue: { name: venue.name, location: venue.location },
         }),
       }).catch(() => {});
     }
     const localOrder = {
-      id: order.id, eventId: selEventId, venueId: venue.id,
-      buyer: { name: buyerName.trim() || 'Walk-In', email: buyerEmail.trim(), phone: '' },
+      id: orderId, eventId: selEventId, venueId: venue.id,
+      buyer: { name: bn || 'Walk-In', email: be || '', phone: '' },
       items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId })),
       ticketTotal: eff.ticketTotal, salesTax: eff.salesTax,
       serviceFees: eff.serviceFees, processingFee: eff.processingFee,
-      total: eff.grandTotal, date: new Date().toISOString(), checkedIn: !isPreSale, source: 'door',
-      stripePaymentIntentId: paymentIntentId || null,
+      total: eff.grandTotal, date: new Date().toISOString(), checkedIn: !ip,
+      source: kind === 'cash' ? 'door_cash' : 'door',
+      stripePaymentIntentId: kind === 'card' ? paymentIntentId : null,
     };
     updateOrders(prev => [...prev, localOrder]);
     updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
@@ -265,6 +250,30 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
     reloadOrders?.();
     setLastSale(localOrder);
     setStep('confirm');
+  };
+
+  const handleSuccess = async (paymentIntentId, amountsData) => {
+    const eff = amountsData || amounts;
+    const { data: { session: doorSession } } = await supabase.auth.getSession();
+    const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
+    const bn = buyerName.trim();
+    const be = buyerEmail.trim();
+
+    try {
+      const saveRes = await fetchWithTimeout(API_BASE + '/api/save-order', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentIntentId, isPreSale, buyerName: bn, buyerEmail: be }),
+      }, 20000);
+      const saveData = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok || !saveData.orderId) {
+        // Stripe payment succeeded but our DB save failed — hold for retry, do not lose the sale.
+        setPendingSave({ kind: 'card', paymentIntentId, soldItems, eff, buyerName: bn, buyerEmail: be, isPreSale });
+        return;
+      }
+      finalizeSale('card', saveData.orderId, { paymentIntentId, soldItems, eff, buyerName: bn, buyerEmail: be, isPreSale, doorSession });
+    } catch (e) {
+      setPendingSave({ kind: 'card', paymentIntentId, soldItems, eff, buyerName: bn, buyerEmail: be, isPreSale });
+    }
   };
 
   const startCash = () => {
@@ -276,66 +285,87 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
   const handleCashSale = async () => {
     if (submittingRef.current) return;
     submittingRef.current = true;
-    try {
     const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
-    const ref = 'CASH-' + Date.now();
-    const { data: { session: cashSession } } = await supabase.auth.getSession();
-    const { data: order, error: orderError } = await supabase.from('orders').insert({
-      tenant_id: tenantId, event_id: selEventId,
-      buyer_name: buyerName.trim() || 'Walk-In', buyer_email: buyerEmail.trim(), buyer_phone: '',
-      status: isPreSale ? 'valid' : 'checked_in', total_amount: cashAmounts.grandTotal,
-      ticket_subtotal: cashAmounts.ticketTotal, sales_tax: cashAmounts.salesTax,
-      service_fees: cashAmounts.serviceFees, processing_fee: 0,
-      stripe_payment_intent_id: ref, source: 'door_cash',
-    }).select().single();
-    if (orderError) { alert('Order save failed. Please try again.'); return; }
-    await supabase.from('order_items').insert(soldItems.map(i => ({
-      order_id: order.id, ticket_type_id: i.ticketTypeId,
-      ticket_type_name: i.type, quantity: i.qty, unit_price: i.price,
-    })));
-    for (const item of soldItems) await supabase.rpc('increment_sold', { tid: item.ticketTypeId, qty: item.qty });
-    if (buyerEmail.trim()) {
-      fetch(API_BASE + '/api/send-email', {
+    const clientRef = 'CASH-' + Date.now();
+    const { data: { session: doorSession } } = await supabase.auth.getSession();
+    const bn = buyerName.trim();
+    const be = buyerEmail.trim();
+    const eff = cashAmounts;
+    try {
+      const saveRes = await fetchWithTimeout(API_BASE + '/api/save-cash-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cashSession?.access_token || ''}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
         body: JSON.stringify({
-          order: {
-            id: order.id,
-            items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
-            salesTax: cashAmounts.salesTax,
-            serviceFees: cashAmounts.serviceFees,
-            processingFee: 0,
-            total: cashAmounts.grandTotal,
-          },
-          event: {
-            title: ev?.title || '',
-            category: ev?.category || '',
-            date: fmtDate(ev?.date || ''),
-            time: fmtTime(ev?.time || ''),
-            doors: fmtTime(ev?.doors || ''),
-          },
-          venue: { name: venue.name, location: venue.location },
+          tenantId, eventId: selEventId,
+          items: soldItems.map(i => ({ ticketTypeId: i.ticketTypeId, qty: i.qty, price: i.price })),
+          buyerName: bn, buyerEmail: be, buyerPhone: '',
+          isPreSale, clientRef,
         }),
-      }).catch(() => {});
-    }
-    const localOrder = {
-      id: order.id, eventId: selEventId, venueId: venue.id,
-      buyer: { name: buyerName.trim() || 'Walk-In', email: buyerEmail.trim(), phone: '' },
-      items: soldItems.map(i => ({ type: i.type, qty: i.qty, price: i.price })),
-      ticketTotal: cashAmounts.ticketTotal, salesTax: cashAmounts.salesTax,
-      serviceFees: cashAmounts.serviceFees, processingFee: 0,
-      total: cashAmounts.grandTotal, date: new Date().toISOString(), checkedIn: !isPreSale, source: 'door_cash',
-    };
-    updateOrders(prev => [...prev, localOrder]);
-    updateEvents(evts => evts.map(e => e.id !== selEventId ? e : {
-      ...e, tickets: e.tickets.map((t, i) => ({ ...t, available: t.available - (doorCart[i] || 0) }))
-    }));
-    reloadOrders?.();
-    setLastSale(localOrder);
-    setStep('confirm');
+      }, 20000);
+      const saveData = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok || !saveData.orderId) {
+        setPendingSave({ kind: 'cash', clientRef, soldItems, eff, buyerName: bn, buyerEmail: be, isPreSale });
+        return;
+      }
+      finalizeSale('cash', saveData.orderId, { soldItems, eff, buyerName: bn, buyerEmail: be, isPreSale, doorSession });
+    } catch (e) {
+      setPendingSave({ kind: 'cash', clientRef, soldItems, eff, buyerName: bn, buyerEmail: be, isPreSale });
     } finally {
       submittingRef.current = false;
     }
+  };
+
+  // Retry a pending save (card OR cash). Idempotent — save-order & save-cash-order de-dupe on paymentIntentId/clientRef.
+  const retryPendingSave = async () => {
+    if (!pendingSave || retrying) return;
+    setRetrying(true);
+    const { data: { session: doorSession } } = await supabase.auth.getSession();
+    try {
+      if (pendingSave.kind === 'card') {
+        const saveRes = await fetchWithTimeout(API_BASE + '/api/save-order', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentIntentId: pendingSave.paymentIntentId,
+            isPreSale: pendingSave.isPreSale,
+            buyerName: pendingSave.buyerName,
+            buyerEmail: pendingSave.buyerEmail,
+          }),
+        }, 20000);
+        const saveData = await saveRes.json().catch(() => ({}));
+        if (!saveRes.ok || !saveData.orderId) {
+          alert('Retry failed. The payment is safe — payment ref: ' + pendingSave.paymentIntentId + '\nContact support if this keeps happening.');
+          return;
+        }
+        finalizeSale('card', saveData.orderId, { ...pendingSave, doorSession });
+      } else {
+        const saveRes = await fetchWithTimeout(API_BASE + '/api/save-cash-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
+          body: JSON.stringify({
+            tenantId, eventId: selEventId,
+            items: pendingSave.soldItems.map(i => ({ ticketTypeId: i.ticketTypeId, qty: i.qty, price: i.price })),
+            buyerName: pendingSave.buyerName, buyerEmail: pendingSave.buyerEmail, buyerPhone: '',
+            isPreSale: pendingSave.isPreSale, clientRef: pendingSave.clientRef,
+          }),
+        }, 20000);
+        const saveData = await saveRes.json().catch(() => ({}));
+        if (!saveRes.ok || !saveData.orderId) {
+          alert('Retry failed. Cash ref: ' + pendingSave.clientRef);
+          return;
+        }
+        finalizeSale('cash', saveData.orderId, { ...pendingSave, doorSession });
+      }
+      setPendingSave(null);
+    } catch (e) {
+      alert('Retry failed: ' + (e.message || 'unknown error'));
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const dismissPendingSave = () => {
+    if (!confirm('Dismiss this pending sale? Only do this if you have manually recovered it. This does NOT refund the payment.')) return;
+    setPendingSave(null);
   };
 
   const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); setIsPreSale(false); setVoidConfirm(false); };
@@ -384,6 +414,34 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
         <h2 className="dsp" style={{fontSize:26}}>Door Sales</h2>
         {step !== 'select' && <button className="btn" onClick={reset}>← New Sale</button>}
       </div>
+
+      {pendingSave && (
+        <div style={{
+          marginBottom:20, padding:'16px 18px',
+          background:'rgba(200,146,42,0.15)', border:'2px solid var(--gold)', borderRadius:'var(--rs)',
+        }}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:12,marginBottom:12}}>
+            <div style={{fontSize:24,lineHeight:1}}>⚠️</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Payment succeeded — save is pending</div>
+              <div style={{fontSize:13,color:'var(--text2)',lineHeight:1.5}}>
+                {pendingSave.kind === 'card'
+                  ? <>The card was charged (ref: <code style={{fontSize:11}}>{pendingSave.paymentIntentId}</code>) but the order didn't save to the database. Tap Retry to complete it. Do not re-charge the customer.</>
+                  : <>Cash sale collected (ref: <code style={{fontSize:11}}>{pendingSave.clientRef}</code>) but didn't save. Tap Retry to complete it.</>
+                }
+              </div>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button className="buy" onClick={retryPendingSave} disabled={retrying} style={{minHeight:44,flex:1}}>
+              {retrying ? 'Retrying…' : 'Retry Save'}
+            </button>
+            <button className="btn" onClick={dismissPendingSave} disabled={retrying} style={{minHeight:44}}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {step === 'select' && <>
         <div className="fg" style={{marginBottom:16}}>
