@@ -1,9 +1,23 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { ticketId, orderId, groupTicketIds } = req.body || {};
   const supaUrl = process.env.VITE_SUPABASE_URL;
-  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supaKey) {
+    console.error('[api/gate-checkin] SUPABASE_SERVICE_ROLE_KEY missing — cannot bypass RLS');
+    return res.status(500).json({ error: 'Server misconfigured: service key missing' });
+  }
+
+  // Require an authenticated Supabase session — prevents anyone with a ticket UUID from checking it in.
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+  const userRes = await fetch(`${supaUrl}/auth/v1/user`, {
+    headers: { apikey: anonKey, Authorization: authHeader },
+  });
+  if (!userRes.ok) return res.status(401).json({ error: 'Invalid session' });
+
+  const { ticketId, orderId, groupTicketIds } = req.body || {};
   const headers = {
     apikey: supaKey,
     Authorization: `Bearer ${supaKey}`,

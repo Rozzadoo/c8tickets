@@ -22,7 +22,11 @@ async function sendConfirmation(res, { order, event, venue }) {
   if (!orderId || !/^[0-9a-f-]{36}$/i.test(orderId)) {
     return res.status(400).json({ error: 'Invalid order ID' });
   }
-  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supaKey) {
+    console.error('[api/send-email:sendConfirmation] SUPABASE_SERVICE_ROLE_KEY missing');
+    return res.status(500).json({ error: 'Server misconfigured: service key missing' });
+  }
   const supaUrl = process.env.VITE_SUPABASE_URL;
   const supaHeaders = { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
 
@@ -292,7 +296,11 @@ async function sendReminder(res, { eventId }) {
   if (!eventId || !/^[0-9a-f-]{36}$/i.test(eventId)) {
     return res.status(400).json({ error: 'Invalid eventId' });
   }
-  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supaKey) {
+    console.error('[api/send-email:sendReminder] SUPABASE_SERVICE_ROLE_KEY missing');
+    return res.status(500).json({ error: 'Server misconfigured: service key missing' });
+  }
   const headers = { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
 
   const [eventRes, ordersRes] = await Promise.all([
@@ -362,7 +370,11 @@ async function sendRegistrationConfirmation(res, { registrationId, venueName }) 
   if (!registrationId || !/^[0-9a-f-]{36}$/i.test(registrationId)) {
     return res.status(400).json({ error: 'Invalid registration ID' });
   }
-  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supaKey) {
+    console.error('[api/send-email:sendRegistrationConfirmation] SUPABASE_SERVICE_ROLE_KEY missing');
+    return res.status(500).json({ error: 'Server misconfigured: service key missing' });
+  }
   const base = process.env.VITE_SUPABASE_URL;
   const headers = { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
 

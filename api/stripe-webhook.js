@@ -58,7 +58,11 @@ export default async function handler(req, res) {
     await new Promise(r => setTimeout(r, 4000));
 
     const supaUrl = process.env.VITE_SUPABASE_URL;
-    const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supaKey) {
+      console.error('[api/stripe-webhook] SUPABASE_SERVICE_ROLE_KEY missing');
+      return res.status(500).json({ error: 'Server misconfigured: service key missing' });
+    }
     const headers = { apikey: supaKey, Authorization: `Bearer ${supaKey}`, 'Content-Type': 'application/json' };
 
     // Parse items early — needed for both the recovery path and the main path

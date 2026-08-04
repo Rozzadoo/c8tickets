@@ -2,7 +2,8 @@ import { Resend } from 'resend';
 
 const supaUrl = () => process.env.VITE_SUPABASE_URL;
 const supaHeaders = () => {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY missing');
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 };
 

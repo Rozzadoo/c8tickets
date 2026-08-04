@@ -14,7 +14,8 @@ function isRateLimited(key, maxPerHour) {
 }
 
 const supaHeaders = () => {
-  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supaKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY missing');
   return { apikey: supaKey, Authorization: `Bearer ${supaKey}` };
 };
 

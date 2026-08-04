@@ -11,6 +11,7 @@ const OVERLAY = {
   not_found:   { bg: 'rgba(122,26,26,0.95)',  icon: '❌', title: 'Ticket Not Found'   },
   wrong_event: { bg: 'rgba(122,26,26,0.95)',  icon: '⚠️', title: 'Wrong Event'        },
   cancelled:   { bg: 'rgba(122,26,26,0.95)',  icon: '🚫', title: 'Entry Denied'       },
+  server_err:  { bg: 'rgba(122,26,26,0.95)',  icon: '⚠️', title: 'Server Error'       },
 };
 
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -63,7 +64,10 @@ const GateView = ({ events, onLogout }) => {
     if (gateSess?.access_token) fetchHeaders['Authorization'] = `Bearer ${gateSess.access_token}`;
 
     const lookupRes = await fetch(`${API_BASE}/api/get-order?id=${encodeURIComponent(id)}`, { headers: fetchHeaders });
-    if (!lookupRes.ok) { showResult({ type: 'not_found' }); return; }
+    if (!lookupRes.ok) {
+      if (lookupRes.status >= 500) { showResult({ type: 'server_err', detail: `Lookup failed (${lookupRes.status}). Contact admin.` }); return; }
+      showResult({ type: 'not_found' }); return;
+    }
 
     const { order, tickets, scannedTicketId } = await lookupRes.json();
     const ev = events.find(e => e.id === order.event_id);
@@ -161,6 +165,9 @@ const GateView = ({ events, onLogout }) => {
                 )}
                 {result.type === 'not_found' && (
                   <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>QR code not recognized.</div>
+                )}
+                {result.type === 'server_err' && result.detail && (
+                  <div style={{color:'rgba(255,255,255,0.7)',fontSize:13,marginBottom:4}}>{result.detail}</div>
                 )}
                 {result.type === 'cancelled' && (
                   <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>This order has been cancelled. Entry denied.</div>

@@ -7,7 +7,11 @@ export default async function handler(req, res) {
   }
 
   const supaUrl = process.env.VITE_SUPABASE_URL;
-  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supaKey) {
+    console.error('[api/get-order] SUPABASE_SERVICE_ROLE_KEY missing — cannot bypass RLS');
+    return res.status(500).json({ error: 'Server misconfigured: service key missing' });
+  }
   const headers = {
     apikey: supaKey,
     Authorization: `Bearer ${supaKey}`,

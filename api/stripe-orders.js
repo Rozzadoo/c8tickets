@@ -52,7 +52,11 @@ async function handleRefund(req, res, adminEmail) {
     metadata: { cancelled_by: by },
   }).catch(() => {});
 
-  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supaKey) {
+    console.error('[api/stripe-orders] SUPABASE_SERVICE_ROLE_KEY missing');
+    return res.status(500).json({ error: 'Server misconfigured: service key missing' });
+  }
   await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
     method: 'PATCH',
     headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
