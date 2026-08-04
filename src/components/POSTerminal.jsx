@@ -27,6 +27,8 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
     try { return JSON.parse(localStorage.getItem(`pos_queue_${tenantId}`) || '[]'); } catch { return []; }
   });
   const [syncing, setSyncing] = useState(false);
+  const [showQueueModal, setShowQueueModal] = useState(false);
+  const [lastSyncError, setLastSyncError] = useState(null);
 
   // 3.5 Cash tracking (accumulates within this terminal session)
   const [cashSalesThisSession, setCashSalesThisSession] = useState(0);
@@ -69,25 +71,65 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
   }
 
   // ── Offline queue sync ───────────────────────────────────────────────
+  // syncEntry pushes one queued order to Supabase; returns { ok, error }.
+  // Failure keeps the entry in the queue with an updated `attempts` count + `lastError`.
+  async function syncEntry(entry) {
+    try {
+      const { data: order, error: orderErr } = await supabase.from('pos_orders').insert(entry.orderPayload).select().single();
+      if (orderErr || !order) return { ok: false, error: orderErr?.message || 'Order insert returned no row' };
+      const { error: itemsErr } = await supabase.from('pos_order_items').insert(
+        entry.items.map(i => ({ ...i, pos_order_id: order.id }))
+      );
+      if (itemsErr) return { ok: false, error: 'Items insert failed after order created: ' + itemsErr.message };
+      for (const u of (entry.inventoryUpdates || [])) {
+        const { error: invErr } = await supabase.from('pos_items').update({ inventory_qty: u.inventory_qty }).eq('id', u.id);
+        if (invErr) return { ok: false, error: 'Inventory update failed after order created: ' + invErr.message };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Network error' };
+    }
+  }
+
   async function syncQueue() {
     setSyncing(true);
+    setLastSyncError(null);
     const remaining = [];
+    let firstError = null;
     for (const entry of offlineQueue) {
-      try {
-        const { data: order } = await supabase.from('pos_orders').insert(entry.orderPayload).select().single();
-        if (order) {
-          await supabase.from('pos_order_items').insert(
-            entry.items.map(i => ({ ...i, pos_order_id: order.id }))
-          );
-          for (const u of (entry.inventoryUpdates || [])) {
-            await supabase.from('pos_items').update({ inventory_qty: u.inventory_qty }).eq('id', u.id);
-          }
-        }
-      } catch { remaining.push(entry); }
+      const { ok, error } = await syncEntry(entry);
+      if (!ok) {
+        remaining.push({ ...entry, attempts: (entry.attempts || 0) + 1, lastError: error, lastAttemptAt: new Date().toISOString() });
+        if (!firstError) firstError = error;
+      }
     }
     setOfflineQueue(remaining);
     localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(remaining));
     setSyncing(false);
+    if (firstError) setLastSyncError(firstError);
+  }
+
+  async function retryEntry(entryId) {
+    const entry = offlineQueue.find(e => e.id === entryId);
+    if (!entry) return;
+    setSyncing(true);
+    const { ok, error } = await syncEntry(entry);
+    const updated = ok
+      ? offlineQueue.filter(e => e.id !== entryId)
+      : offlineQueue.map(e => e.id !== entryId ? e : { ...e, attempts: (e.attempts || 0) + 1, lastError: error, lastAttemptAt: new Date().toISOString() });
+    setOfflineQueue(updated);
+    localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(updated));
+    setSyncing(false);
+    if (!ok) setLastSyncError(error);
+  }
+
+  function deleteEntry(entryId) {
+    const entry = offlineQueue.find(e => e.id === entryId);
+    if (!entry) return;
+    if (!confirm(`Permanently delete queued order (${fmtCurrency(entry.orderPayload?.total || 0)})?\n\nThis does NOT refund anything. Only delete if you've manually reconciled this sale.`)) return;
+    const updated = offlineQueue.filter(e => e.id !== entryId);
+    setOfflineQueue(updated);
+    localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(updated));
   }
 
   // ── Cart helpers ─────────────────────────────────────────────────────
@@ -491,9 +533,71 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
         </div>
       )}
       {isOnline && !syncing && offlineQueue.length > 0 && (
-        <div style={{ background: 'rgba(200,146,42,.12)', border: '1px solid rgba(200,146,42,.3)', borderRadius: 'var(--rs)', padding: '8px 14px', marginBottom: 12, fontSize: 13, color: 'var(--gold)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{offlineQueue.length} offline order{offlineQueue.length !== 1 ? 's' : ''} pending sync</span>
-          <button className="btn" style={{ fontSize: 12, padding: '3px 8px' }} onClick={syncQueue}>Sync Now</button>
+        <div style={{ background: 'rgba(200,146,42,.12)', border: '1px solid rgba(200,146,42,.3)', borderRadius: 'var(--rs)', padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--gold)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>
+            <strong>{offlineQueue.length}</strong> offline order{offlineQueue.length !== 1 ? 's' : ''} pending sync
+            {offlineQueue.some(e => e.lastError) && <> — some are failing</>}
+          </span>
+          <div style={{display:'flex',gap:6}}>
+            <button className="btn" style={{ fontSize: 12, padding: '6px 12px', minHeight: 36 }} onClick={() => setShowQueueModal(true)}>View</button>
+            <button className="btn" style={{ fontSize: 12, padding: '6px 12px', minHeight: 36 }} onClick={syncQueue}>Sync All</button>
+          </div>
+        </div>
+      )}
+      {lastSyncError && !syncing && (
+        <div style={{ background: 'rgba(179,58,42,.15)', border: '1px solid rgba(179,58,42,.4)', borderRadius: 'var(--rs)', padding: '10px 14px', marginBottom: 12, fontSize: 12, color: 'var(--red)', display:'flex', justifyContent:'space-between', alignItems:'center', gap: 8 }}>
+          <span>Sync error: {lastSyncError}</span>
+          <button className="btn" style={{fontSize:11,padding:'4px 10px'}} onClick={() => setLastSyncError(null)}>Dismiss</button>
+        </div>
+      )}
+
+      {showQueueModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowQueueModal(false)}>
+          <div style={{ background: 'var(--bg2)', borderRadius: 'var(--rs)', padding: 20, maxWidth: 560, width: '100%', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <h3 className="dsp" style={{fontSize:20,margin:0}}>Pending Sync ({offlineQueue.length})</h3>
+              <button className="btn" onClick={() => setShowQueueModal(false)} style={{minHeight:36}}>Close</button>
+            </div>
+            {offlineQueue.length === 0 ? (
+              <div style={{textAlign:'center',padding:'30px 20px',color:'var(--text3)'}}>Queue is empty. All orders synced.</div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {offlineQueue.map(entry => {
+                  const failing = (entry.attempts || 0) > 0;
+                  return (
+                    <div key={entry.id} style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:12,border:failing?'1px solid rgba(179,58,42,.4)':'1px solid var(--border)'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,marginBottom:8}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:14}}>{fmtCurrency(entry.orderPayload?.total || 0)} · {entry.orderPayload?.payment_type || '—'}</div>
+                          <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>
+                            Queued {new Date(entry.queuedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+                            {' · '}{entry.items?.length || 0} item{entry.items?.length !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                        <div style={{display:'flex',gap:6,flexShrink:0}}>
+                          <button className="buy" style={{fontSize:11,padding:'6px 12px',minHeight:36}} onClick={() => retryEntry(entry.id)} disabled={syncing}>Retry</button>
+                          <button className="btn" style={{fontSize:11,padding:'6px 12px',minHeight:36,color:'var(--red)'}} onClick={() => deleteEntry(entry.id)} disabled={syncing}>Delete</button>
+                        </div>
+                      </div>
+                      {entry.items && entry.items.length > 0 && (
+                        <div style={{fontSize:11,color:'var(--text3)',marginBottom:failing ? 8 : 0,paddingLeft:2}}>
+                          {entry.items.map(i => `${i.quantity}× ${i.item_name}`).join(' · ')}
+                        </div>
+                      )}
+                      {failing && entry.lastError && (
+                        <div style={{fontSize:11,color:'var(--red)',padding:'6px 8px',background:'rgba(179,58,42,.1)',borderRadius:4,marginTop:6}}>
+                          <strong>Failed {entry.attempts}× —</strong> {entry.lastError}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{marginTop:16,fontSize:11,color:'var(--text3)',lineHeight:1.5}}>
+              Retry re-attempts a single order. Delete removes it from the queue permanently (does NOT refund). Only delete if you've manually reconciled the sale.
+            </div>
+          </div>
         </div>
       )}
 
