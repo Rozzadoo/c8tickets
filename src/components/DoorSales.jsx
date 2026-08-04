@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Elements } from '@stripe/react-stripe-js';
 import { supabase } from '../lib/supabase';
 import { stripePromise } from '../lib/stripe';
 import { API_BASE, APP_URL } from '../constants';
-import { fmtDate, fmtTime, fmtCurrency } from '../lib/utils';
+import { fmtDate, fmtTime, fmtCurrency, fetchWithTimeout } from '../lib/utils';
 import CheckoutForm from './CheckoutForm';
 import QRImg from './QRImg';
 
@@ -34,6 +34,8 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
   const [readerError, setReaderError] = useState('');
   const [terminalPaymentStatus, setTerminalPaymentStatus] = useState('idle');
   const [terminalAmounts, setTerminalAmounts] = useState(null);
+  // Ref-based submit guard — prevents double-taps racing state updates
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (selEventId || events.length === 0) return;
@@ -50,18 +52,31 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
 
   const startPayment = async () => {
     if (!ev || cartN === 0) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoadingIntent(true);
     const items = cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id }));
-    const res = await fetch(API_BASE+'/api/create-payment-intent', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, eventId: selEventId, tenantId: tenantId, isDoorSale: true }),
-    });
-    const data = await res.json();
-    setLoadingIntent(false);
-    if (!data.clientSecret) { alert('Payment setup failed. Please try again.'); return; }
-    setClientSecret(data.clientSecret);
-    setAmounts(data);
-    setStep('payment');
+    try {
+      const res = await fetchWithTimeout(API_BASE+'/api/create-payment-intent', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, eventId: selEventId, tenantId: tenantId, isDoorSale: true }),
+      }, 15000);
+      const data = await res.json();
+      if (!res.ok || !data.clientSecret) {
+        alert(data.error || 'Payment setup failed. Please try again.');
+        return;
+      }
+      setClientSecret(data.clientSecret);
+      setAmounts(data);
+      setStep('payment');
+    } catch (e) {
+      alert(e.message === 'timeout'
+        ? 'Payment setup timed out. Check your connection and try again — no charge was made.'
+        : 'Payment setup failed. Please try again.');
+    } finally {
+      setLoadingIntent(false);
+      submittingRef.current = false;
+    }
   };
 
   const initAndDiscover = async () => {
@@ -128,19 +143,32 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
 
   const startTerminalPayment = async () => {
     if (!terminal || !connectedReader || cartN === 0) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     const { data: { session: doorSession } } = await supabase.auth.getSession();
     setLoadingIntent(true);
-    const res = await fetch(API_BASE + '/api/terminal?action=payment-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
-      body: JSON.stringify({
-        items: cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id })),
-        eventId: selEventId, tenantId: tenantId,
-        eventMeta: { title: ev?.title || '' },
-      }),
-    });
-    const data = await res.json();
+    let data;
+    try {
+      const res = await fetchWithTimeout(API_BASE + '/api/terminal?action=payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${doorSession?.access_token || ''}` },
+        body: JSON.stringify({
+          items: cartItems.filter(i => i.qty > 0).map(i => ({ qty: i.qty, ticketTypeId: i.id })),
+          eventId: selEventId, tenantId: tenantId,
+          eventMeta: { title: ev?.title || '' },
+        }),
+      }, 15000);
+      data = await res.json();
+    } catch (e) {
+      setLoadingIntent(false);
+      submittingRef.current = false;
+      alert(e.message === 'timeout'
+        ? 'Reader payment setup timed out. No charge was made — try again.'
+        : 'Reader payment setup failed. Please try again.');
+      return;
+    }
     setLoadingIntent(false);
+    submittingRef.current = false;
     if (!data.clientSecret) { alert(data.error || 'Payment setup failed. Please try again.'); return; }
     setTerminalAmounts(data);
     setStep('terminal_payment');
@@ -246,6 +274,9 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
   };
 
   const handleCashSale = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
     const soldItems = cartItems.filter(i => i.qty > 0).map(i => ({ type: i.type, qty: i.qty, price: i.effectivePrice, ticketTypeId: i.id }));
     const ref = 'CASH-' + Date.now();
     const { data: { session: cashSession } } = await supabase.auth.getSession();
@@ -302,6 +333,9 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
     reloadOrders?.();
     setLastSale(localOrder);
     setStep('confirm');
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   const reset = () => { setStep('select'); setDoorCart({}); setBuyerName(''); setBuyerEmail(''); setClientSecret(null); setAmounts(null); setCashAmounts(null); setTendered(''); setLastSale(null); setTerminalAmounts(null); setTerminalPaymentStatus('idle'); setIsPreSale(false); setVoidConfirm(false); };

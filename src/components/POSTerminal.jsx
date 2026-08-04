@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { API_BASE } from '../constants';
-import { fmtCurrency } from '../lib/utils';
+import { fmtCurrency, fetchWithTimeout } from '../lib/utils';
 
 const CAT_LABELS = { food: 'Food', beverage: 'Beverage', merchandise: 'Merch', ticket: 'Ticket', other: 'Other' };
 const CAT_COLORS = { food: 'var(--green)', beverage: '#4a9eff', merchandise: 'var(--gold)', ticket: 'var(--red)', other: 'var(--text3)' };
@@ -40,6 +40,7 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
   const [readerError, setReaderError] = useState('');
   const [terminalStatus, setTerminalStatus] = useState('idle');
   const [loadingIntent, setLoadingIntent] = useState(false);
+  const submittingRef = useRef(false);
 
   useEffect(() => { loadItems(); }, []);
 
@@ -257,22 +258,35 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
 
   const startTerminalPayment = async () => {
     if (!terminal || !connectedReader || cart.length === 0) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     const { data: { session: s } } = await supabase.auth.getSession();
     setLoadingIntent(true);
-    const res = await fetch(API_BASE + '/api/terminal?action=pos-payment-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
-      body: JSON.stringify({
-        tenantId,
-        cartItems: cart.map(c => ({
-          itemId: c.item.id,
-          qty: c.qty,
-          modifierDelta: c.selectedMods.reduce((s, m) => s + (m.priceDelta || 0), 0),
-        })),
-      }),
-    });
-    const data = await res.json();
+    let data;
+    try {
+      const res = await fetchWithTimeout(API_BASE + '/api/terminal?action=pos-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.access_token || ''}` },
+        body: JSON.stringify({
+          tenantId,
+          cartItems: cart.map(c => ({
+            itemId: c.item.id,
+            qty: c.qty,
+            modifierDelta: c.selectedMods.reduce((s, m) => s + (m.priceDelta || 0), 0),
+          })),
+        }),
+      }, 15000);
+      data = await res.json();
+    } catch (e) {
+      setLoadingIntent(false);
+      submittingRef.current = false;
+      alert(e.message === 'timeout'
+        ? 'Reader payment setup timed out. No charge was made — try again.'
+        : 'Reader payment setup failed. Please try again.');
+      return;
+    }
     setLoadingIntent(false);
+    submittingRef.current = false;
     if (!data.clientSecret) { alert(data.error || 'Payment setup failed. Please try again.'); return; }
     setTerminalStatus('waiting_for_card');
     const collectResult = await terminal.collectPaymentMethod(data.clientSecret);

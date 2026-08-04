@@ -3,7 +3,7 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { supabase } from '../lib/supabase';
 import { stripePromise } from '../lib/stripe';
 import { API_BASE, APP_URL } from '../constants';
-import { fmtCurrency } from '../lib/utils';
+import { fmtCurrency, fetchWithTimeout } from '../lib/utils';
 import QRImg from './QRImg';
 
 // ── Inner Stripe payment form ────────────────────────────────────────
@@ -131,16 +131,20 @@ const RegistrationPublic = ({ formId, tenantId, venue, onHome }) => {
     if (!validate('review')) return;
     setSubmitting(true);
     try {
-      const res = await fetch(API_BASE + '/api/create-registration-intent', {
+      const res = await fetchWithTimeout(API_BASE + '/api/create-registration-intent', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formId, tenantId, registrantName: registrant.name, registrantEmail: registrant.email }),
-      });
+      }, 15000);
       const data = await res.json();
       if (!data.clientSecret) { alert(data.error || 'Payment setup failed. Please try again.'); return; }
       setClientSecret(data.clientSecret);
       setAmounts(data);
       setStep('payment');
       window.scrollTo(0, 0);
+    } catch (e) {
+      alert(e?.message === 'timeout'
+        ? 'Connection is slow. Payment setup timed out — no charge was made. Please try again.'
+        : 'Payment setup failed. Please try again.');
     } finally { setSubmitting(false); }
   };
 

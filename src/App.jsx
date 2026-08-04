@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as XLSX from 'xlsx';
 import { supabase } from './lib/supabase';
 import { API_BASE, APP_URL } from './constants';
-import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs } from './lib/utils';
+import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs, fetchWithTimeout } from './lib/utils';
 import useStorage from './lib/useStorage';
 import CSS from './styles';
 import ScannerWidget from './components/ScannerWidget';
@@ -1245,7 +1245,7 @@ const openPhysicalManage = async (ev) => {
       const addonItemsReq = (sel.addons || [])
         .filter(a => a.active !== false && (addonCart[a.id] || 0) > 0)
         .map(a => ({ addonId: a.id, name: a.name, qty: addonCart[a.id], price: a.price }));
-      const res = await fetch(API_BASE + '/api/create-payment-intent', {
+      const res = await fetchWithTimeout(API_BASE + '/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1259,7 +1259,7 @@ const openPhysicalManage = async (ev) => {
           promoCode: promoApplied?.code || null,
           utm: Object.keys(utmRef.current).length > 0 ? utmRef.current : undefined,
         }),
-      });
+      }, 15000);
       const data = await res.json();
       if (!res.ok) {
         const msg = data.error || 'Payment setup failed. Please try again.';
@@ -1279,8 +1279,10 @@ const openPhysicalManage = async (ev) => {
       setSoldOutError('');
       setClientSecret(data.clientSecret);
       setPaymentAmounts({ ticketTotal: data.ticketTotal, addonTotal: data.addonTotal || 0, discountAmount: data.discountAmount || 0, salesTax: data.salesTax, serviceFees: data.serviceFees, processingFee: data.processingFee, grandTotal: data.grandTotal });
-    } catch {
-      alert('Payment setup failed. Please try again.');
+    } catch (e) {
+      alert(e?.message === 'timeout'
+        ? 'Connection is slow. Payment setup timed out — no charge was made. Please try again.'
+        : 'Payment setup failed. Please try again.');
     } finally {
       setCreatingPayment(false);
     }

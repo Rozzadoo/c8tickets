@@ -68,6 +68,21 @@ export const fmtTime = (t) => t ? new Date('1970-01-01T' + t).toLocaleTimeString
 
 export const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
+// fetch with an AbortController timeout. Throws Error('timeout') if the request exceeds ms.
+// Use for any staff-facing operation where a hang would cause a double-submit (payments, order saves).
+export const fetchWithTimeout = async (url, options = {}, ms = 15000) => {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('timeout');
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+};
+
 export const exportOrdersCSV = (orders, events, filename = 'orders.csv') => {
   const headers = ['Order ID','Date','Buyer Name','Buyer Email','Buyer Phone','Event','Items','Subtotal','Total','Status','Source','Stripe PI'];
   const rows = orders.slice().reverse().map(o => {
