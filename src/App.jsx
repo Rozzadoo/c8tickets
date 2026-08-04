@@ -51,6 +51,8 @@ export default function App() {
   const [reportPosLoaded, setReportPosLoaded] = useState(false);
   const [dashRegData, setDashRegData] = useState([]);
   const [dashPosData, setDashPosData] = useState([]);
+  const [realtimeStatus, setRealtimeStatus] = useState('SUBSCRIBED');
+  const [emailFailure, setEmailFailure] = useState(null); // { count, lastErr }
   const [holdbackPct, setHoldbackPct] = useState(() => { const v = localStorage.getItem('c8_holdbackPct'); return v !== null ? Number(v) : 10; });
   const [platformFeePct, setPlatformFeePct] = useState(() => { const v = localStorage.getItem('c8_platformFeePct'); return v !== null ? Number(v) : 2.5; });
   const [bkVenueFilter, setBkVenueFilter] = useState('all');
@@ -208,20 +210,30 @@ const [resetError, setResetError] = useState('');
     return () => subscription.unsubscribe();
   }, []);
 
+  const [idleWarning, setIdleWarning] = useState(false);
   useEffect(() => {
     if (!session) return;
     const LIMIT = 2 * 60 * 60 * 1000;
-    const stamp = () => localStorage.setItem('_c8last', String(Date.now()));
+    const WARN_AT = 5 * 60 * 1000; // 5 min before signout
+    const stamp = () => { localStorage.setItem('_c8last', String(Date.now())); setIdleWarning(false); };
     stamp();
     const evts = ['mousedown', 'keydown', 'touchstart', 'pointermove'];
     evts.forEach(e => window.addEventListener(e, stamp, { passive: true }));
     const timer = setInterval(() => {
-      if (Date.now() - parseInt(localStorage.getItem('_c8last') || '0', 10) > LIMIT) {
+      const last = parseInt(localStorage.getItem('_c8last') || '0', 10);
+      const remaining = LIMIT - (Date.now() - last);
+      // Never sign out during an active payment step — extend by 15 min automatically
+      const midPayment = view === 'checkout' || (aTab === 'door' && (window.__c8DoorSaleInFlight === true));
+      if (midPayment) { stamp(); return; }
+      if (remaining <= 0) {
         supabase.auth.signOut().then(() => setView('home'));
+      } else if (remaining <= WARN_AT) {
+        setIdleWarning(true);
       }
-    }, 60_000);
+    }, 30_000);
     return () => { evts.forEach(e => window.removeEventListener(e, stamp)); clearInterval(timer); };
-  }, [session]);
+  }, [session, view, aTab]);
+  const extendSession = () => { localStorage.setItem('_c8last', String(Date.now())); setIdleWarning(false); };
 
   useEffect(() => { localStorage.setItem('c8_holdbackPct', String(holdbackPct)); }, [holdbackPct]);
   useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
@@ -271,10 +283,32 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     if (!session) return;
-    const ch = supabase.channel('orders-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => reloadOrders())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    let ch;
+    let reconnectTimer;
+    const subscribe = () => {
+      ch = supabase.channel('orders-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => reloadOrders())
+        .subscribe((status) => {
+          setRealtimeStatus(status);
+          // If channel drops due to network blip, retry after backoff. Also pull orders once to catch up.
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(() => {
+              try { supabase.removeChannel(ch); } catch {}
+              subscribe();
+              reloadOrders();
+            }, 5000);
+          }
+        });
+    };
+    subscribe();
+    const onOnline = () => { if (navigator.onLine) { try { supabase.removeChannel(ch); } catch {} subscribe(); reloadOrders(); } };
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      try { supabase.removeChannel(ch); } catch {}
+    };
   }, [session, reloadOrders]);
 
   useEffect(() => {
@@ -656,7 +690,9 @@ const saveComp = async () => {
           event: { title: ev.title, category: ev.category || '', date: fmtDate(ev.date), time: fmtTime(ev.time), doors: fmtTime(ev.doors || '') },
           venue: { name: venue.name, location: venue.location },
         }),
-      }).catch(() => {});
+      })
+        .then(r => { if (!r.ok) throw new Error(`send-email HTTP ${r.status}`); })
+        .catch(err => setEmailFailure(f => ({ count: (f?.count || 0) + 1, lastErr: err.message })));
     }
     updateOrders(prev => [...prev, {
       id: order.id, eventId: compForm.eventId, venueId: venue.id,
@@ -1562,6 +1598,23 @@ const openPhysicalManage = async (ev) => {
     <><style>{CSS}</style>
       <div className="app">
         <a href="#main-content" className="skip-link">Skip to main content</a>
+        {session && idleWarning && (
+          <div style={{position:'fixed',top:12,left:12,right:12,zIndex:1500,maxWidth:520,margin:'0 auto',background:'rgba(200,146,42,0.95)',color:'#000',padding:'12px 16px',borderRadius:'var(--rs)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,boxShadow:'0 6px 20px rgba(0,0,0,0.4)'}}>
+            <span style={{fontWeight:600,fontSize:13}}>Signing you out in ~5 minutes for inactivity. Tap to stay signed in.</span>
+            <button className="btn" onClick={extendSession} style={{background:'#000',color:'var(--gold)',minHeight:36,padding:'6px 12px'}}>Stay</button>
+          </div>
+        )}
+        {session && realtimeStatus && !['SUBSCRIBED','SUBSCRIBING'].includes(realtimeStatus) && (
+          <div style={{position:'fixed',bottom:12,right:12,zIndex:1400,background:'rgba(179,58,42,0.9)',color:'#fff',padding:'8px 12px',borderRadius:'var(--rs)',fontSize:12,fontWeight:600,boxShadow:'0 4px 12px rgba(0,0,0,0.4)'}}>
+            Live updates paused — reconnecting…
+          </div>
+        )}
+        {session && emailFailure && emailFailure.count > 0 && (
+          <div style={{position:'fixed',bottom:12,left:12,zIndex:1400,background:'rgba(179,58,42,0.95)',color:'#fff',padding:'10px 14px',borderRadius:'var(--rs)',fontSize:12,fontWeight:600,display:'flex',gap:8,alignItems:'center',maxWidth:360,boxShadow:'0 4px 12px rgba(0,0,0,0.4)'}}>
+            <span style={{flex:1}}>{emailFailure.count} email{emailFailure.count===1?'':'s'} failed to send — {emailFailure.lastErr}</span>
+            <button className="btn" onClick={()=>setEmailFailure(null)} style={{minHeight:32,padding:'4px 10px',color:'#fff',borderColor:'rgba(255,255,255,0.4)'}}>Dismiss</button>
+          </div>
+        )}
         <nav className="nav" aria-label="Main navigation">
           <div className="nav-logo" onClick={goHome} onKeyDown={e=>{if(e.key==='Enter')goHome();}} role="button" tabIndex={0} aria-label="Go to home page">
             <img src={LOGO_SRC} alt="C8 Tickets" />
@@ -1991,7 +2044,9 @@ const openPhysicalManage = async (ev) => {
                   location: venue.location,
                 },
               }),
-            }).catch(err => console.error('Email error:', err));
+            })
+              .then(r => { if (!r.ok) throw new Error(`send-email HTTP ${r.status}`); })
+              .catch(err => { console.error('Email error:', err); setEmailFailure(f => ({ count: (f?.count || 0) + 1, lastErr: err.message })); });
           }}
         />
       </Elements>
@@ -3084,6 +3139,7 @@ const openPhysicalManage = async (ev) => {
               const todayIdx=(now.getDay()+6)%7;
               const DAY_LABELS=['M','T','W','T','F','S','S'];
 
+              const reportsLoading = !reportTicketsLoaded || !reportRegsLoaded || !reportPosLoaded;
               return <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                   <h2 className="dsp" style={{fontSize:26}}>Reports</h2>
@@ -3091,6 +3147,13 @@ const openPhysicalManage = async (ev) => {
                     {Object.entries(filterLabels).map(([v,l])=><button key={v} className={`btn${reportFilter===v?' gold':''}`} style={{fontSize:11,padding:"5px 10px"}} onClick={()=>setReportFilter(v)}>{l}</button>)}
                   </div>
                 </div>
+                {reportsLoading && (
+                  <div style={{background:'rgba(200,146,42,0.10)',border:'1px solid rgba(200,146,42,0.3)',borderRadius:'var(--rs)',padding:'10px 14px',marginBottom:16,fontSize:13,color:'var(--gold)',display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{width:14,height:14,border:'2px solid rgba(200,146,42,0.3)',borderTopColor:'var(--gold)',borderRadius:'50%',animation:'spin 0.8s linear infinite'}} />
+                    <span>Loading report data — {[reportTicketsLoaded && 'tickets', reportRegsLoaded && 'registrations', reportPosLoaded && 'POS'].filter(Boolean).length}/3 sources ready…</span>
+                    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                  </div>
+                )}
                 {reportFilter==='custom'&&<div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>From</label><input className="fi" type="date" value={reportCustomStart} onChange={e=>setReportCustomStart(e.target.value)} style={{width:160,margin:0}} /></div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>To</label><input className="fi" type="date" value={reportCustomEnd} onChange={e=>setReportCustomEnd(e.target.value)} style={{width:160,margin:0}} /></div>
