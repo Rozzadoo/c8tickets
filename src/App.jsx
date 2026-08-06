@@ -2586,7 +2586,7 @@ const openPhysicalManage = async (ev) => {
               const ci=vo.filter(o=>o.checkedIn).length;
               const venueRev=vo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
               const salesTax=Math.round(vo.reduce((s,o)=>s+Math.round(o.items.reduce((a,i)=>a+i.qty*i.price,0)*0.06*100)/100,0)*100)/100;
-              const serviceFees=Math.round(vo.filter(o=>o.source!=='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0)*2,0)*100)/100;
+              const serviceFees=Math.round(vo.filter(o=>o.source==='online'||o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0)*2,0)*100)/100;
               const processingFees=Math.round(vo.reduce((s,o)=>{if(o.source==='door_cash')return s;const ts=o.items.reduce((a,i)=>a+i.qty*i.price,0);const tx=Math.round(ts*0.06*100)/100;const sv=o.items.reduce((a,i)=>a+i.qty,0)*2;return s+Math.max(0,Math.round((o.total-ts-tx-sv)*100)/100);},0)*100)/100;
               const inRangeDate=dateStr=>{const d=new Date(dateStr);if(dashFilter==='month')return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();if(dashFilter==='prev_month'){const p=new Date(now.getFullYear(),now.getMonth()-1,1);return d.getMonth()===p.getMonth()&&d.getFullYear()===p.getFullYear();}if(dashFilter==='ytd')return d.getFullYear()===now.getFullYear();if(dashFilter==='last_year')return d.getFullYear()===now.getFullYear()-1;if(dashFilter==='custom'){const s=dashCustomStart?new Date(dashCustomStart+'T00:00:00'):null;const e=dashCustomEnd?new Date(dashCustomEnd+'T23:59:59'):null;if(s&&d<s)return false;if(e&&d>e)return false;return true;}return true;};
               const regRev=Math.round(dashRegData.filter(r=>inRangeDate(r.created_at)).reduce((s,r)=>s+(parseFloat(r.amount_paid)||0),0)*100)/100;
@@ -2618,7 +2618,7 @@ const openPhysicalManage = async (ev) => {
                   const etix=eo.reduce((s,o)=>s+o.items.reduce((a,b)=>a+b.qty,0),0);
                   const erev=eo.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty*i.price,0),0);
                   const etax=Math.round(eo.reduce((s,o)=>s+Math.round(o.items.reduce((a,i)=>a+i.qty*i.price,0)*0.06*100)/100,0)*100)/100;
-                  const esvc=Math.round(eo.filter(o=>o.source!=='door_cash').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0)*2,0)*100)/100;
+                  const esvc=Math.round(eo.filter(o=>o.source==='online'||o.source==='door').reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0)*2,0)*100)/100;
                   const eproc=Math.round(eo.reduce((s,o)=>{if(o.source==='door_cash')return s;const ts=o.items.reduce((a,i)=>a+i.qty*i.price,0);const tx=Math.round(ts*0.06*100)/100;const sv=o.items.reduce((a,i)=>a+i.qty,0)*2;return s+Math.max(0,Math.round((o.total-ts-tx-sv)*100)/100);},0)*100)/100;
                   const eci=eo.filter(o=>o.checkedIn).length;
                   return {ev,eo,etix,erev,etax,esvc,eproc,eci};
@@ -2820,7 +2820,7 @@ const openPhysicalManage = async (ev) => {
                 const ticketSub = o.items.reduce((s,i)=>s+i.qty*i.price,0);
                 const qty = o.items.reduce((s,i)=>s+i.qty,0);
                 const tax = Math.round(ticketSub*0.06*100)/100;
-                const svc = qty*2;
+                const svc = (o.source==='online' || o.source==='door') ? qty*2 : 0;
                 const isCash = o.source==='door_cash';
                 const proc = isCash ? 0 : Math.max(0, Math.round((o.total-ticketSub-tax-svc)*100)/100);
                 return {ticketSub, tax, svc, proc, isCash};
