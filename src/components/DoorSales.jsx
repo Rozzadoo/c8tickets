@@ -50,6 +50,17 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
     setSelEventId(upcoming?.id || events[0]?.id || '');
   }, [events, selEventId]);
 
+  // Unmount cleanup — dispose the Stripe Terminal instance so it doesn't hold the
+  // reader lock if the component re-mounts (or user navigates away).
+  useEffect(() => {
+    return () => {
+      if (terminal) {
+        console.log('[stripe-terminal] DoorSales unmount → disposing terminal');
+        terminal.disconnectReader().catch(() => {});
+      }
+    };
+  }, [terminal]);
+
   const ev = events.find(e => e.id === selEventId);
   const cartItems = ev ? ev.tickets.map((t, i) => ({ ...t, qty: doorCart[i] || 0, effectivePrice: t.doorPrice ?? t.price })) : [];
   const cartN = cartItems.reduce((s, i) => s + i.qty, 0);
@@ -85,6 +96,7 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
   };
 
   const initAndDiscover = async () => {
+    console.log('[stripe-terminal] initAndDiscover start', new Date().toISOString());
     setReaderError('');
     setReaders([]);
     setReaderDiscovering(true);
@@ -99,26 +111,32 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
             headers: { Authorization: `Bearer ${s?.access_token || ''}` },
           });
           const d = await r.json();
-          if (d.error) throw new Error(d.error);
+          if (d.error) { console.error('[stripe-terminal] connection-token error:', d.error); throw new Error(d.error); }
           return d.secret;
         },
         onUnexpectedReaderDisconnect: () => {
+          console.warn('[stripe-terminal] onUnexpectedReaderDisconnect', new Date().toISOString());
           setConnectedReader(null);
           setTerminalPaymentStatus('idle');
           setReaderError('Reader disconnected unexpectedly.');
         },
       });
       setTerminal(term);
+      console.log('[stripe-terminal] instance created, discovering readers…');
       const result = await term.discoverReaders({ simulated: false, discoveryMethod: 'internet' });
       setReaderDiscovering(false);
       if (result.error) {
+        console.error('[stripe-terminal] discoverReaders error:', result.error);
         setReaderError(result.error.message);
       } else if (result.discoveredReaders.length === 0) {
-        setReaderError('No readers found. Make sure the reader is powered on and on the same network.');
+        console.warn('[stripe-terminal] no readers found');
+        setReaderError('No readers found. Check: reader powered on? On same WiFi as this device? Try Reset if it just failed.');
       } else {
+        console.log('[stripe-terminal] discovered', result.discoveredReaders.map(r => `${r.label || r.serial_number} (${r.id})`));
         setReaders(result.discoveredReaders);
       }
     } catch (err) {
+      console.error('[stripe-terminal] initAndDiscover exception:', err);
       setReaderDiscovering(false);
       setReaderError(err.message || 'Failed to initialize terminal.');
     }
@@ -126,24 +144,40 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
 
   const connectToReader = async (reader) => {
     if (!terminal) return;
+    console.log('[stripe-terminal] connectReader →', reader.label || reader.serial_number, reader.id);
     setConnectingReaderId(reader.id);
     setReaderError('');
     const result = await terminal.connectReader(reader, { fail_if_in_use: false });
     setConnectingReaderId(null);
     if (result.error) {
+      console.error('[stripe-terminal] connectReader error:', result.error);
       setReaderError(result.error.message);
     } else {
+      console.log('[stripe-terminal] connected to', result.reader.label || result.reader.serial_number);
       setConnectedReader(result.reader);
       setReaders([]);
     }
   };
 
   const disconnectReader = async () => {
+    console.log('[stripe-terminal] disconnectReader (user)');
+    if (terminal) await terminal.disconnectReader().catch((e) => console.warn('[stripe-terminal] disconnect error (ignored):', e));
+    setConnectedReader(null);
+    setTerminal(null);
+    setReaders([]);
+    setReaderError('');
+  };
+
+  // Force reset — nukes state and re-discovers. Escape hatch when reader gets stuck.
+  const resetReader = async () => {
+    console.log('[stripe-terminal] resetReader (force)');
     if (terminal) await terminal.disconnectReader().catch(() => {});
     setConnectedReader(null);
     setTerminal(null);
     setReaders([]);
     setReaderError('');
+    // Slight delay so state clears before we re-init
+    setTimeout(() => initAndDiscover(), 200);
   };
 
   const startTerminalPayment = async () => {
@@ -523,12 +557,15 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
           </div>
           <div style={{marginTop:18,padding:'12px 16px',background:'var(--surface2)',borderRadius:'var(--rs)',fontSize:13}}>
             {connectedReader ? (
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
                 <span style={{color:'var(--green)',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
                   <span style={{width:8,height:8,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 0 3px rgba(93,138,60,.25)',flexShrink:0,display:'inline-block'}}/>
                   {connectedReader.label || connectedReader.serial_number}
                 </span>
-                <button className="btn" style={{padding:'4px 10px',fontSize:12}} onClick={disconnectReader}>Disconnect</button>
+                <div style={{display:'flex',gap:6}}>
+                  <button className="btn" style={{padding:'4px 10px',fontSize:12}} onClick={resetReader} title="Force disconnect + re-discover if the reader gets stuck">Reset</button>
+                  <button className="btn" style={{padding:'4px 10px',fontSize:12}} onClick={disconnectReader}>Disconnect</button>
+                </div>
               </div>
             ) : (
               <div>
@@ -538,7 +575,12 @@ const DoorSales = ({ events, updateOrders, updateEvents, reloadOrders, venue, te
                     {readerDiscovering ? 'Searching…' : 'Find Reader'}
                   </button>
                 </div>
-                {readerError && <p style={{color:'var(--red)',fontSize:12,marginTop:6,marginBottom:0}}>{readerError}</p>}
+                {readerError && (
+                  <div style={{marginTop:6}}>
+                    <p style={{color:'var(--red)',fontSize:12,margin:0}}>{readerError}</p>
+                    <button className="btn" style={{padding:'4px 10px',fontSize:12,marginTop:6}} onClick={resetReader}>Reset & Retry</button>
+                  </div>
+                )}
                 {readers.length > 0 && (
                   <div style={{display:'flex',flexDirection:'column',gap:6}}>
                     {readers.map(r => (
