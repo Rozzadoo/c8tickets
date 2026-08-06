@@ -1199,16 +1199,15 @@ const fetchOrCreatePhysicalOrders = async (ev, consignee = '', physicalType = 'c
         order_id: order.id, ticket_type_id: tier.id,
         ticket_type_name: tier.type, quantity: 1, unit_price: tier.price,
       });
-      if (physicalType !== 'comp') {
-        const { error: incErr } = await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
-        if (incErr) {
-          // Roll back this specific batch entry so we don't leave a physical ticket without capacity accounting
-          await supabase.from('order_items').delete().eq('order_id', order.id);
-          await supabase.from('orders').delete().eq('id', order.id);
-          alert(`Physical ticket generation stopped — capacity exceeded for "${tier.type}". Generated ${results.length} ticket(s) before hitting the limit.`);
-          setPhysicalCounts(prev => ({ ...prev, [ev.id]: (prev[ev.id] || 0) + results.length }));
-          return { orders: results, wasExisting: false };
-        }
+      // Both comp AND consignment count against venue capacity so we don't oversell to standing-room-only.
+      const { error: incErr } = await supabase.rpc('increment_sold', { tid: tier.id, qty: 1 });
+      if (incErr) {
+        // Roll back this specific batch entry so we don't leave a physical ticket without capacity accounting
+        await supabase.from('order_items').delete().eq('order_id', order.id);
+        await supabase.from('orders').delete().eq('id', order.id);
+        alert(`Physical ticket generation stopped — capacity exceeded for "${tier.type}". Generated ${results.length} ticket(s) before hitting the limit.`);
+        setPhysicalCounts(prev => ({ ...prev, [ev.id]: (prev[ev.id] || 0) + results.length }));
+        return { orders: results, wasExisting: false };
       }
       results.push({ id: order.id, type: tier.type, price: tier.price });
     }
@@ -4262,7 +4261,8 @@ const openPhysicalManage = async (ev) => {
                           const toVoid = batch.orders.slice(-currentN);
                           const ids = toVoid.map(o=>o.id);
                           await supabase.from('orders').update({status:'cancelled'}).in('id',ids);
-                          if(batch.source!=='physical_comp'){
+                          // Restore capacity for both comp and consignment (comps now count against capacity too — item 47)
+                          {
                             const byTier={};
                             toVoid.forEach(o=>{byTier[o.ticketTypeId]=(byTier[o.ticketTypeId]||0)+1;});
                             await Promise.all(Object.entries(byTier).map(([tid,qty])=>supabase.rpc('decrement_sold',{tid,qty})));
@@ -4284,7 +4284,8 @@ const openPhysicalManage = async (ev) => {
                         try {
                           const ids = batch.orders.map(o=>o.id);
                           await supabase.from('orders').update({status:'cancelled'}).in('id',ids);
-                          if(batch.source!=='physical_comp'){
+                          // Restore capacity for both comp and consignment (comps now count against capacity too — item 47)
+                          {
                             const byTier={};
                             batch.orders.forEach(o=>{byTier[o.ticketTypeId]=(byTier[o.ticketTypeId]||0)+1;});
                             await Promise.all(Object.entries(byTier).map(([tid,qty])=>supabase.rpc('decrement_sold',{tid,qty})));
