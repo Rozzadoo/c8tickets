@@ -147,6 +147,7 @@ const [resetError, setResetError] = useState('');
   const [sellStatus, setSellStatus] = useState('idle');
   const [venueUsers, setVenueUsers] = useState([]);
   const [venueUsersLoaded, setVenueUsersLoaded] = useState(false);
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
   const [venueUserForm, setVenueUserForm] = useState({ email:'', password:'', tenantId:'', role:'venue' });
   const [venueUserSaving, setVenueUserSaving] = useState(false);
   const [venueUserError, setVenueUserError] = useState('');
@@ -234,6 +235,18 @@ const [resetError, setResetError] = useState('');
     return () => { evts.forEach(e => window.removeEventListener(e, stamp)); clearInterval(timer); };
   }, [session, view, aTab]);
   const extendSession = () => { localStorage.setItem('_c8last', String(Date.now())); setIdleWarning(false); };
+
+  // Close the events-row overflow menu on outside click or Escape
+  useEffect(() => {
+    if (!openActionMenuId) return;
+    const onDown = (e) => {
+      if (!e.target.closest?.('[data-event-action-menu]')) setOpenActionMenuId(null);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpenActionMenuId(null); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [openActionMenuId]);
 
   useEffect(() => { localStorage.setItem('c8_holdbackPct', String(holdbackPct)); }, [holdbackPct]);
   useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
@@ -2637,7 +2650,103 @@ const openPhysicalManage = async (ev) => {
             </>; })()}
 
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
-              {vEvents.length===0?<div className="empty"><div className="ic">🎫</div><p>No events.</p></div>:<div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>{vEvents.map(ev=><tr key={ev.id}><td style={{fontWeight:600}}>{ev.title}</td><td>{fmtDate(ev.date)}</td><td>{ev.category}</td><td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td><td><span className={`badge ${ev.published!==false?"badge-ok":"badge-sold"}`}>{ev.published!==false?"Live":"Hidden"}</span></td><td style={{display:"flex",gap:6,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{const {_imageFile:_f,_imagePreview:_p,...rest}=ev;setEditEvt({...rest,id:null,title:'Copy of '+ev.title,date:'',time:'',published:false});setModal(true);}}>Duplicate</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:ev.published!==false?"var(--text2)":"var(--gold)"}} disabled={togglingPublish.has(ev.id)} onClick={()=>togglePublish(ev)}>{togglingPublish.has(ev.id)?"Saving…":ev.published!==false?"Unpublish":"Publish"}</button>{ev.tickets.some(t=>(t.physicalQty??0)>0)&&<button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>openPhysicalManage(ev)}>🎫 Physical{(physicalCounts[ev.id]||0)>0?` (${physicalCounts[ev.id]})`:'…'}</button>}}<button className="btn" style={{fontSize:11,padding:"5px 10px"}} disabled={sendingReminder===ev.id} onClick={()=>sendReminder(ev)}>{sendingReminder===ev.id?'Sending…':'Remind All'}</button><button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>exportOrdersCSV(orders.filter(o=>o.eventId===ev.id),events,`${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`)}>Export CSV</button><button className="btn" style={{fontSize:11,padding:"5px 10px",color:"var(--red)"}} onClick={()=>delEvt(ev.id)}>Delete</button></td></tr>)}</tbody></table></div>}</>}
+              {vEvents.length===0 ? (
+                <div className="empty"><div className="ic">🎫</div><p>No events.</p></div>
+              ) : (
+                <div style={{overflowX:"auto"}}>
+                  <table className="dt">
+                    <thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody>
+                      {vEvents.map(ev => {
+                        const hasPhysical = ev.tickets.some(t => (t.physicalQty ?? 0) > 0);
+                        const isPublished = ev.published !== false;
+                        const menuOpen = openActionMenuId === ev.id;
+                        const duplicateEvent = () => {
+                          const {_imageFile:_f, _imagePreview:_p, ...rest} = ev;
+                          setEditEvt({...rest, id:null, title:'Copy of '+ev.title, date:'', time:'', published:false});
+                          setModal(true);
+                        };
+                        const confirmedBuyerCount = (() => {
+                          const emails = new Set(
+                            orders.filter(o => o.eventId === ev.id && o.status !== 'cancelled' && o.buyer?.email)
+                              .map(o => o.buyer.email.toLowerCase().trim())
+                          );
+                          return emails.size;
+                        })();
+                        const remindAllWithConfirm = () => {
+                          if (confirmedBuyerCount === 0) { alert('No confirmed buyers with an email on file for this event.'); return; }
+                          const ok = window.confirm(`Send reminder email to ${confirmedBuyerCount} buyer${confirmedBuyerCount !== 1 ? 's' : ''} for "${ev.title}"?`);
+                          if (!ok) return;
+                          sendReminder(ev);
+                        };
+                        const exportRowCsv = () => exportOrdersCSV(
+                          orders.filter(o => o.eventId === ev.id), events,
+                          `${ev.title.replace(/[^\w\s-]/g,'').replace(/\s+/g,'-')}-orders.csv`
+                        );
+                        return (
+                          <tr key={ev.id}>
+                            <td style={{fontWeight:600}}>{ev.title}</td>
+                            <td>{fmtDate(ev.date)}</td>
+                            <td>{ev.category}</td>
+                            <td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td>
+                            <td><span className={`badge ${isPublished?"badge-ok":"badge-sold"}`}>{isPublished?"Live":"Hidden"}</span></td>
+                            <td style={{position:'relative'}}>
+                              <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                                <button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button>
+                                {hasPhysical && (
+                                  <button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>openPhysicalManage(ev)}>
+                                    🎫 Physical{(physicalCounts[ev.id]||0)>0?` (${physicalCounts[ev.id]})`:'…'}
+                                  </button>
+                                )}
+                                <button
+                                  data-event-action-menu
+                                  aria-label="More actions"
+                                  aria-expanded={menuOpen}
+                                  className="btn"
+                                  style={{fontSize:14,padding:"5px 10px",lineHeight:1,minWidth:34}}
+                                  onClick={()=>setOpenActionMenuId(menuOpen ? null : ev.id)}
+                                >⋯</button>
+                              </div>
+                              {menuOpen && (
+                                <div
+                                  data-event-action-menu
+                                  role="menu"
+                                  style={{
+                                    position:'absolute',right:0,top:'calc(100% + 4px)',zIndex:100,
+                                    background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--rs)',
+                                    boxShadow:'0 6px 24px rgba(0,0,0,0.5)',minWidth:180,padding:4,
+                                    display:'flex',flexDirection:'column',gap:2,
+                                  }}
+                                >
+                                  <button
+                                    role="menuitem"
+                                    className="btn"
+                                    style={{fontSize:12,padding:"8px 12px",justifyContent:'flex-start',textAlign:'left',width:'100%',minHeight:36,color:isPublished?"var(--text2)":"var(--gold)"}}
+                                    disabled={togglingPublish.has(ev.id)}
+                                    onClick={()=>{ setOpenActionMenuId(null); togglePublish(ev); }}
+                                  >{togglingPublish.has(ev.id)?"Saving…":isPublished?"Unpublish":"Publish"}</button>
+                                  <button role="menuitem" className="btn" style={{fontSize:12,padding:"8px 12px",justifyContent:'flex-start',textAlign:'left',width:'100%',minHeight:36}}
+                                    onClick={()=>{ setOpenActionMenuId(null); duplicateEvent(); }}>Duplicate</button>
+                                  <button role="menuitem" className="btn" style={{fontSize:12,padding:"8px 12px",justifyContent:'flex-start',textAlign:'left',width:'100%',minHeight:36}}
+                                    disabled={sendingReminder===ev.id}
+                                    onClick={()=>{ setOpenActionMenuId(null); remindAllWithConfirm(); }}
+                                  >{sendingReminder===ev.id?'Sending…':`Remind All${confirmedBuyerCount>0?` (${confirmedBuyerCount})`:''}`}</button>
+                                  <button role="menuitem" className="btn" style={{fontSize:12,padding:"8px 12px",justifyContent:'flex-start',textAlign:'left',width:'100%',minHeight:36}}
+                                    onClick={()=>{ setOpenActionMenuId(null); exportRowCsv(); }}>Export CSV</button>
+                                  <div style={{height:1,background:'var(--border)',margin:'4px 2px'}}/>
+                                  <button role="menuitem" className="btn" style={{fontSize:12,padding:"8px 12px",justifyContent:'flex-start',textAlign:'left',width:'100%',minHeight:36,color:'var(--red)'}}
+                                    onClick={()=>{ setOpenActionMenuId(null); delEvt(ev.id); }}>Delete</button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>}
 
             {aTab === "orders" && (()=>{
               const vo=orders.filter(o=>o.venueId===venue.id);
