@@ -31,6 +31,8 @@ export default async function handler(req, res) {
   try { items = JSON.parse(m.items_json || '[]'); } catch {}
   let addonItems = [];
   try { addonItems = JSON.parse(m.addons_json || '[]'); } catch {}
+  let tableSeatItems = [];
+  try { tableSeatItems = JSON.parse(m.table_seat_items_json || '[]'); } catch {}
 
   // Idempotency: return existing order if already created (webhook or retry)
   const checkRes = await fetch(
@@ -127,6 +129,33 @@ export default async function handler(req, res) {
         is_addon: true,
       }))),
     }).catch(e => console.error('save-order addon items error:', e.message));
+  }
+
+  // Convert reserved table seats into sold tickets. Each item calls fulfill_table_seat_order,
+  // which validates the reservation is still held (matching token + not expired), creates a
+  // ticket per seat, links seats to this order, and inserts order_items for the audit trail.
+  if (tableSeatItems.length > 0) {
+    console.log('[table-seats] save-order fulfilling', tableSeatItems.length, 'section(s) for order', order.id);
+    for (const tsi of tableSeatItems) {
+      const fulfillRes = await fetch(`${supaUrl}/rest/v1/rpc/fulfill_table_seat_order`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          p_order_id: order.id,
+          p_event_id: m.event_id,
+          p_tenant_id: m.tenant_id,
+          p_reservation_token: tsi.token,
+          p_table_config_id: tsi.configId,
+          p_unit_price: tsi.unitPrice,
+          p_table_config_name: tsi.configName || 'Table Seating',
+        }),
+      });
+      if (!fulfillRes.ok) {
+        const err = await fulfillRes.text();
+        console.error('[table-seats] fulfill_table_seat_order failed', order.id, tsi.configId, err);
+        // Order + payment already recorded — surface partial-fulfillment status so the client can offer retry
+        return res.status(500).json({ error: 'Table seat fulfillment failed after payment. Retry available.', orderId: order.id, partial: true });
+      }
+    }
   }
 
   return res.status(200).json({ orderId: order.id });
