@@ -1486,7 +1486,119 @@ const openPhysicalManage = async (ev) => {
     await checkin(id);
     showMsg({ ok: true, text: `✓ ${order.buyer.name} checked in!` });
   };
-  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }], addons: [], checkoutNotice: "", checkoutNoticeRequired: false });
+  const blank = () => ({ id: null, venueId: venue.id, title: "", date: "", time: "", doors: "", description: "", image: "🎵", focalX: 50, focalY: 50, published: true, category: "Live Music", tickets: [{ type: "General Admission", price: 25, available: 100, physicalQty: 0, doorPrice: null }], addons: [], checkoutNotice: "", checkoutNoticeRequired: false, tableConfigs: [] });
+
+  const loadTableConfigsForEvent = async (eventId) => {
+    const { data: configs } = await supabase
+      .from('table_configs').select('*').eq('event_id', eventId).order('sort_order');
+    if (!configs || configs.length === 0) return [];
+    const configIds = configs.map(c => c.id);
+    const { data: soldSeats } = await supabase
+      .from('table_seats').select('table_config_id').in('table_config_id', configIds).not('order_id', 'is', null);
+    const soldByConfig = {};
+    for (const s of (soldSeats || [])) soldByConfig[s.table_config_id] = (soldByConfig[s.table_config_id] || 0) + 1;
+    return configs.map(c => ({
+      id: c.id, name: c.name,
+      seatPrice: Number(c.seat_price),
+      bundlePrice: c.bundle_price != null ? Number(c.bundle_price) : null,
+      tableCount: c.table_count, seatsPerTable: c.seats_per_table,
+      labelSeats: c.label_seats, physicalTableCount: c.physical_table_count,
+      sortOrder: c.sort_order, soldCount: soldByConfig[c.id] || 0,
+    }));
+  };
+
+  const openEditEvent = async (ev) => {
+    setEditEvt({ ...ev, tableConfigs: [] });
+    setModal(true);
+    const configs = await loadTableConfigsForEvent(ev.id);
+    setEditEvt(prev => (prev && prev.id === ev.id) ? { ...prev, tableConfigs: configs } : prev);
+  };
+
+  // Seed the per-seat rows for a table config. table_number 1..N, seat letters A..Z.
+  // If physicalTableCount > 0, marks the LAST N table numbers as physical_reserved so they're hidden from online.
+  const seedTableSeats = async (configId, tableCount, seatsPerTable, physicalTableCount) => {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const rows = [];
+    for (let t = 1; t <= tableCount; t++) {
+      const isPhysical = t > (tableCount - (physicalTableCount || 0));
+      for (let s = 0; s < seatsPerTable; s++) {
+        rows.push({
+          table_config_id: configId,
+          table_number: t,
+          seat_letter: letters[s] || String(s + 1),
+          physical_reserved: isPhysical,
+        });
+      }
+    }
+    if (rows.length === 0) return null;
+    const { error } = await supabase.from('table_seats').insert(rows);
+    return error ? error.message : null;
+  };
+
+  // Persist an event's table_configs against DB state.
+  // Returns null on success, or an error message string.
+  // Rules: existing configs with sold seats can only have non-structural fields updated.
+  // Removed configs are deleted only if they have no orders.
+  const persistTableConfigs = async (eventId, configs) => {
+    const { data: existingConfigs } = await supabase
+      .from('table_configs').select('id').eq('event_id', eventId);
+    const existingIds = new Set((existingConfigs || []).map(c => c.id));
+    const submittedIds = new Set(configs.filter(c => c.id).map(c => c.id));
+
+    // Delete removed configs (with safety check)
+    for (const existId of existingIds) {
+      if (submittedIds.has(existId)) continue;
+      const { data: soldCheck } = await supabase
+        .from('table_seats').select('id').eq('table_config_id', existId).not('order_id', 'is', null).limit(1);
+      if (soldCheck && soldCheck.length > 0) {
+        return 'Cannot delete a table section that has sold seats. Refund those orders first.';
+      }
+      await supabase.from('table_configs').delete().eq('id', existId);
+    }
+
+    // Insert / update the submitted configs
+    for (let i = 0; i < configs.length; i++) {
+      const tc = configs[i];
+      const shared = {
+        name: (tc.name || '').trim() || 'Table Seating',
+        seat_price: Number(tc.seatPrice) || 0,
+        bundle_price: tc.bundlePrice != null ? Number(tc.bundlePrice) : null,
+        label_seats: tc.labelSeats !== false,
+        physical_table_count: Number(tc.physicalTableCount) || 0,
+        sort_order: i,
+      };
+      const structural = {
+        table_count: Number(tc.tableCount) || 1,
+        seats_per_table: Number(tc.seatsPerTable) || 1,
+      };
+      if (tc.id) {
+        // Update — only include structural fields if this section has no sold seats
+        const locked = (tc.soldCount || 0) > 0;
+        const payload = locked ? shared : { ...shared, ...structural };
+        const { error } = await supabase.from('table_configs').update(payload).eq('id', tc.id);
+        if (error) return `Failed to update table section: ${error.message}`;
+        // If structural fields changed AND no seats sold, delete + reseed
+        if (!locked) {
+          const { data: currentSeats } = await supabase
+            .from('table_seats').select('id, table_number, seat_letter').eq('table_config_id', tc.id);
+          const expected = structural.table_count * structural.seats_per_table;
+          if ((currentSeats?.length || 0) !== expected) {
+            await supabase.from('table_seats').delete().eq('table_config_id', tc.id);
+            const seedErr = await seedTableSeats(tc.id, structural.table_count, structural.seats_per_table, shared.physical_table_count);
+            if (seedErr) return `Failed to re-seed seats: ${seedErr}`;
+          }
+        }
+      } else {
+        // Insert new config
+        const { data: newCfg, error } = await supabase
+          .from('table_configs').insert({ event_id: eventId, ...shared, ...structural }).select().single();
+        if (error) return `Failed to create table section: ${error.message}`;
+        const seedErr = await seedTableSeats(newCfg.id, structural.table_count, structural.seats_per_table, shared.physical_table_count);
+        if (seedErr) return `Section created but seat seeding failed: ${seedErr}`;
+      }
+    }
+    return null;
+  };
   const saveEvt = async (e) => {
   setEvtErr('');
   const errs = [];
@@ -1541,6 +1653,9 @@ const openPhysicalManage = async (ev) => {
         door_price: t.doorPrice ?? null,
       }).eq('id', t.id);
     }
+    // Persist table_configs on this existing event
+    const persistErr = await persistTableConfigs(e.id, e.tableConfigs || []);
+    if (persistErr) { setEvtErr(persistErr); return; }
     updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
   } else {
     const { data: newEvt, error } = await supabase.from('events').insert({
@@ -1571,6 +1686,9 @@ const openPhysicalManage = async (ev) => {
         door_price: t.doorPrice ?? null,
       }))
     );
+    // Persist table_configs on the new event
+    const persistErr = await persistTableConfigs(newEvt.id, e.tableConfigs || []);
+    if (persistErr) { setEvtErr(persistErr); return; }
     const { data: freshEvt } = await supabase.from('events').select('*, ticket_types(*)').eq('id', newEvt.id).single();
     const mapped = freshEvt ? mapEvent(freshEvt) : { ...e, id: newEvt.id, venueId: venue.id, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true };
     updateEvents([...events, mapped]);
@@ -2661,9 +2779,12 @@ const openPhysicalManage = async (ev) => {
                         const hasPhysical = ev.tickets.some(t => (t.physicalQty ?? 0) > 0);
                         const isPublished = ev.published !== false;
                         const menuOpen = openActionMenuId === ev.id;
-                        const duplicateEvent = () => {
+                        const duplicateEvent = async () => {
                           const {_imageFile:_f, _imagePreview:_p, ...rest} = ev;
-                          setEditEvt({...rest, id:null, title:'Copy of '+ev.title, date:'', time:'', published:false});
+                          // Duplicate: load source event's table configs and strip IDs so they get inserted fresh
+                          const sourceConfigs = await loadTableConfigsForEvent(ev.id);
+                          const duplicatedConfigs = sourceConfigs.map(c => ({ ...c, id: null, soldCount: 0 }));
+                          setEditEvt({...rest, id:null, title:'Copy of '+ev.title, date:'', time:'', published:false, tableConfigs: duplicatedConfigs});
                           setModal(true);
                         };
                         const confirmedBuyerCount = (() => {
@@ -2692,7 +2813,7 @@ const openPhysicalManage = async (ev) => {
                             <td><span className={`badge ${isPublished?"badge-ok":"badge-sold"}`}>{isPublished?"Live":"Hidden"}</span></td>
                             <td style={{position:'relative'}}>
                               <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
-                                <button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{setEditEvt({...ev});setModal(true);}}>Edit</button>
+                                <button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>openEditEvent(ev)}>Edit</button>
                                 {hasPhysical && (
                                   <button className="btn gold" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>openPhysicalManage(ev)}>
                                     🎫 Physical{(physicalCounts[ev.id]||0)>0?` (${physicalCounts[ev.id]})`:'…'}
@@ -4055,6 +4176,70 @@ const openPhysicalManage = async (ev) => {
             </div>
           ))}
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,addons:[...(editEvt.addons||[]),{id:`ao_${Date.now().toString(36)}`,name:"",price:0,maxPerOrder:null,active:true}]})}>+ Add Add-on</button>
+
+          <h3 className="dsp" style={{fontSize:16,margin:"20px 0 4px"}}>Table Seating <span style={{fontWeight:400,fontSize:11,color:"var(--text3)"}}>reserved seating with per-seat QR (optional)</span></h3>
+          {(editEvt.tableConfigs || []).map((tc, i) => {
+            const locked = (tc.soldCount || 0) > 0;
+            const updateField = (patch) => {
+              const x = [...editEvt.tableConfigs]; x[i] = { ...x[i], ...patch }; setEditEvt({ ...editEvt, tableConfigs: x });
+            };
+            return (
+              <div key={i} style={{border:'1px solid var(--border)',borderRadius:'var(--rs)',padding:12,marginBottom:8}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <div style={{fontWeight:700,fontSize:13}}>Section {i+1}{locked?` · ${tc.soldCount} seat${tc.soldCount!==1?'s':''} sold`:''}</div>
+                  <button className="qb" title={locked?'Cannot delete a section with sold seats':'Remove section'} onClick={() => {
+                    if (locked) { alert('Cannot delete a table section with sold seats. Refund those orders first.'); return; }
+                    if (!confirm(`Remove "${tc.name || 'this section'}"?`)) return;
+                    setEditEvt(prev => ({ ...prev, tableConfigs: prev.tableConfigs.filter((_,j)=>j!==i) }));
+                  }}>×</button>
+                </div>
+                <div className="fg" style={{margin:0,marginBottom:6}}>
+                  <label className="fl">Section Name</label>
+                  <input className="fi" value={tc.name || ''} placeholder="Table Seating" onChange={e => updateField({ name: e.target.value })} />
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <div className="fg" style={{margin:0}}>
+                    <label className="fl">Seat Price $</label>
+                    <input className="fi" type="number" min="0" step="0.01" value={tc.seatPrice ?? 0} onChange={e => updateField({ seatPrice: e.target.value === '' ? 0 : +e.target.value })} />
+                  </div>
+                  <div className="fg" style={{margin:0}}>
+                    <label className="fl" title="Total price for buying the whole table. Leave blank for no bundle option.">Bundle Price $ <span style={{fontWeight:400,fontSize:9,color:'var(--text3)'}}>(blank = no bundle)</span></label>
+                    <input className="fi" type="number" min="0" step="0.01" placeholder="none" value={tc.bundlePrice ?? ''} onChange={e => updateField({ bundlePrice: e.target.value === '' ? null : +e.target.value })} />
+                  </div>
+                  <div className="fg" style={{margin:0}}>
+                    <label className="fl">Number of Tables</label>
+                    <input className="fi" type="number" min="1" value={tc.tableCount ?? 1} disabled={locked} title={locked?'Sold seats — refund all to change layout':''} onChange={e => updateField({ tableCount: Math.max(1, +e.target.value || 1) })} />
+                  </div>
+                  <div className="fg" style={{margin:0}}>
+                    <label className="fl">Seats Per Table <span style={{fontWeight:400,fontSize:9,color:'var(--text3)'}}>(max 26)</span></label>
+                    <input className="fi" type="number" min="1" max="26" value={tc.seatsPerTable ?? 1} disabled={locked} title={locked?'Sold seats — refund all to change layout':''} onChange={e => updateField({ seatsPerTable: Math.min(26, Math.max(1, +e.target.value || 1)) })} />
+                  </div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
+                  <input type="checkbox" checked={tc.labelSeats !== false} onChange={e => updateField({ labelSeats: e.target.checked })} style={{width:16,height:16,accentColor:'var(--gold)',cursor:'pointer'}} />
+                  <label style={{fontSize:12}}>Label tickets with table + seat (e.g. "Table 3 · Seat B")</label>
+                </div>
+                <div className="fg" style={{margin:0,marginTop:10,opacity:0.55}} title="Physical ticket generation for table seats is coming soon.">
+                  <label className="fl">Physical Tables <span style={{fontWeight:400,fontSize:9,color:'var(--text3)'}}>(coming soon — hides last N tables from online)</span></label>
+                  <input className="fi" type="number" min="0" value={tc.physicalTableCount ?? 0} disabled placeholder="0" />
+                </div>
+                {locked && (
+                  <div style={{marginTop:8,padding:'6px 10px',background:'rgba(200,146,42,0.1)',border:'1px solid rgba(200,146,42,0.3)',borderRadius:6,fontSize:11,color:'var(--gold)'}}>
+                    ⚠️ Layout is locked because seats have sold. Refund all sales in this section to change table count / seats per table.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button className="btn" style={{fontSize:11,marginTop:3}} onClick={() => setEditEvt({
+            ...editEvt,
+            tableConfigs: [...(editEvt.tableConfigs || []), {
+              id: null, name: '', seatPrice: 25, bundlePrice: null,
+              tableCount: 8, seatsPerTable: 8, labelSeats: true,
+              physicalTableCount: 0, sortOrder: (editEvt.tableConfigs || []).length, soldCount: 0,
+            }],
+          })}>+ Add Table Section</button>
+
           <h3 className="dsp" style={{fontSize:16,margin:"20px 0 4px"}}>Checkout Notice <span style={{fontWeight:400,fontSize:11,color:"var(--text3)"}}>shown to buyers before payment (age limits, ID required, etc.)</span></h3>
           <div className="fg"><textarea className="fi" rows={2} value={editEvt.checkoutNotice||''} onChange={e=>setEditEvt({...editEvt,checkoutNotice:e.target.value})} placeholder="e.g. This is a 21+ event. Valid ID required at the door." /></div>
           {(editEvt.checkoutNotice||'').trim() && <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'var(--bg3)',borderRadius:'var(--rs)'}}>
