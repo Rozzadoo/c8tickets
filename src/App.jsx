@@ -724,6 +724,10 @@ const confirmCancelOrder = async () => {
     for (const item of o.items) {
       if (item.ticketTypeId) await supabase.rpc('decrement_sold', { tid: item.ticketTypeId, qty: item.qty });
     }
+    // Cancel individual tickets so admin ticket list reflects state (gate scanner already gates on order.status)
+    await supabase.from('tickets').update({ status: 'cancelled' }).eq('order_id', o.id);
+    // Release any table seats linked to this order so they can be repurchased
+    await supabase.from('table_seats').update({ order_id: null, ticket_id: null }).eq('order_id', o.id);
     updateOrders(orders.map(ord => ord.id === o.id ? { ...ord, status: 'cancelled', checkedIn: false } : ord));
     updateEvents(events.map(ev => ev.id !== o.eventId ? ev : ({
       ...ev, tickets: ev.tickets.map(t => {
@@ -1709,20 +1713,39 @@ const openPhysicalManage = async (ev) => {
   // Persist an event's table_configs against DB state.
   // Returns null on success, or an error message string.
   // Rules: existing configs with sold seats can only have non-structural fields updated.
-  // Removed configs are deleted only if they have no orders.
+  // Removed configs are deleted only if they have no orders AND no active reservations.
   const persistTableConfigs = async (eventId, configs) => {
+    // Validate each config's structural constraints before any DB writes
+    for (const tc of configs) {
+      const physCount = Number(tc.physicalTableCount) || 0;
+      const tableCount = Number(tc.tableCount) || 1;
+      if (physCount >= tableCount) {
+        return `"${tc.name || 'Table Seating'}": Physical tables (${physCount}) must be less than total tables (${tableCount}).`;
+      }
+      if (physCount < 0) {
+        return `"${tc.name || 'Table Seating'}": Physical tables cannot be negative.`;
+      }
+    }
+
     const { data: existingConfigs } = await supabase
-      .from('table_configs').select('id').eq('event_id', eventId);
+      .from('table_configs').select('id, name').eq('event_id', eventId);
     const existingIds = new Set((existingConfigs || []).map(c => c.id));
+    const existingNames = new Map((existingConfigs || []).map(c => [c.id, c.name]));
     const submittedIds = new Set(configs.filter(c => c.id).map(c => c.id));
 
-    // Delete removed configs (with safety check)
+    // Delete removed configs (with safety check for both sold seats AND active reservations)
+    const nowIso = new Date().toISOString();
     for (const existId of existingIds) {
       if (submittedIds.has(existId)) continue;
       const { data: soldCheck } = await supabase
         .from('table_seats').select('id').eq('table_config_id', existId).not('order_id', 'is', null).limit(1);
       if (soldCheck && soldCheck.length > 0) {
-        return 'Cannot delete a table section that has sold seats. Refund those orders first.';
+        return `Cannot delete "${existingNames.get(existId)}" — it has sold seats. Refund those orders first.`;
+      }
+      const { data: reservedCheck } = await supabase
+        .from('table_seats').select('id').eq('table_config_id', existId).gt('reserved_until', nowIso).limit(1);
+      if (reservedCheck && reservedCheck.length > 0) {
+        return `Cannot delete "${existingNames.get(existId)}" — a buyer is mid-checkout with seats reserved. Try again in 10 minutes.`;
       }
       await supabase.from('table_configs').delete().eq('id', existId);
     }
@@ -3194,7 +3217,7 @@ const openPhysicalManage = async (ev) => {
                     {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
                   </div>
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<><div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{pagedFo.flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isComp=o.source==='comp';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}{isComp&&<div style={{color:"var(--gold)",fontSize:10,fontWeight:700}}>COMP</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{summarizeOrderItems(o.items).map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{isComp?<span style={{color:"var(--gold)"}}>COMP</span>:fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{!expandedTickets[o.id]?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No individual ticket records for this order.</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}  </tbody></table></div>
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<><div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{pagedFo.flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isComp=o.source==='comp';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}{isComp&&<div style={{color:"var(--gold)",fontSize:10,fontWeight:700}}>COMP</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{summarizeOrderItems(o.items).map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{isComp?<span style={{color:"var(--gold)"}}>COMP</span>:fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{!expandedTickets[o.id]?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No individual ticket records for this order.</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);await supabase.from('table_seats').update({order_id:null,ticket_id:null}).eq('ticket_id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}  </tbody></table></div>
                 {totalPages>1&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:14}}><button className="btn" style={{padding:"5px 14px",fontSize:12}} disabled={safePage===0} onClick={()=>setOrdersPage(p=>Math.max(0,p-1))}>← Prev</button><span style={{fontSize:12,color:"var(--text3)"}}>Page {safePage+1} of {totalPages}</span><button className="btn" style={{padding:"5px 14px",fontSize:12}} disabled={safePage>=totalPages-1} onClick={()=>setOrdersPage(p=>Math.min(totalPages-1,p+1))}>Next →</button></div>}
                 </>}
               </>; })()}
