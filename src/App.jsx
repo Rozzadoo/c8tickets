@@ -2770,12 +2770,39 @@ const openPhysicalManage = async (ev) => {
             {aTab === "events" && <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}><h2 className="dsp" style={{fontSize:26}}>Manage Events</h2><button className="btn gold" onClick={()=>{setEditEvt(blank());setModal(true);}}>+ New Event</button></div>
               {vEvents.length===0 ? (
                 <div className="empty"><div className="ic">🎫</div><p>No events.</p></div>
-              ) : (
+              ) : (() => {
+                const todayStr = new Date().toLocaleDateString('en-CA');
+                const eventStatus = (ev) => {
+                  if (ev.date > todayStr) return 'upcoming';
+                  if (ev.date === todayStr) return 'today';
+                  return 'completed';
+                };
+                // Sort: today first, then upcoming (soonest first), then completed (most recent first)
+                const statusRank = { today: 0, upcoming: 1, completed: 2 };
+                const sortedEvents = [...vEvents].sort((a, b) => {
+                  const rA = statusRank[eventStatus(a)];
+                  const rB = statusRank[eventStatus(b)];
+                  if (rA !== rB) return rA - rB;
+                  if (eventStatus(a) === 'completed') return b.date.localeCompare(a.date);
+                  return a.date.localeCompare(b.date);
+                });
+                let dividerShown = false;
+                return (
                 <div style={{overflowX:"auto"}}>
                   <table className="dt">
                     <thead><tr><th>Event</th><th>Date</th><th>Category</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody>
-                      {vEvents.map(ev => {
+                      {sortedEvents.map(ev => {
+                        const status = eventStatus(ev);
+                        const showDivider = !dividerShown && status === 'completed';
+                        if (showDivider) dividerShown = true;
+                        return [
+                          showDivider ? (
+                            <tr key={`divider-${ev.id}`} style={{background:'transparent'}}>
+                              <td colSpan={6} style={{padding:'12px 4px 4px',fontSize:10,textTransform:'uppercase',letterSpacing:1.5,color:'var(--text3)',fontWeight:700,borderBottom:'1px solid var(--border)'}}>Completed Events</td>
+                            </tr>
+                          ) : null,
+                          (() => {
                         const hasPhysical = ev.tickets.some(t => (t.physicalQty ?? 0) > 0);
                         const isPublished = ev.published !== false;
                         const menuOpen = openActionMenuId === ev.id;
@@ -2810,7 +2837,12 @@ const openPhysicalManage = async (ev) => {
                             <td>{fmtDate(ev.date)}</td>
                             <td>{ev.category}</td>
                             <td>{ev.tickets.reduce((s,t)=>s+t.available,0)}</td>
-                            <td><span className={`badge ${isPublished?"badge-ok":"badge-sold"}`}>{isPublished?"Live":"Hidden"}</span></td>
+                            <td>{!isPublished
+                              ? <span className="badge badge-sold">Hidden</span>
+                              : status === 'today' ? <span className="badge" style={{background:'rgba(200,146,42,0.25)',color:'var(--gold)',border:'1px solid rgba(200,146,42,0.5)'}}>Today</span>
+                              : status === 'upcoming' ? <span className="badge badge-ok">Upcoming</span>
+                              : <span className="badge" style={{background:'rgba(255,255,255,0.04)',color:'var(--text3)',border:'1px solid rgba(255,255,255,0.08)'}}>Completed</span>
+                            }</td>
                             <td style={{position:'relative'}}>
                               <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
                                 <button className="btn" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>openEditEvent(ev)}>Edit</button>
@@ -2862,11 +2894,14 @@ const openPhysicalManage = async (ev) => {
                             </td>
                           </tr>
                         );
+                          })()
+                        ];
                       })}
                     </tbody>
                   </table>
                 </div>
-              )}
+                );
+              })()}
             </>}
 
             {aTab === "orders" && (()=>{
