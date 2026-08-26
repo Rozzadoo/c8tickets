@@ -2290,7 +2290,7 @@ const openPhysicalManage = async (ev) => {
                 {cfg.totalAvailable > 0 && (
                   <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 16px',marginBottom:10}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,gap:10,flexWrap:'wrap'}}>
-                      <div style={{fontWeight:700,fontSize:14}}>Individual Seats</div>
+                      <div style={{fontWeight:700,fontSize:14}}>Individual Table Seating</div>
                       <div style={{fontSize:16,fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(cfg.seatPrice)}<span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}> / seat</span></div>
                     </div>
                     <IndividualSeatsControl config={cfg} availableTables={availableTables} onReserve={reserveSeats} isReserving={isReserving} />
