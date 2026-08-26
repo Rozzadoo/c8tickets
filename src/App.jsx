@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as XLSX from 'xlsx';
 import { supabase } from './lib/supabase';
 import { API_BASE, APP_URL } from './constants';
-import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs, fetchWithTimeout } from './lib/utils';
+import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs, fetchWithTimeout, summarizeOrderItems } from './lib/utils';
 import useStorage from './lib/useStorage';
 import CSS from './styles';
 import ScannerWidget from './components/ScannerWidget';
@@ -849,10 +849,12 @@ const resendEmail = async (o) => {
   const salesTax = Math.round(ticketTotal * 0.06 * 100) / 100;
   const serviceFees = totalQty * 2;
   const processingFee = Math.max(0, Math.round((o.total - ticketTotal - salesTax - serviceFees) * 100) / 100);
+  // Collapse per-seat rows into "Config — Table N (X seats)" so the email reads cleanly
+  const emailItems = summarizeOrderItems(o.items).map(i => ({ type: i.type, qty: i.qty, price: i.price }));
   const res = await fetch(API_BASE+'/api/send-email', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminSession?.access_token || ''}` },
     body: JSON.stringify({
-      order: { id: o.id, buyer: o.buyer, items: o.items, salesTax, serviceFees, processingFee, total: o.total },
+      order: { id: o.id, buyer: o.buyer, items: emailItems, salesTax, serviceFees, processingFee, total: o.total },
       event: { title: ev?.title || 'Event', category: ev?.category || '', date: fmtDate(ev?.date || ''), time: fmtTime(ev?.time || ''), doors: fmtTime(ev?.doors || '') },
       venue: { name: venue.name, location: venue.location },
     }),
@@ -2371,10 +2373,29 @@ const openPhysicalManage = async (ev) => {
               return;
             }
 
+            // Snapshot table seat reservations before we clear the cart so we can show them on the ticket page
+            const purchasedTableSeats = tableSeatCart.map(t => ({
+              configName: t.configName,
+              isBundle: t.isBundle,
+              seats: t.seats,
+              totalCost: t.totalCost,
+              unitPrice: t.unitPrice,
+            }));
+            const regularItems = items.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId }));
+            // Represent each table seat entry as a single row in items[] for the ticket-page summary
+            const tableSeatItemRows = purchasedTableSeats.map(t => ({
+              type: t.isBundle
+                ? `${t.configName} — Full Table ${t.seats[0]?.tableNumber} (${t.seats.length} seats)`
+                : `${t.configName} — ${t.seats.length} seat${t.seats.length !== 1 ? 's' : ''} (${t.seats.map(s => `T${s.tableNumber}·${s.seatLetter}`).join(', ')})`,
+              qty: 1,
+              price: t.totalCost,
+              isTableSeat: true,
+            }));
             const localOrder = {
               id: saveData.orderId, eventId: sel.id, venueId: venue.id,
               buyer: { ...buyer },
-              items: items.map(i => ({ type: i.type, qty: i.qty, price: i.price, ticketTypeId: i.ticketTypeId })),
+              items: [...regularItems, ...tableSeatItemRows],
+              tableSeats: purchasedTableSeats, // preserved for future admin/report use
               addonItems: currentAddonItems,
               ticketTotal: paymentAmounts.ticketTotal,
               addonTotal: paymentAmounts.addonTotal || 0,
@@ -2553,9 +2574,9 @@ const openPhysicalManage = async (ev) => {
                   <div style={{marginBottom:20,padding:"16px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
                     <p style={{fontSize:12,fontWeight:700,color:"var(--gold)",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Purchase Receipt</p>
                     <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      {(order.order_items||[]).map((i,idx) => <tr key={idx}>
-                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)"}}>{i.quantity}× {i.ticket_type_name}</td>
-                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)",textAlign:"right"}}>{fmtCurrency(i.quantity*Number(i.unit_price))}</td>
+                      {summarizeOrderItems((order.order_items||[]).map(oi => ({ type: oi.ticket_type_name, qty: oi.quantity, price: Number(oi.unit_price) }))).map((i,idx) => <tr key={idx}>
+                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)"}}>{i.qty}× {i.type}</td>
+                        <td style={{padding:"4px 0",fontSize:13,color:"var(--text2)",textAlign:"right"}}>{fmtCurrency(i.lineTotal)}</td>
                       </tr>)}
                       <tr><td colSpan={2} style={{padding:"8px 0 4px",borderTop:"1px solid var(--border)"}}></td></tr>
                       <tr><td style={{fontSize:12,color:"var(--text3)"}}>Sales Tax (6%)</td><td style={{fontSize:12,color:"var(--text3)",textAlign:"right"}}>{fmtCurrency(order.sales_tax)}</td></tr>
@@ -3173,7 +3194,7 @@ const openPhysicalManage = async (ev) => {
                     {fo.length>0&&<button className="btn" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>exportOrdersCSV(fo,events,`orders-${new Date().toISOString().slice(0,10)}.csv`)}>Export CSV</button>}
                   </div>
                 </div>
-                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<><div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{pagedFo.flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isComp=o.source==='comp';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}{isComp&&<div style={{color:"var(--gold)",fontSize:10,fontWeight:700}}>COMP</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{isComp?<span style={{color:"var(--gold)"}}>COMP</span>:fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{!expandedTickets[o.id]?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No individual ticket records for this order.</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}  </tbody></table></div>
+                {fo.length===0?<div className="empty"><div className="ic">📋</div><p>{q?"No matching orders.":"No orders."}</p></div>:<><div style={{overflowX:"auto"}}><table className="dt"><thead><tr><th></th><th>Order</th><th>Date</th><th>Buyer</th><th>Email</th><th>Event</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>{pagedFo.flatMap(o=>{const ev=events.find(e=>e.id===o.eventId);const cancelled=o.status==='cancelled';const isComp=o.source==='comp';const isExp=expandedOrders.has(o.id);const tix=expandedTickets[o.id]||[];const toggleExp=async()=>{const next=new Set(expandedOrders);if(isExp){next.delete(o.id);setExpandedOrders(next);}else{next.add(o.id);setExpandedOrders(next);if(!expandedTickets[o.id]){const{data:t}=await supabase.from('tickets').select('*').eq('order_id',o.id).order('ticket_number');setExpandedTickets(prev=>({...prev,[o.id]:t||[]}));}}};return[<tr key={o.id} style={{opacity:cancelled?.5:1}}><td style={{width:28,paddingRight:0}}><button style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:11,padding:'2px 4px'}} onClick={toggleExp}>{isExp?'▲':'▼'}</button></td><td style={{fontFamily:"monospace",fontSize:11}}>{o.id.slice(0,12)}{o.stripePaymentIntentId&&<div style={{color:"var(--text3)",fontSize:10,marginTop:2}}>{o.stripePaymentIntentId.slice(0,22)}</div>}{isComp&&<div style={{color:"var(--gold)",fontSize:10,fontWeight:700}}>COMP</div>}</td><td style={{fontSize:11}}>{new Date(o.date).toLocaleDateString()}<br/><span style={{color:"var(--text3)"}}>{new Date(o.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span></td><td>{o.buyer.name}</td><td style={{fontSize:11}}>{o.buyer.email}</td><td>{ev?.title||"—"}</td><td style={{fontSize:11}}>{summarizeOrderItems(o.items).map(i=>`${i.qty}× ${i.type}`).join(", ")}</td><td style={{fontWeight:700}}>{isComp?<span style={{color:"var(--gold)"}}>COMP</span>:fmtCurrency(o.total)}</td><td><span className={`badge ${cancelled?'badge-cancelled':o.checkedIn?'badge-done':'badge-ok'}`}>{cancelled?'Cancelled':o.checkedIn?'Checked In':'Valid'}</span></td><td style={{display:"flex",gap:4,flexWrap:"wrap"}}><button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>{setEditEmailOrder(o);setEditEmailValue(o.buyer.email||'');}}>Edit Email</button>{!cancelled&&<>{resentOrderId===o.id?<span style={{fontSize:11,color:'var(--green)',fontWeight:700,padding:'4px 8px'}}>Sent ✓</span>:<button className="btn" style={{fontSize:11,padding:"4px 8px"}} onClick={()=>resendEmail(o)}>Resend</button>}<button className="btn" style={{fontSize:11,padding:"4px 8px",color:"var(--red)"}} onClick={()=>setCancelTarget(o)}>Cancel</button></>}</td></tr>,isExp&&<tr key={o.id+'-tix'}><td colSpan={10} style={{padding:'0 14px 12px 42px',background:'var(--bg3)'}}>{!expandedTickets[o.id]?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Loading tickets…</p>:tix.length===0?<p style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No individual ticket records for this order.</p>:<div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:8}}>{tix.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg2)',borderRadius:'var(--rs)',border:'1px solid var(--bg4)'}}><span style={{fontSize:12,color:'var(--text2)'}}>#{t.ticket_number} — {t.ticket_type_name}</span><span className={`badge ${t.status==='checked_in'?'badge-done':t.status==='cancelled'?'badge-cancelled':'badge-ok'}`} style={{fontSize:9}}>{t.status==='checked_in'?'Checked In':t.status==='cancelled'?'Voided':'Valid'}</span>{t.status==='valid'&&<button className="btn" style={{fontSize:10,padding:'2px 8px',color:'var(--red)'}} onClick={async()=>{if(!confirm(`Void ticket #${t.ticket_number}?`))return;await supabase.from('tickets').update({status:'cancelled'}).eq('id',t.id);setExpandedTickets(prev=>({...prev,[o.id]:prev[o.id].map(x=>x.id===t.id?{...x,status:'cancelled'}:x)}));}}>Void</button>}</div>)}</div>}</td></tr>].filter(Boolean);})}  </tbody></table></div>
                 {totalPages>1&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:14}}><button className="btn" style={{padding:"5px 14px",fontSize:12}} disabled={safePage===0} onClick={()=>setOrdersPage(p=>Math.max(0,p-1))}>← Prev</button><span style={{fontSize:12,color:"var(--text3)"}}>Page {safePage+1} of {totalPages}</span><button className="btn" style={{padding:"5px 14px",fontSize:12}} disabled={safePage>=totalPages-1} onClick={()=>setOrdersPage(p=>Math.min(totalPages-1,p+1))}>Next →</button></div>}
                 </>}
               </>; })()}
@@ -3222,7 +3243,7 @@ const openPhysicalManage = async (ev) => {
                       <strong>{o.buyer.name}</strong>
                       <span style={{color:"var(--text3)",fontSize:11,marginLeft:8}}>{ev?.title||"—"}</span>
                     </span>
-                    <span style={{fontSize:11,color:"var(--text2)"}}>{o.items.map(i=>`${i.qty}× ${i.type}`).join(", ")}</span>
+                    <span style={{fontSize:11,color:"var(--text2)"}}>{summarizeOrderItems(o.items).map(i=>`${i.qty}× ${i.type}`).join(", ")}</span>
                     {tix.length>0&&<span style={{fontSize:11,color:checkedInCount===totalTix?"var(--green)":"var(--text3)"}}>{checkedInCount}/{totalTix} in</span>}
                     {tix.length===0&&<span className={`badge ${o.checkedIn?"badge-done":"badge-ok"}`} style={{fontSize:10}}>{o.checkedIn?"Checked In":"Valid"}</span>}
                     <span style={{color:"var(--text3)",fontSize:12}}>{isExpanded?"▲":"▼"}</span>

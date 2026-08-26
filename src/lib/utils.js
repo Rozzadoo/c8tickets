@@ -66,6 +66,41 @@ export const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-U
 export const fmtCurrency = (n) => n === 0 ? "FREE" : "$" + Number(n).toFixed(2);
 export const fmtTime = (t) => t ? new Date('1970-01-01T' + t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "";
 
+// Table seat items are stored one-per-seat with names like "Config Name — Table 3 Seat B".
+// This regex + grouper collapses them into human-readable rows for display.
+const TABLE_SEAT_RE = /^(.+?) — Table (\d+) Seat (\w+)$/;
+export const summarizeOrderItems = (items) => {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const rows = [];
+  const groups = new Map(); // key: `${configName}|${tableNumber}` -> {configName, tableNumber, seats:[], totalPrice}
+  for (const it of items) {
+    const match = TABLE_SEAT_RE.exec(String(it.type || ''));
+    if (match) {
+      const [, configName, tableNumberStr, seatLetter] = match;
+      const key = `${configName}|${tableNumberStr}`;
+      if (!groups.has(key)) groups.set(key, { configName, tableNumber: Number(tableNumberStr), seats: [], totalPrice: 0 });
+      const g = groups.get(key);
+      g.seats.push(seatLetter);
+      g.totalPrice += Number(it.price || 0) * (it.qty || 1);
+    } else {
+      rows.push({ type: it.type, qty: it.qty, price: Number(it.price || 0), lineTotal: Number(it.price || 0) * (it.qty || 1) });
+    }
+  }
+  for (const g of groups.values()) {
+    g.seats.sort();
+    rows.push({
+      type: `${g.configName} — Table ${g.tableNumber} (${g.seats.length} seat${g.seats.length !== 1 ? 's' : ''})`,
+      qty: g.seats.length,
+      price: g.totalPrice / g.seats.length,
+      lineTotal: g.totalPrice,
+      isTableSeat: true,
+      tableNumber: g.tableNumber,
+      seatLetters: g.seats,
+    });
+  }
+  return rows;
+};
+
 export const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 // fetch with an AbortController timeout. Throws Error('timeout') if the request exceeds ms.
