@@ -43,7 +43,7 @@ function BundleReserveControl({ config, availableFullTables, onReserve, isReserv
         const specific = tableChoice === 'any' ? null : Number(tableChoice);
         onReserve(config, config.seatsPerTable, specific, true);
       }}>
-        {isReserving ? 'Reserving…' : `Reserve Full Table (${config.seatsPerTable} seats)`}
+        {isReserving ? 'Reserving…' : `Reserve Full Table Seats (${config.seatsPerTable})`}
       </button>
     </div>
   );
@@ -81,7 +81,7 @@ function IndividualSeatsControl({ config, availableTables, onReserve, isReservin
         onReserve(config, qty, specific, false);
         setQty(1);
       }}>
-        {isReserving ? 'Reserving…' : `Reserve ${qty} Seat${qty !== 1 ? 's' : ''}`}
+        {isReserving ? 'Reserving…' : `Reserve ${qty} Table Seat${qty !== 1 ? 's' : ''}`}
       </button>
     </div>
   );
@@ -1996,7 +1996,12 @@ const openPhysicalManage = async (ev) => {
             }}>
               <span style={{fontFamily:'monospace',fontSize:15}}>⏱ {mm}:{ss}</span>
               <span>{totalSeats} seat{totalSeats!==1?'s':''} reserved{tableSeatCart.length>1?` across ${tableSeatCart.length} sections`:''}</span>
-              {view === 'detail' && <span style={{fontWeight:400,fontSize:12,opacity:0.85}}>Complete checkout before the timer expires.</span>}
+              {view === 'detail' && (
+                <button
+                  onClick={() => { setSoldOutError(''); setNoticeAgreed(false); setView("checkout"); }}
+                  style={{background: urgent ? '#fff' : '#000', color: urgent ? 'var(--red)' : 'var(--gold)', border:'none', padding:'6px 14px', borderRadius:6, fontWeight:700, fontSize:13, cursor:'pointer'}}
+                >Continue to Checkout →</button>
+              )}
               <span data-tick={reservationTick} style={{display:'none'}}/>
             </div>
           );
@@ -2324,6 +2329,21 @@ const openPhysicalManage = async (ev) => {
               </div>
             );
           })}
+          {/* Prominent Checkout button appears once buyer has any reservation, so they don't have to scroll back up */}
+          {tableSeatCart.length > 0 && (
+            <div style={{marginTop:16,padding:'14px 16px',background:'var(--bg3)',borderRadius:'var(--rs)',border:'1px solid var(--gold)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,gap:10,flexWrap:'wrap'}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14}}>Ready to check out?</div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>Timer keeps counting until you complete payment.</div>
+                </div>
+                <div style={{fontSize:18,fontWeight:700,color:'var(--gold)'}}>
+                  {fmtCurrency(cartTotal + tableSeatCart.reduce((s,t)=>s+t.totalCost,0) + (cartN + tableSeatCart.reduce((s,t)=>s+t.seats.length,0)) * 2)}
+                </div>
+              </div>
+              <button className="buy" style={{width:'100%'}} onClick={() => { setSoldOutError(''); setNoticeAgreed(false); setView("checkout"); }}>Continue to Checkout</button>
+            </div>
+          )}
         </div>}
 
         {view === "checkout" && sel && (
