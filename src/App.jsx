@@ -24,6 +24,69 @@ import QRCodeLib from 'qrcode';
 const LOGO_SRC = "/logo-simple.webp";
 const LOGO_FULL = "/logo-full.webp";
 
+// Sub-components for table seating buyer flow (Batch 4).
+// Kept module-level so their render doesn't churn on App re-render.
+
+function BundleReserveControl({ config, availableFullTables, onReserve, isReserving }) {
+  const [tableChoice, setTableChoice] = useState('any');
+  const disabled = isReserving || availableFullTables.length === 0;
+  return (
+    <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+      <div className="fg" style={{flex:1,margin:0,minWidth:140}}>
+        <label className="fl">Table</label>
+        <select className="fi" value={tableChoice} disabled={disabled} onChange={e => setTableChoice(e.target.value)}>
+          <option value="any">Any available table</option>
+          {availableFullTables.map(t => <option key={t.tableNumber} value={t.tableNumber}>Table {t.tableNumber}</option>)}
+        </select>
+      </div>
+      <button className="buy" style={{flex:'0 0 auto',padding:'11px 22px'}} disabled={disabled} onClick={() => {
+        const specific = tableChoice === 'any' ? null : Number(tableChoice);
+        onReserve(config, config.seatsPerTable, specific, true);
+      }}>
+        {isReserving ? 'Reserving…' : 'Reserve Table'}
+      </button>
+    </div>
+  );
+}
+
+function IndividualSeatsControl({ config, availableTables, onReserve, isReserving }) {
+  const [qty, setQty] = useState(1);
+  const [tableChoice, setTableChoice] = useState('any');
+  const maxQty = tableChoice === 'any'
+    ? Math.min(config.seatsPerTable, availableTables.reduce((s,t) => Math.max(s,t.available), 0))
+    : Math.min(config.seatsPerTable, (availableTables.find(t => t.tableNumber === Number(tableChoice))?.available) || 0);
+  const disabled = isReserving || maxQty === 0;
+  const tablesForPicker = availableTables.filter(t => t.available >= qty);
+  return (
+    <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap'}}>
+      <div className="fg" style={{margin:0}}>
+        <label className="fl">Seats</label>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <button className="qb" disabled={qty<=1||isReserving} onClick={() => setQty(q => Math.max(1, q-1))}>−</button>
+          <div className="qv">{qty}</div>
+          <button className="qb" disabled={qty>=maxQty||isReserving} onClick={() => setQty(q => Math.min(maxQty, q+1))}>+</button>
+        </div>
+      </div>
+      <div className="fg" style={{flex:1,margin:0,minWidth:140}}>
+        <label className="fl">Table</label>
+        <select className="fi" value={tableChoice} disabled={disabled} onChange={e => setTableChoice(e.target.value)}>
+          <option value="any">Any available</option>
+          {tablesForPicker.map(t => (
+            <option key={t.tableNumber} value={t.tableNumber}>Table {t.tableNumber} ({t.available} open)</option>
+          ))}
+        </select>
+      </div>
+      <button className="buy" style={{flex:'0 0 auto',padding:'11px 22px'}} disabled={disabled} onClick={() => {
+        const specific = tableChoice === 'any' ? null : Number(tableChoice);
+        onReserve(config, qty, specific, false);
+        setQty(1);
+      }}>
+        {isReserving ? 'Reserving…' : 'Reserve'}
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const { venues, events, loaded, tenantId, updateEvents, updateVenues, switchVenue } = useStorage();
   const [allTenants, setAllTenants] = useState([]);
@@ -148,6 +211,10 @@ const [resetError, setResetError] = useState('');
   const [venueUsers, setVenueUsers] = useState([]);
   const [venueUsersLoaded, setVenueUsersLoaded] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const [selTableConfigs, setSelTableConfigs] = useState([]);
+  const [tableSeatCart, setTableSeatCart] = useState([]);
+  const [reservingConfigId, setReservingConfigId] = useState(null);
+  const [reservationTick, setReservationTick] = useState(0);
   const [venueUserForm, setVenueUserForm] = useState({ email:'', password:'', tenantId:'', role:'venue' });
   const [venueUserSaving, setVenueUserSaving] = useState(false);
   const [venueUserError, setVenueUserError] = useState('');
@@ -250,6 +317,34 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => { localStorage.setItem('c8_holdbackPct', String(holdbackPct)); }, [holdbackPct]);
   useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
+
+  // Load table configs + availability when opening event detail. Clears when navigating away.
+  useEffect(() => {
+    if (view !== 'detail' || !selId) { setSelTableConfigs([]); return; }
+    let cancelled = false;
+    loadTableConfigsWithAvailability(selId).then(cfgs => {
+      if (!cancelled) setSelTableConfigs(cfgs);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, selId]);
+
+  // If the selected event changes, drop any pending table-seat reservations (they belong to the old event)
+  useEffect(() => { setTableSeatCart([]); }, [selId]);
+
+  // 1s tick to update reservation countdown + auto-expire held seats
+  useEffect(() => {
+    if (tableSeatCart.length === 0) return;
+    const interval = setInterval(() => {
+      setReservationTick(t => t + 1);
+      const now = Date.now();
+      setTableSeatCart(prev => {
+        const stillValid = prev.filter(item => new Date(item.reservedUntil).getTime() > now);
+        return stillValid.length === prev.length ? prev : stillValid;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [tableSeatCart.length]);
 
   const reloadOrders = useCallback(async () => {
     const PAGE = 1000;
@@ -1303,6 +1398,46 @@ const openPhysicalManage = async (ev) => {
   const buyerReady = nameValid && emailValid;
 
 
+  // Client-side seat reservation. Calls /api/reserve-table-seats which atomically holds seats
+  // for 10 minutes with a token. Local UI shows a countdown; the token is passed through
+  // create-payment-intent → save-order for atomic ticket generation on successful payment.
+  const reserveSeats = async (config, qty, specificTableNumber, isBundle) => {
+    if (reservingConfigId) return;
+    setReservingConfigId(config.id);
+    try {
+      const res = await fetch(API_BASE + '/api/reserve-table-seats', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableConfigId: config.id, qty,
+          specificTableNumber: specificTableNumber ?? null,
+          wholeTable: isBundle === true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'Could not reserve seats. Please try again.'); return; }
+      const seatCount = data.seats.length;
+      const totalCost = isBundle ? Number(config.bundlePrice) : seatCount * Number(config.seatPrice);
+      const unitPrice = isBundle ? Number(config.bundlePrice) / seatCount : Number(config.seatPrice);
+      setTableSeatCart(prev => [...prev, {
+        configId: config.id, configName: config.name,
+        reservationToken: data.reservationToken,
+        seats: data.seats, reservedUntil: data.reservedUntil,
+        isBundle: isBundle === true, unitPrice, totalCost,
+      }]);
+      // Refresh availability display
+      const refreshed = await loadTableConfigsWithAvailability(selId);
+      setSelTableConfigs(refreshed);
+    } catch {
+      alert('Network error while reserving seats. Please try again.');
+    } finally {
+      setReservingConfigId(null);
+    }
+  };
+
+  const removeTableReservation = (reservationToken) => {
+    setTableSeatCart(prev => prev.filter(t => t.reservationToken !== reservationToken));
+  };
+
   const createPaymentIntent = async () => {
     setCreatingPayment(true);
     try {
@@ -1316,6 +1451,7 @@ const openPhysicalManage = async (ev) => {
         body: JSON.stringify({
           items,
           addonItems: addonItemsReq,
+          tableSeatItems: tableSeatCart.map(t => ({ tableConfigId: t.configId, reservationToken: t.reservationToken, isBundle: t.isBundle })),
           eventId: sel.id,
           tenantId: tenantId,
           buyer: { name: buyer.name.trim(), email: buyer.email.trim(), phone: buyer.phone.trim() },
@@ -1512,6 +1648,39 @@ const openPhysicalManage = async (ev) => {
     setModal(true);
     const configs = await loadTableConfigsForEvent(ev.id);
     setEditEvt(prev => (prev && prev.id === ev.id) ? { ...prev, tableConfigs: configs } : prev);
+  };
+
+  // Load table configs + seat availability for buyer-facing detail view.
+  // Aggregates per-table available seat count so we can offer "any" vs "specific" picks.
+  const loadTableConfigsWithAvailability = async (eventId) => {
+    const { data: configs } = await supabase
+      .from('table_configs')
+      .select('id,name,seat_price,bundle_price,table_count,seats_per_table,label_seats,sort_order,table_seats(table_number,order_id,reserved_until,physical_reserved)')
+      .eq('event_id', eventId)
+      .order('sort_order');
+    if (!configs) return [];
+    const now = Date.now();
+    return configs.map(c => {
+      const seats = c.table_seats || [];
+      const perTable = {};
+      for (const s of seats) {
+        if (s.physical_reserved) continue;
+        if (!perTable[s.table_number]) perTable[s.table_number] = { total: 0, available: 0 };
+        perTable[s.table_number].total++;
+        const isAvailable = s.order_id === null && (!s.reserved_until || new Date(s.reserved_until).getTime() < now);
+        if (isAvailable) perTable[s.table_number].available++;
+      }
+      const totalAvailable = Object.values(perTable).reduce((sum, t) => sum + t.available, 0);
+      const fullTables = Object.values(perTable).filter(t => t.available === t.total && t.total > 0).length;
+      return {
+        id: c.id, name: c.name || 'Table Seating',
+        seatPrice: Number(c.seat_price),
+        bundlePrice: c.bundle_price != null ? Number(c.bundle_price) : null,
+        tableCount: c.table_count, seatsPerTable: c.seats_per_table,
+        labelSeats: c.label_seats,
+        perTable, totalAvailable, fullTables,
+      };
+    });
   };
 
   // Seed the per-seat rows for a table config. table_number 1..N, seat letters A..Z.
@@ -1956,7 +2125,7 @@ const openPhysicalManage = async (ev) => {
                   <div style={{background:"var(--bg3)",borderRadius:"var(--rs)",padding:"12px 14px",marginBottom:12,fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
                     <span style={{color:"var(--text2)",fontWeight:600}}>Fees:</span> Ticket prices are subject to 6% Idaho sales tax, a $2.00 service fee per ticket, and a payment processing fee (3.5% + $0.30). All fees are itemized at checkout.
                   </div>
-                  <button className="buy" disabled={cartN===0} onClick={() => { if (cartN === 0) return; setSoldOutError(''); setNoticeAgreed(false); setView("checkout"); }}>{cartN===0 ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + cartN * 2)}`}</button>
+                  <button className="buy" disabled={cartN===0 && tableSeatCart.length===0} onClick={() => { if (cartN === 0 && tableSeatCart.length === 0) return; setSoldOutError(''); setNoticeAgreed(false); setView("checkout"); }}>{(cartN===0 && tableSeatCart.length===0) ? "Select Tickets" : `Checkout - ${fmtCurrency(cartTotal + tableSeatCart.reduce((s,t)=>s+t.totalCost,0) + (cartN + tableSeatCart.reduce((s,t)=>s+t.seats.length,0)) * 2)}`}</button>
                 </>
               );
               return (
@@ -1995,6 +2164,78 @@ const openPhysicalManage = async (ev) => {
               );
             })()}
           </div>
+
+          {/* Table Seating sections (Batch 4) */}
+          {selTableConfigs.length > 0 && selTableConfigs.map(cfg => {
+            const isReserving = reservingConfigId === cfg.id;
+            const availableTables = Object.entries(cfg.perTable)
+              .filter(([, v]) => v.available > 0)
+              .map(([n, v]) => ({ tableNumber: Number(n), ...v }))
+              .sort((a, b) => a.tableNumber - b.tableNumber);
+            const fullyAvailableTables = availableTables.filter(t => t.available === t.total);
+            return (
+              <div key={cfg.id} className="tkt-sec" style={{marginTop:24}}>
+                <h3 className="dsp">{cfg.name}</h3>
+                <div style={{fontSize:13,color:'var(--text2)',marginBottom:10,lineHeight:1.6}}>
+                  {cfg.fullTables > 0 && <span><strong>{cfg.fullTables}</strong> full table{cfg.fullTables!==1?'s':''}</span>}
+                  {cfg.fullTables > 0 && cfg.totalAvailable > cfg.fullTables * cfg.seatsPerTable && <span> · </span>}
+                  {cfg.totalAvailable > cfg.fullTables * cfg.seatsPerTable && <span><strong>{cfg.totalAvailable - cfg.fullTables * cfg.seatsPerTable}</strong> loose seat{(cfg.totalAvailable - cfg.fullTables * cfg.seatsPerTable)!==1?'s':''}</span>}
+                  {cfg.totalAvailable === 0 && <span style={{color:'var(--red)',fontWeight:700}}>Sold out</span>}
+                </div>
+
+                {cfg.totalAvailable > 0 && cfg.bundlePrice != null && fullyAvailableTables.length > 0 && (() => {
+                  const savings = cfg.seatPrice * cfg.seatsPerTable - cfg.bundlePrice;
+                  return (
+                    <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 16px',marginBottom:10,border:'1px solid var(--gold)'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,gap:10,flexWrap:'wrap'}}>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:14}}>Reserve a full table ({cfg.seatsPerTable} seats)</div>
+                          {savings > 0 && <div style={{fontSize:11,color:'var(--gold)',marginTop:2}}>Save {fmtCurrency(savings)} vs individual seats</div>}
+                        </div>
+                        <div style={{fontSize:20,fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(cfg.bundlePrice)}</div>
+                      </div>
+                      <BundleReserveControl config={cfg} availableFullTables={fullyAvailableTables} onReserve={reserveSeats} isReserving={isReserving} />
+                    </div>
+                  );
+                })()}
+
+                {cfg.totalAvailable > 0 && (
+                  <div style={{background:'var(--bg3)',borderRadius:'var(--rs)',padding:'14px 16px',marginBottom:10}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,gap:10,flexWrap:'wrap'}}>
+                      <div style={{fontWeight:700,fontSize:14}}>Individual Seats</div>
+                      <div style={{fontSize:16,fontWeight:700,color:'var(--gold)'}}>{fmtCurrency(cfg.seatPrice)}<span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}> / seat</span></div>
+                    </div>
+                    <IndividualSeatsControl config={cfg} availableTables={availableTables} onReserve={reserveSeats} isReserving={isReserving} />
+                  </div>
+                )}
+
+                {tableSeatCart.filter(t => t.configId === cfg.id).length > 0 && (
+                  <div style={{marginTop:12,padding:'10px 14px',background:'rgba(93,138,60,0.08)',border:'1px solid rgba(93,138,60,0.25)',borderRadius:'var(--rs)'}}>
+                    <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:1,color:'var(--green)',marginBottom:6}}>Your Reserved Seats in {cfg.name}</div>
+                    {tableSeatCart.filter(t => t.configId === cfg.id).map(item => {
+                      const secondsLeft = Math.max(0, Math.floor((new Date(item.reservedUntil).getTime() - Date.now()) / 1000));
+                      const mm = String(Math.floor(secondsLeft/60)).padStart(2,'0');
+                      const ss = String(secondsLeft%60).padStart(2,'0');
+                      return (
+                        <div key={item.reservationToken} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'6px 0',flexWrap:'wrap'}}>
+                          <div style={{flex:1,minWidth:180}}>
+                            <div style={{fontSize:13,fontWeight:600}}>
+                              {item.isBundle ? `Full Table ${item.seats[0]?.tableNumber}` : `${item.seats.length} seat${item.seats.length!==1?'s':''}`} · {fmtCurrency(item.totalCost)}
+                            </div>
+                            <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>
+                              {item.seats.map(s => `T${s.tableNumber} · Seat ${s.seatLetter}`).join(' · ')}
+                            </div>
+                          </div>
+                          <div style={{fontSize:12,fontWeight:700,color: secondsLeft < 60 ? 'var(--red)' : 'var(--gold)',fontFamily:'monospace'}}>⏱ {mm}:{ss}</div>
+                          <button className="qb" onClick={() => removeTableReservation(item.reservationToken)} aria-label="Remove reservation">×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>}
 
         {view === "checkout" && sel && (
@@ -2055,6 +2296,12 @@ const openPhysicalManage = async (ev) => {
               <h3 className="dsp">Order Summary</h3>
               <div className="cart-sum">
                 {sel.tickets.map((t, i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i] * t.price)}</span></div>)}
+                {tableSeatCart.map(item => (
+                  <div className="cart-ln" key={item.reservationToken}>
+                    <span>{item.isBundle ? `Full Table ${item.seats[0]?.tableNumber}` : `${item.seats.length}× ${item.configName}`} <span style={{color:'var(--text3)',fontSize:11}}>({item.seats.map(s=>`T${s.tableNumber}·${s.seatLetter}`).join(', ')})</span></span>
+                    <span>{fmtCurrency(item.totalCost)}</span>
+                  </div>
+                ))}
                 {(sel.addons||[]).filter(a=>a.active!==false&&(addonCart[a.id]||0)>0).map(a=>(
                   <div className="cart-ln" key={a.id} style={{color:'var(--gold)'}}><span>{addonCart[a.id]}× {a.name}</span><span>{fmtCurrency(addonCart[a.id]*a.price)}</span></div>
                 ))}
@@ -2147,6 +2394,7 @@ const openPhysicalManage = async (ev) => {
             setBuyer({ name: "", email: "", phone: "" });
             setCart({});
             setAddonCart({});
+            setTableSeatCart([]);
             setClientSecret(null);
             if (promoApplied) {
               fetch(API_BASE + '/api/promo', {
