@@ -319,18 +319,43 @@ const [resetError, setResetError] = useState('');
   useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
 
   // Load table configs + availability when opening event detail. Clears when navigating away.
+  // Also auto-refresh every 30s so buyers see other purchasers' seats become unavailable in near-real-time.
   useEffect(() => {
     if (view !== 'detail' || !selId) { setSelTableConfigs([]); return; }
     let cancelled = false;
-    loadTableConfigsWithAvailability(selId).then(cfgs => {
+    const refresh = () => loadTableConfigsWithAvailability(selId).then(cfgs => {
       if (!cancelled) setSelTableConfigs(cfgs);
     });
-    return () => { cancelled = true; };
+    refresh();
+    const interval = setInterval(refresh, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, selId]);
 
-  // If the selected event changes, drop any pending table-seat reservations (they belong to the old event)
-  useEffect(() => { setTableSeatCart([]); }, [selId]);
+  // Table seat cart persists across page reloads via localStorage, keyed per event.
+  // When selId changes: hydrate from LS for the new event, filtering out expired reservations.
+  useEffect(() => {
+    if (!selId) { setTableSeatCart([]); return; }
+    try {
+      const raw = localStorage.getItem(`c8_tsc_${selId}`);
+      if (!raw) { setTableSeatCart([]); return; }
+      const parsed = JSON.parse(raw);
+      const now = Date.now();
+      const stillValid = (Array.isArray(parsed) ? parsed : []).filter(
+        item => item.reservedUntil && new Date(item.reservedUntil).getTime() > now
+      );
+      setTableSeatCart(stillValid);
+    } catch { setTableSeatCart([]); }
+  }, [selId]);
+
+  // Persist cart on any change (or clear the key if cart empties)
+  useEffect(() => {
+    if (!selId) return;
+    try {
+      if (tableSeatCart.length === 0) localStorage.removeItem(`c8_tsc_${selId}`);
+      else localStorage.setItem(`c8_tsc_${selId}`, JSON.stringify(tableSeatCart));
+    } catch {}
+  }, [tableSeatCart, selId]);
 
   // 1s tick to update reservation countdown + auto-expire held seats
   useEffect(() => {
@@ -1952,6 +1977,30 @@ const openPhysicalManage = async (ev) => {
             <button className="btn" onClick={()=>setEmailFailure(null)} style={{minHeight:32,padding:'4px 10px',color:'#fff',borderColor:'rgba(255,255,255,0.4)'}}>Dismiss</button>
           </div>
         )}
+        {/* Sticky reservation timer bar — visible on detail + checkout when any table seats reserved */}
+        {tableSeatCart.length > 0 && (view === 'detail' || view === 'checkout') && (() => {
+          const now = Date.now();
+          const soonestMs = Math.min(...tableSeatCart.map(t => new Date(t.reservedUntil).getTime() - now));
+          const secondsLeft = Math.max(0, Math.floor(soonestMs / 1000));
+          const mm = String(Math.floor(secondsLeft/60)).padStart(2,'0');
+          const ss = String(secondsLeft%60).padStart(2,'0');
+          const totalSeats = tableSeatCart.reduce((s,t) => s + t.seats.length, 0);
+          const urgent = secondsLeft < 60;
+          return (
+            <div style={{
+              position:'sticky', top:0, zIndex:1300,
+              background: urgent ? 'rgba(179,58,42,0.95)' : 'linear-gradient(90deg, rgba(200,146,42,0.95), rgba(200,146,42,0.85))',
+              color: urgent ? '#fff' : '#000',
+              padding:'10px 16px', display:'flex', justifyContent:'center', alignItems:'center', gap:14, flexWrap:'wrap',
+              fontWeight:700, fontSize:13, boxShadow:'0 3px 10px rgba(0,0,0,0.4)',
+            }}>
+              <span style={{fontFamily:'monospace',fontSize:15}}>⏱ {mm}:{ss}</span>
+              <span>{totalSeats} seat{totalSeats!==1?'s':''} reserved{tableSeatCart.length>1?` across ${tableSeatCart.length} sections`:''}</span>
+              {view === 'detail' && <span style={{fontWeight:400,fontSize:12,opacity:0.85}}>Complete checkout before the timer expires.</span>}
+              <span data-tick={reservationTick} style={{display:'none'}}/>
+            </div>
+          );
+        })()}
         <nav className="nav" aria-label="Main navigation">
           <div className="nav-logo" onClick={goHome} onKeyDown={e=>{if(e.key==='Enter')goHome();}} role="button" tabIndex={0} aria-label="Go to home page">
             <img src={LOGO_SRC} alt="C8 Tickets" />
@@ -2452,6 +2501,7 @@ const openPhysicalManage = async (ev) => {
             setCart({});
             setAddonCart({});
             setTableSeatCart([]);
+            try { localStorage.removeItem(`c8_tsc_${sel.id}`); } catch {}
             setClientSecret(null);
             if (promoApplied) {
               fetch(API_BASE + '/api/promo', {
