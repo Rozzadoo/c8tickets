@@ -60,14 +60,21 @@ export default async function handler(req, res) {
   if (!rpcRes.ok) {
     const detail = await rpcRes.text();
     console.error('[api/reserve-table-seats] RPC failed', rpcRes.status, detail);
-    // Map common PostgreSQL RAISE EXCEPTION messages to friendly errors
-    let friendly = 'Could not reserve seats. Please refresh and try again.';
+    let friendly = null;
     if (detail.includes('No fully-available tables')) friendly = 'No full tables are available. Try picking individual seats or fewer seats.';
     else if (detail.includes('is not fully available')) friendly = 'That table just got taken. Please pick another.';
     else if (detail.includes('Not enough available seats at table')) friendly = 'That table no longer has enough open seats. Please pick another.';
     else if (detail.includes('Not enough seats available anywhere')) friendly = 'Not enough seats available in this section right now.';
     else if (detail.includes('Seat contention')) friendly = 'Another buyer snapped up a seat. Please try again.';
     else if (detail.includes('Table config not found')) friendly = 'This table section is no longer available.';
+    // If no known friendly message matches, surface the underlying detail so we can diagnose.
+    if (!friendly) {
+      // Try to pull just the message field out of the JSON error body for cleaner display
+      let parsed;
+      try { parsed = JSON.parse(detail); } catch {}
+      const raw = (parsed && (parsed.message || parsed.hint || parsed.details)) || detail.slice(0, 300);
+      return res.status(409).json({ error: `Reservation failed. Debug: ${raw}`, debug: detail });
+    }
     return res.status(409).json({ error: friendly });
   }
 
