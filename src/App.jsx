@@ -2388,14 +2388,19 @@ const openPhysicalManage = async (ev) => {
           <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", marginTop: 10 }}>Enter a valid name and email above to continue.</p>
         )}
         {buyerReady && (() => {
+          // IMPORTANT: this display calc must match server-side create-payment-intent formula.
+          // Includes regular tickets AND table seats in all fee/total lines.
+          const tableSeatTotal = tableSeatCart.reduce((s, t) => s + t.totalCost, 0);
+          const tableSeatCount = tableSeatCart.reduce((s, t) => s + t.seats.length, 0);
+          const combinedTicketTotal = cartTotal + tableSeatTotal;
           const discount = promoApplied
             ? promoApplied.discountType === 'percent'
               ? Math.round(cartTotal * promoApplied.discountValue / 100 * 100) / 100
               : Math.min(promoApplied.discountValue, cartTotal)
             : 0;
-          const discounted = cartTotal - discount;
+          const discounted = combinedTicketTotal - discount;
           const tax = Math.round((discounted + addonTotal) * 0.06 * 100) / 100;
-          const svcFees = cartN * 2.00;
+          const svcFees = (cartN + tableSeatCount) * 2.00;
           const subtotal = discounted + addonTotal + tax + svcFees;
           const procFee = Math.round((subtotal * 0.035 + 0.30) * 100) / 100;
           const grand = subtotal + procFee;
