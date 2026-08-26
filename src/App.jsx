@@ -43,7 +43,7 @@ function BundleReserveControl({ config, availableFullTables, onReserve, isReserv
         const specific = tableChoice === 'any' ? null : Number(tableChoice);
         onReserve(config, config.seatsPerTable, specific, true);
       }}>
-        {isReserving ? 'Reserving…' : 'Reserve Table'}
+        {isReserving ? 'Reserving…' : `Reserve Full Table (${config.seatsPerTable} seats)`}
       </button>
     </div>
   );
@@ -2220,7 +2220,7 @@ const openPhysicalManage = async (ev) => {
                         <div key={item.reservationToken} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'6px 0',flexWrap:'wrap'}}>
                           <div style={{flex:1,minWidth:180}}>
                             <div style={{fontSize:13,fontWeight:600}}>
-                              {item.isBundle ? `Full Table ${item.seats[0]?.tableNumber}` : `${item.seats.length} seat${item.seats.length!==1?'s':''}`} · {fmtCurrency(item.totalCost)}
+                              {item.isBundle ? `Full Table ${item.seats[0]?.tableNumber} (${item.seats.length} seats)` : `${item.seats.length} seat${item.seats.length!==1?'s':''}`} · {fmtCurrency(item.totalCost)}
                             </div>
                             <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>
                               {item.seats.map(s => `T${s.tableNumber} · Seat ${s.seatLetter}`).join(' · ')}
@@ -2298,7 +2298,7 @@ const openPhysicalManage = async (ev) => {
                 {sel.tickets.map((t, i) => cart[i] > 0 && <div className="cart-ln" key={i}><span>{cart[i]}× {t.type}</span><span>{fmtCurrency(cart[i] * t.price)}</span></div>)}
                 {tableSeatCart.map(item => (
                   <div className="cart-ln" key={item.reservationToken}>
-                    <span>{item.isBundle ? `Full Table ${item.seats[0]?.tableNumber}` : `${item.seats.length}× ${item.configName}`} <span style={{color:'var(--text3)',fontSize:11}}>({item.seats.map(s=>`T${s.tableNumber}·${s.seatLetter}`).join(', ')})</span></span>
+                    <span>{item.isBundle ? `Full Table ${item.seats[0]?.tableNumber} (${item.seats.length} seats)` : `${item.seats.length}× ${item.configName}`} <span style={{color:'var(--text3)',fontSize:11}}>({item.seats.map(s=>`T${s.tableNumber}·${s.seatLetter}`).join(', ')})</span></span>
                     <span>{fmtCurrency(item.totalCost)}</span>
                   </div>
                 ))}
