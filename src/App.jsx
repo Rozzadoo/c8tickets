@@ -1440,8 +1440,21 @@ const openPhysicalManage = async (ev) => {
     }
   };
 
-  const removeTableReservation = (reservationToken) => {
+  const removeTableReservation = async (reservationToken) => {
+    // Optimistically remove from client cart, then release the DB hold so seats free up immediately
     setTableSeatCart(prev => prev.filter(t => t.reservationToken !== reservationToken));
+    try {
+      await fetch(API_BASE + '/api/release-table-reservation', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reservationToken }),
+      });
+      if (selId) {
+        const refreshed = await loadTableConfigsWithAvailability(selId);
+        setSelTableConfigs(refreshed);
+      }
+    } catch {
+      // Non-fatal — natural 10-min expiry still frees the seat
+    }
   };
 
   const createPaymentIntent = async () => {
