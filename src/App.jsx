@@ -81,7 +81,7 @@ function IndividualSeatsControl({ config, availableTables, onReserve, isReservin
         onReserve(config, qty, specific, false);
         setQty(1);
       }}>
-        {isReserving ? 'Reserving…' : 'Reserve'}
+        {isReserving ? 'Reserving…' : `Reserve ${qty} Seat${qty !== 1 ? 's' : ''}`}
       </button>
     </div>
   );
@@ -2263,6 +2263,7 @@ const openPhysicalManage = async (ev) => {
             return (
               <div key={cfg.id} className="tkt-sec" style={{marginTop:24}}>
                 <h3 className="dsp">{cfg.name}</h3>
+                <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,fontStyle:'italic'}}>Seats are held for 10 minutes while you complete checkout.</div>
                 <div style={{fontSize:13,color:'var(--text2)',marginBottom:10,lineHeight:1.6}}>
                   {cfg.fullTables > 0 && <span><strong>{cfg.fullTables}</strong> full table{cfg.fullTables!==1?'s':''}</span>}
                   {cfg.fullTables > 0 && cfg.totalAvailable > cfg.fullTables * cfg.seatsPerTable && <span> · </span>}
