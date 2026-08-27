@@ -4,3 +4,14 @@ dist
 .env.local
 .DS_Store
 .vercel
+
+# Native build artifacts (Capacitor generates these; source of truth is web/)
+ios/App/Pods
+ios/App/Podfile.lock
+ios/App/App/public
+ios/DerivedData
+android/app/src/main/assets/public
+android/.gradle
+android/local.properties
+android/app/build
+android/build

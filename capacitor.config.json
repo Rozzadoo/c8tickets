@@ -1,5 +1,27 @@
 {
-  "appId": "com.c8tickets.app",
-  "appName": "C8Tickets",
-  "webDir": "dist"
+  "appId": "com.c8tickets.staff",
+  "appName": "C8 Tickets Staff",
+  "webDir": "dist",
+  "backgroundColor": "#0f0f0f",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1000,
+      "backgroundColor": "#0f0f0f",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0f0f0f",
+      "overlaysWebView": false
+    }
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0f0f0f"
+  },
+  "android": {
+    "backgroundColor": "#0f0f0f",
+    "allowMixedContent": false
+  }
 }

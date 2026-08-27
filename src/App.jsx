@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './lib/supabase';
 import { API_BASE, APP_URL } from './constants';
 import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs, fetchWithTimeout, summarizeOrderItems } from './lib/utils';
+import { isNative, isStaffOnly, configureStatusBar } from './lib/native';
 import useStorage from './lib/useStorage';
 import CSS from './styles';
 import ScannerWidget from './components/ScannerWidget';
@@ -92,7 +93,11 @@ export default function App() {
   const [allTenants, setAllTenants] = useState([]);
   const [orders, setOrders] = useState([]);
   const updateOrders = useCallback((d) => setOrders(d), []);
-  const [view, setView] = useState(() => window.location.pathname === '/sell' ? 'sell' : 'home');
+  // Staff-only builds default straight to the login screen and skip customer-facing routes.
+  const [view, setView] = useState(() => {
+    if (isStaffOnly()) return 'login';
+    return window.location.pathname === '/sell' ? 'sell' : 'home';
+  });
   const [selId, setSelId] = useState(null);
   const [regFormId, setRegFormId] = useState(null);
   const [cart, setCart] = useState({});
@@ -317,6 +322,9 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => { localStorage.setItem('c8_holdbackPct', String(holdbackPct)); }, [holdbackPct]);
   useEffect(() => { localStorage.setItem('c8_platformFeePct', String(platformFeePct)); }, [platformFeePct]);
+
+  // Configure the native status bar once on mount — no-op on web
+  useEffect(() => { configureStatusBar(); }, []);
 
   // Load table configs + availability when opening event detail. Clears when navigating away.
   // Also auto-refresh every 30s so buyers see other purchasers' seats become unavailable in near-real-time.
