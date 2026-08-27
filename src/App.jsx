@@ -416,31 +416,46 @@ const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     if (!session) return;
+    let mounted = true;
     let ch;
     let reconnectTimer;
-    const subscribe = () => {
-      ch = supabase.channel('orders-realtime')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => reloadOrders())
+    let currentVersion = 0;
+
+    // Each subscribe() creates a fresh channel with a unique name. Reusing 'orders-realtime'
+    // caused Supabase to throw "cannot add postgres_changes callbacks after subscribe()" during reconnect.
+    const subscribe = async () => {
+      if (ch) { try { await supabase.removeChannel(ch); } catch {} ch = null; }
+      if (!mounted) return;
+      currentVersion += 1;
+      const myVersion = currentVersion;
+      const uniqueName = `orders-realtime-${myVersion}-${Date.now()}`;
+      const newCh = supabase.channel(uniqueName)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => { if (mounted) reloadOrders(); })
         .subscribe((status) => {
+          if (!mounted) return;
+          // Stale callback from a previously-superseded channel — ignore
+          if (myVersion !== currentVersion) return;
           setRealtimeStatus(status);
-          // If channel drops due to network blip, retry after backoff. Also pull orders once to catch up.
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
             if (reconnectTimer) clearTimeout(reconnectTimer);
             reconnectTimer = setTimeout(() => {
-              try { supabase.removeChannel(ch); } catch {}
+              if (!mounted) return;
               subscribe();
               reloadOrders();
             }, 5000);
           }
         });
+      ch = newCh;
     };
+
     subscribe();
-    const onOnline = () => { if (navigator.onLine) { try { supabase.removeChannel(ch); } catch {} subscribe(); reloadOrders(); } };
+    const onOnline = () => { if (mounted && navigator.onLine) { subscribe(); reloadOrders(); } };
     window.addEventListener('online', onOnline);
     return () => {
+      mounted = false;
       window.removeEventListener('online', onOnline);
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      try { supabase.removeChannel(ch); } catch {}
+      if (ch) { try { supabase.removeChannel(ch); } catch {} }
     };
   }, [session, reloadOrders]);
 
