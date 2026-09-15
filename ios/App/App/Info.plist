@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>C8Tickets</string>
+        <string>C8 Tickets Staff</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -47,5 +47,17 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>C8 Tickets uses the camera to scan ticket QR codes at check-in and door sales.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>C8 Tickets can save ticket QR codes and event images to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>C8 Tickets does not use the microphone for audio, but it may be requested by the camera scanner.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>C8 Tickets connects to Stripe payment terminals on the local network for door sales.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_stripe-terminal._tcp</string>
+	</array>
 </dict>
 </plist>
