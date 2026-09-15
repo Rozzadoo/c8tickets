@@ -6,6 +6,22 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-web
 /* When the native ML Kit scanner is active, the WebView must be transparent so the camera preview shows through. */
 html.mlkit-scanner-active, body.mlkit-scanner-active, body.mlkit-scanner-active .app { background: transparent !important; }
 body.mlkit-scanner-active .nav { background: rgba(22,19,16,0.75); backdrop-filter: blur(20px); }
+
+/* Native app density overrides — tighter typography and padding to feel more like a native iOS app */
+body.native-app { font-size: 15px; }
+body.native-app .nav { padding: 6px 14px; padding-top: calc(6px + env(safe-area-inset-top)); }
+body.native-app .nav-logo img { height: 42px; }
+body.native-app .nav .btn { font-size: 12px; padding: 6px 10px; }
+body.native-app h1.dsp { font-size: clamp(22px, 4.5vw, 32px) !important; }
+body.native-app h2.dsp { font-size: 20px; }
+body.native-app h3.dsp { font-size: 15px; }
+body.native-app .aside { padding: 6px 8px; }
+body.native-app .aside-btn { font-size: 12px; padding: 8px 10px; min-height: 40px; }
+body.native-app .amain { padding: 16px 14px; }
+body.native-app .sec { padding: 16px 14px; }
+body.native-app .fi { font-size: 15px; padding: 10px 12px; }
+body.native-app .fl { font-size: 10px; }
+body.native-app .buy { padding: 12px; font-size: 15px; }
 .app{min-height:100vh;display:flex;flex-direction:column;overflow-x:hidden}
 main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .dsp{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}

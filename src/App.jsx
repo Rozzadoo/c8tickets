@@ -326,6 +326,14 @@ const [resetError, setResetError] = useState('');
   // Configure the native status bar once on mount — no-op on web
   useEffect(() => { configureStatusBar(); }, []);
 
+  // Tag the body for native platform so CSS can apply tighter mobile-optimized sizing
+  useEffect(() => {
+    if (isNative()) {
+      document.documentElement.classList.add('native-app');
+      document.body.classList.add('native-app');
+    }
+  }, []);
+
   // Load table configs + availability when opening event detail. Clears when navigating away.
   // Also auto-refresh every 30s so buyers see other purchasers' seats become unavailable in near-real-time.
   useEffect(() => {
