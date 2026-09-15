@@ -1916,18 +1916,40 @@ const openPhysicalManage = async (ev) => {
       checkout_notice_required: e.checkoutNoticeRequired || false,
     }).eq('id', e.id);
     for (const t of e.tickets) {
-      if (t.id) await supabase.from('ticket_types').update({
-        name: t.type,
-        price: t.price,
-        quantity_total: (t.sold ?? 0) + Math.max(0, t.available),
-        physical_qty: t.physicalQty ?? 0,
-        door_price: t.doorPrice ?? null,
-      }).eq('id', t.id);
+      if (t.id) {
+        // Update existing ticket type
+        await supabase.from('ticket_types').update({
+          name: t.type,
+          price: t.price,
+          quantity_total: (t.sold ?? 0) + Math.max(0, t.available),
+          physical_qty: t.physicalQty ?? 0,
+          door_price: t.doorPrice ?? null,
+        }).eq('id', t.id);
+      } else if (t.type && t.type.trim()) {
+        // Insert brand-new ticket type (was silently dropped before)
+        const { error: insertErr } = await supabase.from('ticket_types').insert({
+          event_id: e.id,
+          name: t.type,
+          price: Number(t.price) || 0,
+          quantity_total: Math.max(0, Number(t.available) || 0),
+          quantity_sold: 0,
+          physical_qty: t.physicalQty ?? 0,
+          door_price: t.doorPrice ?? null,
+        });
+        if (insertErr) console.error('[saveEvt] insert ticket_type failed:', insertErr);
+      }
     }
     // Persist table_configs on this existing event
     const persistErr = await persistTableConfigs(e.id, e.tableConfigs || []);
     if (persistErr) { setEvtErr(persistErr); return; }
-    updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
+    // Refetch the event so newly-inserted ticket types (with their real IDs) are reflected in state
+    const { data: refreshedEvt } = await supabase.from('events').select('*, ticket_types(*)').eq('id', e.id).single();
+    if (refreshedEvt) {
+      const mapped = mapEvent(refreshedEvt);
+      updateEvents(events.map(x => x.id === e.id ? mapped : x));
+    } else {
+      updateEvents(events.map(x => x.id === e.id ? {...e, image: imageUrl, focalX: e.focalX ?? 50, focalY: e.focalY ?? 50, published: e.published ?? true} : x));
+    }
   } else {
     const { data: newEvt, error } = await supabase.from('events').insert({
       tenant_id: tenantId,
