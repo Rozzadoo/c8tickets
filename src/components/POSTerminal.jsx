@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { API_BASE } from '../constants';
 import { fmtCurrency, fetchWithTimeout } from '../lib/utils';
+import { storageGet, storageSet, storageRemove, onNetworkChange } from '../lib/native';
 
 const CAT_LABELS = { food: 'Food', beverage: 'Beverage', merchandise: 'Merch', ticket: 'Ticket', other: 'Other' };
 const CAT_COLORS = { food: 'var(--green)', beverage: '#4a9eff', merchandise: 'var(--gold)', ticket: 'var(--red)', other: 'var(--text3)' };
@@ -23,12 +24,35 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
 
   // 3.4 Offline mode
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [offlineQueue, setOfflineQueue] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`pos_queue_${tenantId}`) || '[]'); } catch { return []; }
-  });
+  // Queue starts empty and hydrates from persistent storage after mount.
+  // On native: uses Capacitor Preferences (survives app kills and iOS memory pressure).
+  // On web: falls back to localStorage.
+  const [offlineQueue, setOfflineQueue] = useState([]);
+  const [queueHydrated, setQueueHydrated] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [lastSyncError, setLastSyncError] = useState(null);
+
+  // Hydrate the queue once on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await storageGet(`pos_queue_${tenantId}`);
+        if (raw) setOfflineQueue(JSON.parse(raw));
+      } catch (e) { console.warn('[POS] queue hydrate failed:', e); }
+      setQueueHydrated(true);
+    })();
+  }, [tenantId]);
+
+  // Persist queue on every change (post-hydration only, to avoid overwriting stored data with the initial empty array)
+  useEffect(() => {
+    if (!queueHydrated) return;
+    if (offlineQueue.length === 0) {
+      storageRemove(`pos_queue_${tenantId}`);
+    } else {
+      storageSet(`pos_queue_${tenantId}`, JSON.stringify(offlineQueue));
+    }
+  }, [offlineQueue, queueHydrated, tenantId]);
 
   // 3.5 Cash tracking (accumulates within this terminal session)
   const [cashSalesThisSession, setCashSalesThisSession] = useState(0);
@@ -46,12 +70,13 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
 
   useEffect(() => { loadItems(); }, []);
 
+  // Network state — uses @capacitor/network on native (more reliable than browser events on iOS),
+  // browser online/offline events on web. Auto-triggers queue sync when connectivity returns.
   useEffect(() => {
-    const up = () => setIsOnline(true);
-    const down = () => setIsOnline(false);
-    window.addEventListener('online', up);
-    window.addEventListener('offline', down);
-    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+    const unsub = onNetworkChange((status) => {
+      setIsOnline(!!status.connected);
+    });
+    return unsub;
   }, []);
 
   // Unmount cleanup — dispose the Stripe Terminal instance so it doesn't hold the
@@ -66,8 +91,10 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
   }, [terminal]);
 
   useEffect(() => {
-    if (isOnline && offlineQueue.length > 0) syncQueue();
-  }, [isOnline]);
+    // Fires when: network flips to online OR hydration completes while already online.
+    if (queueHydrated && isOnline && offlineQueue.length > 0) syncQueue();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline, queueHydrated]);
 
   async function loadItems() {
     setLoaded(false);
@@ -115,7 +142,6 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
       }
     }
     setOfflineQueue(remaining);
-    localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(remaining));
     setSyncing(false);
     if (firstError) setLastSyncError(firstError);
   }
@@ -129,7 +155,6 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
       ? offlineQueue.filter(e => e.id !== entryId)
       : offlineQueue.map(e => e.id !== entryId ? e : { ...e, attempts: (e.attempts || 0) + 1, lastError: error, lastAttemptAt: new Date().toISOString() });
     setOfflineQueue(updated);
-    localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(updated));
     setSyncing(false);
     if (!ok) setLastSyncError(error);
   }
@@ -140,7 +165,6 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
     if (!confirm(`Permanently delete queued order (${fmtCurrency(entry.orderPayload?.total || 0)})?\n\nThis does NOT refund anything. Only delete if you've manually reconciled this sale.`)) return;
     const updated = offlineQueue.filter(e => e.id !== entryId);
     setOfflineQueue(updated);
-    localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(updated));
   }
 
   // ── Cart helpers ─────────────────────────────────────────────────────
@@ -229,7 +253,6 @@ export default function POSTerminal({ tenantId, venue, events = [], onClose, shi
       };
       const newQueue = [...offlineQueue, entry];
       setOfflineQueue(newQueue);
-      localStorage.setItem(`pos_queue_${tenantId}`, JSON.stringify(newQueue));
       if (paymentType === 'cash') setCashSalesThisSession(p => p + cartTotal);
       setLastOrder({ id: entry.id, paymentType, total: cartTotal, items: [...cart], cashData, offline: true });
       setStep('confirm');

@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './lib/supabase';
 import { API_BASE, APP_URL } from './constants';
 import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs, fetchWithTimeout, summarizeOrderItems } from './lib/utils';
-import { isNative, isStaffOnly, configureStatusBar, hapticSuccess, hapticError } from './lib/native';
+import { isNative, isStaffOnly, configureStatusBar, hapticSuccess, hapticError, storageGet, storageSet, storageRemove } from './lib/native';
 import useStorage from './lib/useStorage';
 import CSS from './styles';
 import NativeScanner from './components/NativeScanner';
@@ -348,30 +348,36 @@ const [resetError, setResetError] = useState('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, selId]);
 
-  // Table seat cart persists across page reloads via localStorage, keyed per event.
-  // When selId changes: hydrate from LS for the new event, filtering out expired reservations.
+  // Table seat cart persists across page reloads keyed per event.
+  // On native: uses Capacitor Preferences (survives app kills). On web: falls back to localStorage.
+  // Hydration is async, so we track it separately to avoid the "persist effect overwrites stored data with empty array" race.
+  const [tscHydratedKey, setTscHydratedKey] = useState(null);
   useEffect(() => {
-    if (!selId) { setTableSeatCart([]); return; }
-    try {
-      const raw = localStorage.getItem(`c8_tsc_${selId}`);
-      if (!raw) { setTableSeatCart([]); return; }
-      const parsed = JSON.parse(raw);
-      const now = Date.now();
-      const stillValid = (Array.isArray(parsed) ? parsed : []).filter(
-        item => item.reservedUntil && new Date(item.reservedUntil).getTime() > now
-      );
-      setTableSeatCart(stillValid);
-    } catch { setTableSeatCart([]); }
+    if (!selId) { setTableSeatCart([]); setTscHydratedKey(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await storageGet(`c8_tsc_${selId}`);
+        if (cancelled) return;
+        if (!raw) { setTableSeatCart([]); setTscHydratedKey(selId); return; }
+        const parsed = JSON.parse(raw);
+        const now = Date.now();
+        const stillValid = (Array.isArray(parsed) ? parsed : []).filter(
+          item => item.reservedUntil && new Date(item.reservedUntil).getTime() > now
+        );
+        setTableSeatCart(stillValid);
+      } catch { if (!cancelled) setTableSeatCart([]); }
+      if (!cancelled) setTscHydratedKey(selId);
+    })();
+    return () => { cancelled = true; };
   }, [selId]);
 
-  // Persist cart on any change (or clear the key if cart empties)
+  // Persist cart on change — only AFTER hydration for the current selId completes
   useEffect(() => {
-    if (!selId) return;
-    try {
-      if (tableSeatCart.length === 0) localStorage.removeItem(`c8_tsc_${selId}`);
-      else localStorage.setItem(`c8_tsc_${selId}`, JSON.stringify(tableSeatCart));
-    } catch {}
-  }, [tableSeatCart, selId]);
+    if (!selId || tscHydratedKey !== selId) return;
+    if (tableSeatCart.length === 0) storageRemove(`c8_tsc_${selId}`);
+    else storageSet(`c8_tsc_${selId}`, JSON.stringify(tableSeatCart));
+  }, [tableSeatCart, selId, tscHydratedKey]);
 
   // 1s tick to update reservation countdown + auto-expire held seats
   useEffect(() => {
@@ -2560,7 +2566,7 @@ const openPhysicalManage = async (ev) => {
             setCart({});
             setAddonCart({});
             setTableSeatCart([]);
-            try { localStorage.removeItem(`c8_tsc_${sel.id}`); } catch {}
+            storageRemove(`c8_tsc_${sel.id}`);
             setClientSecret(null);
             if (promoApplied) {
               fetch(API_BASE + '/api/promo', {
