@@ -3,10 +3,10 @@ import * as XLSX from 'xlsx';
 import { supabase } from './lib/supabase';
 import { API_BASE, APP_URL } from './constants';
 import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs, fetchWithTimeout, summarizeOrderItems } from './lib/utils';
-import { isNative, isStaffOnly, configureStatusBar } from './lib/native';
+import { isNative, isStaffOnly, configureStatusBar, hapticSuccess, hapticError } from './lib/native';
 import useStorage from './lib/useStorage';
 import CSS from './styles';
-import ScannerWidget from './components/ScannerWidget';
+import NativeScanner from './components/NativeScanner';
 import QRImg from './components/QRImg';
 import CheckoutForm from './components/CheckoutForm';
 import LiveDash from './components/LiveDash';
@@ -1667,6 +1667,8 @@ const openPhysicalManage = async (ev) => {
     const id = rawId.replace(/^https?:\/\/[^/]+\/t\//, '').split('?')[0].trim();
     const showMsg = (msg, delay = 3000) => {
       setScanMsg(msg);
+      // Haptic matched to outcome — no-op on web
+      if (msg.ok) hapticSuccess(); else hapticError();
       setTimeout(() => { setScanMsg(null); setScanKey(k => k + 1); setAdminScan(true); }, delay);
     };
     // Try individual ticket lookup first
@@ -3343,10 +3345,26 @@ const openPhysicalManage = async (ev) => {
                 </div>
               </div>
               {adminScan && <div style={{marginBottom:16,maxWidth:400}}>
-                <ScannerWidget key={scanKey} scannerId="admin-scanner" onResult={handleAdminScan} />
+                <NativeScanner key={scanKey} scannerId="admin-scanner" onResult={handleAdminScan} />
                 <button className="btn" style={{width:"100%",marginTop:8}} onClick={()=>setAdminScan(false)}>Cancel</button>
               </div>}
-              {scanMsg && <div style={{marginBottom:16,padding:"10px 14px",borderRadius:"var(--rs)",background:scanMsg.ok?"rgba(93,138,60,.15)":"rgba(179,58,42,.15)",color:scanMsg.ok?"var(--green)":"var(--red)",fontSize:13,fontWeight:600}}>{scanMsg.text}</div>}
+              {scanMsg && (
+                <div onClick={() => { setScanMsg(null); setScanKey(k => k + 1); setAdminScan(true); }} style={{
+                  position:'fixed', inset:0, zIndex:2000,
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                  textAlign:'center', padding:'40px 24px',
+                  background: scanMsg.ok ? 'rgba(45,90,27,0.95)' : 'rgba(122,26,26,0.95)',
+                  cursor:'pointer',
+                  paddingTop:`calc(40px + env(safe-area-inset-top))`,
+                  paddingBottom:`calc(40px + env(safe-area-inset-bottom))`,
+                }}>
+                  <div style={{fontSize:132,marginBottom:20,lineHeight:1}}>{scanMsg.ok ? '✅' : '❌'}</div>
+                  <div className="dsp" style={{color:'#fff',fontSize:44,fontWeight:700,marginBottom:20,lineHeight:1.15,letterSpacing:2,padding:'0 12px'}}>
+                    {scanMsg.text.replace(/^✓\s*/, '')}
+                  </div>
+                  <div style={{position:'absolute',bottom:`calc(24px + env(safe-area-inset-bottom))`,left:0,right:0,color:'rgba(255,255,255,0.6)',fontSize:14,fontWeight:600}}>Tap anywhere to dismiss</div>
+                </div>
+              )}
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,flexWrap:"wrap"}}>
                 <select className="fi" style={{maxWidth:240,margin:0}} value={checkInEventFilter} onChange={e=>setCheckInEventFilter(e.target.value)}>
                   <option value="">All Events</option>
