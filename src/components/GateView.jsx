@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { API_BASE } from '../constants';
 import NativeScanner from './NativeScanner';
 import DoorSales from './DoorSales';
-import { hapticSuccess, hapticError, hapticWarning } from '../lib/native';
+import { hapticSuccess, hapticError } from '../lib/native';
 
 const LOGO_SRC = "/logo-simple.webp";
 
@@ -59,9 +59,8 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
     if (dismissTimer.current) clearTimeout(dismissTimer.current);
     setResult(res);
     cooldown.current = true;
-    // Haptic feedback matched to outcome — no-op on web
+    // Haptic feedback matched to outcome — no-op on web. All non-success outcomes use Error haptic (most noticeable on iOS).
     if (res.type === 'success') hapticSuccess();
-    else if (res.type === 'already_in') hapticWarning();
     else hapticError();
     dismissTimer.current = setTimeout(() => { cooldown.current = false; setResult(null); }, 2500);
   }, []);
@@ -302,41 +301,51 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
           ) : (
             <div style={{position:'relative',borderRadius:'var(--r)',overflow:'hidden'}}>
               <NativeScanner scannerId="gate-scanner" onResult={handleScan} />
-              {result && ov && (
-                <div onClick={dismiss} style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:28,background:ov.bg,cursor:'pointer'}}>
-                  <div style={{fontSize:64,marginBottom:10,lineHeight:1}}>{ov.icon}</div>
-                  <div className="dsp" style={{color:'#fff',fontSize:32,fontWeight:700,marginBottom:8,lineHeight:1.1}}>
-                    {result.type === 'success' && result.count ? `${result.count} Checked In` : ov.title}
-                  </div>
-                  {result.name && <div style={{color:'#fff',fontWeight:700,fontSize:20,marginBottom:4}}>{result.name}</div>}
-                  {result.ticketType && <div style={{color:'rgba(255,255,255,0.8)',fontSize:16,marginBottom:4}}>{result.ticketType}</div>}
-                  {result.type === 'success' && result.checkedInAt && (
-                    <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>{fmtTime(result.checkedInAt)}</div>
-                  )}
-                  {result.type === 'already_in' && result.checkedInAt && (
-                    <div style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:4}}>First checked in at {fmtTime(result.checkedInAt)}</div>
-                  )}
-                  {result.type === 'wrong_event' && result.event && (
-                    <div style={{color:'rgba(255,255,255,0.7)',fontSize:14,marginBottom:4}}>Ticket is for: <strong>{result.event}</strong></div>
-                  )}
-                  {result.type === 'not_found' && (
-                    <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>QR code not recognized.</div>
-                  )}
-                  {result.type === 'server_err' && result.detail && (
-                    <div style={{color:'rgba(255,255,255,0.7)',fontSize:13,marginBottom:4}}>{result.detail}</div>
-                  )}
-                  {result.type === 'cancelled' && (
-                    <div style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:4}}>This order has been cancelled. Entry denied.</div>
-                  )}
-                  <div style={{color:'rgba(255,255,255,0.35)',fontSize:12,marginTop:16}}>Tap to dismiss early</div>
-                </div>
-              )}
               <button className="btn" style={{width:'100%',marginTop:8,minHeight:48}} onClick={() => { dismiss(); setScanning(false); }}>
                 Stop Scanner
               </button>
             </div>
           )
         )}
+
+        {/* Fullscreen scan result overlay — visible on top of everything, large and unmistakable */}
+        {result && ov && (
+          <div onClick={dismiss} style={{
+            position:'fixed', inset:0, zIndex:2000,
+            display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+            textAlign:'center', padding:'40px 24px',
+            background:ov.bg, cursor:'pointer',
+            paddingTop:`calc(40px + env(safe-area-inset-top))`,
+            paddingBottom:`calc(40px + env(safe-area-inset-bottom))`,
+          }}>
+            <div style={{fontSize:132,marginBottom:20,lineHeight:1}}>{ov.icon}</div>
+            <div className="dsp" style={{color:'#fff',fontSize:52,fontWeight:700,marginBottom:20,lineHeight:1.05,letterSpacing:2}}>
+              {result.type === 'success' && result.count ? `${result.count} Checked In` : ov.title}
+            </div>
+            {result.name && <div style={{color:'#fff',fontWeight:700,fontSize:34,marginBottom:10,lineHeight:1.2}}>{result.name}</div>}
+            {result.ticketType && <div style={{color:'rgba(255,255,255,0.9)',fontSize:22,marginBottom:10,lineHeight:1.3}}>{result.ticketType}</div>}
+            {result.type === 'success' && result.checkedInAt && (
+              <div style={{color:'rgba(255,255,255,0.75)',fontSize:20,marginBottom:6}}>{fmtTime(result.checkedInAt)}</div>
+            )}
+            {result.type === 'already_in' && result.checkedInAt && (
+              <div style={{color:'rgba(255,255,255,0.85)',fontSize:20,marginBottom:6}}>First checked in at {fmtTime(result.checkedInAt)}</div>
+            )}
+            {result.type === 'wrong_event' && result.event && (
+              <div style={{color:'rgba(255,255,255,0.85)',fontSize:20,marginBottom:6,lineHeight:1.4}}>Ticket is for:<br/><strong>{result.event}</strong></div>
+            )}
+            {result.type === 'not_found' && (
+              <div style={{color:'rgba(255,255,255,0.85)',fontSize:20,marginBottom:6}}>QR code not recognized.</div>
+            )}
+            {result.type === 'server_err' && result.detail && (
+              <div style={{color:'rgba(255,255,255,0.85)',fontSize:18,marginBottom:6,lineHeight:1.4}}>{result.detail}</div>
+            )}
+            {result.type === 'cancelled' && (
+              <div style={{color:'rgba(255,255,255,0.85)',fontSize:20,marginBottom:6,lineHeight:1.4}}>This order has been cancelled.<br/>Entry denied.</div>
+            )}
+            <div style={{position:'absolute',bottom:`calc(24px + env(safe-area-inset-bottom))`,left:0,right:0,color:'rgba(255,255,255,0.6)',fontSize:14,fontWeight:600}}>Tap anywhere to dismiss</div>
+          </div>
+        )}
+        {/* End fullscreen overlay */}
 
         {mode === 'manual' && (
           <div>
