@@ -90,10 +90,27 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
   }, [selGateEventId, loadStats]);
 
   const handleScan = useCallback(async (rawId) => {
-    if (cooldown.current) return;
-    const id = rawId.replace(/^https?:\/\/[^/]+\/t\//, '').split('?')[0].trim();
+    console.log('[gate-scan] raw:', rawId);
+    if (cooldown.current) { console.log('[gate-scan] blocked by cooldown'); return; }
+    // Extract UUID from a variety of formats: full URL, path-only, or bare UUID
+    let id = String(rawId || '').trim();
+    // Strip common URL prefixes (http://, https://, or bare c8tickets.com/t/)
+    id = id.replace(/^https?:\/\/[^/]+\/(t|ticket|order|o)\//, '');
+    id = id.replace(/^[^/]*\.c8tickets\.com\/(t|ticket|order|o)\//, '');
+    id = id.replace(/^\/(t|ticket|order|o)\//, '');
+    // Drop query strings and fragments
+    id = id.split('?')[0].split('#')[0].trim();
+    // Extract a UUID if the scanned value contains one anywhere (e.g. legacy QRs)
+    const uuidMatch = id.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuidMatch) id = uuidMatch[0];
+    console.log('[gate-scan] parsed id:', id);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      console.warn('[gate-scan] not a valid UUID — rejecting');
+      showResult({ type: 'not_found' });
+      return;
+    }
     const now = Date.now();
-    if (id === lastId.current && now - lastIdTime.current < 10000) return;
+    if (id === lastId.current && now - lastIdTime.current < 10000) { console.log('[gate-scan] blocked by 10s dedupe'); return; }
     lastId.current = id;
     lastIdTime.current = now;
     cooldown.current = true;
