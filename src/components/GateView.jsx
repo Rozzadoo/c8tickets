@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from '../lib/supabase';
 import { API_BASE } from '../constants';
-import ScannerWidget from './ScannerWidget';
+import NativeScanner from './NativeScanner';
 import DoorSales from './DoorSales';
+import { hapticSuccess, hapticError, hapticWarning } from '../lib/native';
 
 const LOGO_SRC = "/logo-simple.webp";
 
@@ -58,6 +59,10 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
     if (dismissTimer.current) clearTimeout(dismissTimer.current);
     setResult(res);
     cooldown.current = true;
+    // Haptic feedback matched to outcome — no-op on web
+    if (res.type === 'success') hapticSuccess();
+    else if (res.type === 'already_in') hapticWarning();
+    else hapticError();
     dismissTimer.current = setTimeout(() => { cooldown.current = false; setResult(null); }, 2500);
   }, []);
 
@@ -182,6 +187,7 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
 
   const showManualToast = (msg, ok = true) => {
     setManualToast({ msg, ok });
+    if (ok) hapticSuccess(); else hapticError();
     setTimeout(() => setManualToast(null), 2500);
   };
 
@@ -295,7 +301,7 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
             </div>
           ) : (
             <div style={{position:'relative',borderRadius:'var(--r)',overflow:'hidden'}}>
-              <ScannerWidget scannerId="gate-scanner" onResult={handleScan} />
+              <NativeScanner scannerId="gate-scanner" onResult={handleScan} />
               {result && ov && (
                 <div onClick={dismiss} style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:28,background:ov.bg,cursor:'pointer'}}>
                   <div style={{fontSize:64,marginBottom:10,lineHeight:1}}>{ov.icon}</div>

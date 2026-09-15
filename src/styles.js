@@ -3,6 +3,9 @@ const CSS = `
 :root{--bg:#0c0a07;--bg2:#161310;--bg3:#211c14;--bg4:#2f271c;--text:#f0e9da;--text2:#b5a78a;--text3:#7a6c54;--gold:#c8922a;--gold-l:#e5a83a;--gold-d:#8b6914;--red:#b33a2a;--green:#5d8a3c;--r:10px;--rs:6px;--border:rgba(200,146,42,.12)}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;max-width:100vw}
+/* When the native ML Kit scanner is active, the WebView must be transparent so the camera preview shows through. */
+html.mlkit-scanner-active, body.mlkit-scanner-active, body.mlkit-scanner-active .app { background: transparent !important; }
+body.mlkit-scanner-active .nav { background: rgba(22,19,16,0.75); backdrop-filter: blur(20px); }
 .app{min-height:100vh;display:flex;flex-direction:column;overflow-x:hidden}
 main{flex:1;width:100%;min-width:0;overflow-x:hidden}
 .dsp{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
