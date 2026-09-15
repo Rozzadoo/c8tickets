@@ -2031,7 +2031,7 @@ const openPhysicalManage = async (ev) => {
             </div>
           );
         })()}
-        <nav className="nav" aria-label="Main navigation">
+        {view !== 'gate' && <nav className="nav" aria-label="Main navigation">
           <div className="nav-logo" onClick={goHome} onKeyDown={e=>{if(e.key==='Enter')goHome();}} role="button" tabIndex={0} aria-label="Go to home page">
             <img src={LOGO_SRC} alt="C8 Tickets" />
           </div>
@@ -2043,7 +2043,7 @@ const openPhysicalManage = async (ev) => {
             {session && <button className={`btn ${view === "admin" || view === "gate" ? "on" : ""}`} onClick={() => setView(isGate ? 'gate' : 'admin')}>{isGate ? 'Check-In' : 'Admin'}</button>}
             {session && <button className="btn" onClick={logout}>Logout</button>}
           </div>
-        </nav>
+        </nav>}
 
         <main id="main-content">
         {view === "home" && <div className="fade">

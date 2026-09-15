@@ -18,12 +18,15 @@ const NativeScanner = ({ scannerId, onResult }) => {
   const native = isNative();
   const onResultRef = useRef(onResult);
   const [err, setErr] = useState('');
+  // If the native plugin isn't wired into the iOS build (e.g. pod install didn't include ML Kit),
+  // silently fall back to the html5-qrcode ScannerWidget rather than showing a broken camera view.
+  const [fallbackToWeb, setFallbackToWeb] = useState(false);
   const runningRef = useRef(false);
 
   useEffect(() => { onResultRef.current = onResult; });
 
   useEffect(() => {
-    if (!native) return;
+    if (!native || fallbackToWeb) return;
     let listenerHandle;
     let cancelled = false;
 
@@ -59,7 +62,14 @@ const NativeScanner = ({ scannerId, onResult }) => {
         runningRef.current = true;
       } catch (e) {
         console.error('[NativeScanner] start failed:', e);
-        setErr(e?.message || 'Could not start the camera.');
+        const msg = String(e?.message || e || '');
+        // Plugin isn't linked into the native project — fall back to the web scanner
+        if (msg.includes('not implemented') || msg.includes('plugin_not_installed')) {
+          console.warn('[NativeScanner] ML Kit unavailable, falling back to web scanner');
+          setFallbackToWeb(true);
+          return;
+        }
+        setErr(msg || 'Could not start the camera.');
       }
     };
 
@@ -84,8 +94,9 @@ const NativeScanner = ({ scannerId, onResult }) => {
     };
   }, [native, scannerId]);
 
-  // Web path — reuse existing widget (html5-qrcode)
-  if (!native) return <ScannerWidget scannerId={scannerId} onResult={onResult} />;
+  // Web path — reuse existing widget (html5-qrcode). Same path used as a fallback on native
+  // if the ML Kit plugin isn't linked (see fallbackToWeb).
+  if (!native || fallbackToWeb) return <ScannerWidget scannerId={scannerId} onResult={onResult} />;
 
   // Native path — the camera renders behind the WebView. Show a scanning overlay UI.
   return (
