@@ -108,8 +108,17 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
     const { order, tickets, scannedTicketId } = await lookupRes.json();
     const ev = events.find(e => e.id === order.event_id);
 
+    // Primary guard: an event is selected and the ticket doesn't belong to it.
     if (selGateEventId && order.event_id !== selGateEventId) {
       showResult({ type: 'wrong_event', name: order.buyer_name, event: ev?.title }); return;
+    }
+    // Secondary guard: even in "All Events" mode, block tickets whose event isn't happening today.
+    // Prevents accidentally checking in tickets from past or future events at the wrong door.
+    if (!selGateEventId && ev?.date) {
+      const todayStr = new Date().toLocaleDateString('en-CA');
+      if (ev.date !== todayStr) {
+        showResult({ type: 'wrong_event', name: order.buyer_name, event: ev.title }); return;
+      }
     }
     if (order.status === 'cancelled') { showResult({ type: 'cancelled', name: order.buyer_name }); return; }
 
@@ -274,9 +283,14 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
         {mode !== 'sell' && upcomingEvents.length > 0 && (
           <div style={{marginBottom:10}}>
             <select className="fi" value={selGateEventId} onChange={e => setSelGateEventId(e.target.value)} style={{margin:0,fontSize:13,minHeight:44}}>
-              <option value="">All Events</option>
+              <option value="">All Today's Events</option>
               {upcomingEvents.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
+            {!selGateEventId && (
+              <div style={{marginTop:6,padding:'8px 12px',background:'rgba(200,146,42,0.12)',border:'1px solid rgba(200,146,42,0.35)',borderRadius:'var(--rs)',fontSize:11,color:'var(--gold)',lineHeight:1.5}}>
+                <strong>All Today's Events</strong> — only tickets for events happening today will check in. Tickets from other days will be rejected as Wrong Event.
+              </div>
+            )}
           </div>
         )}
 
