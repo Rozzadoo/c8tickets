@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { API_BASE } from '../constants';
 import NativeScanner from './NativeScanner';
 import DoorSales from './DoorSales';
-import { hapticSuccess, hapticError } from '../lib/native';
+import { hapticSuccess, hapticError, acquireWakeLock } from '../lib/native';
 
 const LOGO_SRC = "/logo-simple.webp";
 
@@ -54,6 +54,29 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
     cooldown.current = false;
     setResult(null);
   }, []);
+
+  // Keep the screen awake while the scanner is active — no-op if the browser doesn't support wake lock.
+  useEffect(() => {
+    if (!scanning) return;
+    let releaseFn;
+    (async () => { releaseFn = await acquireWakeLock(); })();
+    return () => { if (typeof releaseFn === 'function') releaseFn(); };
+  }, [scanning]);
+
+  // Deep-link scan: App.jsx dispatches this event when iOS opens the app via a ticket URL.
+  // We route it through the same scan flow so the fullscreen result overlay + haptics work identically.
+  useEffect(() => {
+    const onDeepLinkScan = (e) => {
+      const ticketId = e?.detail?.ticketId;
+      if (!ticketId) return;
+      // Ensure we're on the Scan tab so the overlay renders
+      setMode('scan');
+      // Small delay so mode change settles before scan
+      setTimeout(() => handleScan(ticketId), 200);
+    };
+    window.addEventListener('c8-deeplink-scan', onDeepLinkScan);
+    return () => window.removeEventListener('c8-deeplink-scan', onDeepLinkScan);
+  }, [handleScan]);
 
   const showResult = useCallback((res) => {
     if (dismissTimer.current) clearTimeout(dismissTimer.current);

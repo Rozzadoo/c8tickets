@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "39GA34VA44.com.c8tickets.app",
+        "paths": [
+          "/t/*",
+          "/ticket/*"
+        ]
+      }
+    ]
+  }
+}

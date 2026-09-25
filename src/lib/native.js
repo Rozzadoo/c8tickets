@@ -103,3 +103,36 @@ export const onBackButton = (cb) => {
   App.addListener('backButton', cb).then(h => { handle = h; }).catch(() => {});
   return () => { if (handle) handle.remove(); };
 };
+
+// ── Deep link handling — fires when the app is opened via a URL (Universal Link, custom scheme, etc.) ──
+// Returns an unsubscribe function.
+export const onAppUrlOpen = (cb) => {
+  if (!isNative()) return () => {};
+  let handle;
+  App.addListener('appUrlOpen', (event) => cb(event?.url || '')).then(h => { handle = h; }).catch(() => {});
+  return () => { if (handle) handle.remove(); };
+};
+
+// ── Screen wake lock — keeps the display awake while active (scanning, etc.) ──
+// Uses the standard Web WakeLock API which works in Capacitor WebView on iOS 16.4+.
+// Returns a "release" function. Callers should invoke it when done to save battery.
+export const acquireWakeLock = async () => {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.wakeLock?.request) return () => {};
+    const sentinel = await navigator.wakeLock.request('screen');
+    // Re-acquire on visibility change (browsers/iOS auto-release when the tab becomes hidden)
+    const reacquire = async () => {
+      if (document.visibilityState === 'visible' && sentinel.released) {
+        try { await navigator.wakeLock.request('screen'); } catch {}
+      }
+    };
+    document.addEventListener('visibilitychange', reacquire);
+    return async () => {
+      document.removeEventListener('visibilitychange', reacquire);
+      try { await sentinel.release(); } catch {}
+    };
+  } catch (e) {
+    console.warn('[wakeLock] request failed:', e?.message);
+    return () => {};
+  }
+};

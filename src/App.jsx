@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './lib/supabase';
 import { API_BASE, APP_URL } from './constants';
 import { DEFAULT_VENUE, TICKET_SIZES, resolveCustomSize, mapEvent, mapVenue, fmtDate, fmtCurrency, fmtTime, csvCell, exportOrdersCSV, buildGCalUrl, downloadIcs, fetchWithTimeout, summarizeOrderItems } from './lib/utils';
-import { isNative, isStaffOnly, configureStatusBar, hapticSuccess, hapticError, storageGet, storageSet, storageRemove } from './lib/native';
+import { isNative, isStaffOnly, configureStatusBar, hapticSuccess, hapticError, storageGet, storageSet, storageRemove, acquireWakeLock, onAppUrlOpen } from './lib/native';
 import useStorage from './lib/useStorage';
 import CSS from './styles';
 import NativeScanner from './components/NativeScanner';
@@ -333,6 +333,42 @@ const [resetError, setResetError] = useState('');
       document.body.classList.add('native-app');
     }
   }, []);
+
+  // Wake lock — keep screen awake while the admin scanner is active
+  useEffect(() => {
+    if (!adminScan) return;
+    let releaseFn;
+    (async () => { releaseFn = await acquireWakeLock(); })();
+    return () => { if (typeof releaseFn === 'function') releaseFn(); };
+  }, [adminScan]);
+
+  // Deep link routing — when iOS opens the app via a ticket URL (Universal Link, custom scheme, etc.),
+  // extract the ticket UUID and route into the appropriate check-in flow.
+  // Only wires up when signed in — the URL is discarded if received pre-login.
+  useEffect(() => {
+    if (!session) return;
+    const role = session.user?.app_metadata?.role;
+    const unsub = onAppUrlOpen((url) => {
+      console.log('[deep-link] received:', url);
+      // Extract a UUID from anywhere in the URL — handles /t/<id>, ticket/<id>, order/<id>, or bare UUID query strings
+      const uuidMatch = String(url || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+      if (!uuidMatch) { console.warn('[deep-link] no UUID found in URL:', url); return; }
+      const ticketId = uuidMatch[0];
+      // Route based on role: gate → gate view scanner handler; admin/venue → admin check-in handler
+      if (role === 'gate') {
+        setView('gate');
+        // GateView's handleScan is component-local; simulate by populating a URL that the scanner would receive
+        // Small delay so the view mounts before we dispatch the scan
+        setTimeout(() => window.dispatchEvent(new CustomEvent('c8-deeplink-scan', { detail: { ticketId } })), 300);
+      } else {
+        setView('admin');
+        setATab('check-in');
+        setTimeout(() => handleAdminScan(ticketId), 300);
+      }
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   // Load table configs + availability when opening event detail. Clears when navigating away.
   // Also auto-refresh every 30s so buyers see other purchasers' seats become unavailable in near-real-time.
