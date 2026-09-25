@@ -1915,6 +1915,25 @@ const openPhysicalManage = async (ev) => {
       checkout_notice: e.checkoutNotice || null,
       checkout_notice_required: e.checkoutNoticeRequired || false,
     }).eq('id', e.id);
+    // Detect removed tiers: any ticket_type in the DB whose id is no longer in editEvt.tickets.
+    // Fetch DB IDs at save time (source of truth) so we're not relying on stale local state.
+    const { data: dbTiers } = await supabase.from('ticket_types').select('id, name, quantity_sold').eq('event_id', e.id);
+    const currentIds = new Set(e.tickets.filter(t => t.id).map(t => t.id));
+    const removedTiers = (dbTiers || []).filter(dt => !currentIds.has(dt.id));
+    for (const rt of removedTiers) {
+      // Defensive: never delete a tier with sold quantity, even if the UI missed it
+      if (Number(rt.quantity_sold || 0) > 0) {
+        setEvtErr(`Cannot remove "${rt.name}" — ${rt.quantity_sold} ticket(s) sold. Refund those orders first.`);
+        return;
+      }
+      const { error: delErr } = await supabase.from('ticket_types').delete().eq('id', rt.id);
+      if (delErr) {
+        // Most likely a foreign-key constraint from stray order_items — surface the error
+        setEvtErr(`Cannot remove "${rt.name}": ${delErr.message}. Contact support if this persists.`);
+        return;
+      }
+    }
+
     for (const t of e.tickets) {
       if (t.id) {
         // Update existing ticket type
@@ -4657,7 +4676,14 @@ const openPhysicalManage = async (ev) => {
 </div>
           <div className="fg"><label className="fl">Description</label><textarea className="fi" rows={3} value={editEvt.description} onChange={e=>setEditEvt({...editEvt,description:e.target.value})} placeholder="What should people expect?"/></div>
           <h3 className="dsp" style={{fontSize:16,margin:"16px 0 10px"}}>Ticket Tiers</h3>
-          {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Presale $</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Door price shown in the at-door sales terminal. Leave blank to use presale price.">Door $</label>}<input className="fi" type="number" min="0" placeholder="same" value={t.doorPrice??''} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],doorPrice:e.target.value===''?null:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Reserve this many tickets for physical/in-person sale. They won't be available online.">Physical</label>}<input className="fi" type="number" min="0" value={t.physicalQty??0} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],physicalQty:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" onClick={()=>{const x=editEvt.tickets.filter((_,j)=>j!==i);setEditEvt({...editEvt,tickets:x.length?x:[{type:"General Admission",price:25,available:100,physicalQty:0,doorPrice:null}]})}}>×</button></div>)}
+          {editEvt.tickets.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"end"}}><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Type</label>}<input className="fi" value={t.type} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],type:e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Presale $</label>}<input className="fi" type="number" value={t.price} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],price:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Door price shown in the at-door sales terminal. Leave blank to use presale price.">Door $</label>}<input className="fi" type="number" min="0" placeholder="same" value={t.doorPrice??''} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],doorPrice:e.target.value===''?null:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl">Qty</label>}<input className="fi" type="number" value={t.available} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],available:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><div className="fg" style={{margin:0}}>{i===0&&<label className="fl" title="Reserve this many tickets for physical/in-person sale. They won't be available online.">Physical</label>}<input className="fi" type="number" min="0" value={t.physicalQty??0} onChange={e=>{const x=[...editEvt.tickets];x[i]={...x[i],physicalQty:+e.target.value};setEditEvt({...editEvt,tickets:x})}}/></div><button className="qb" title="Remove this tier" onClick={()=>{
+  const sold = Number(t.sold || 0);
+  if (t.id && sold > 0) { alert(`Cannot remove "${t.type || 'this tier'}" — ${sold} ticket${sold!==1?'s':''} have been sold. Refund those orders first.`); return; }
+  if (editEvt.tickets.length <= 1) { alert('An event must have at least one ticket tier. Add another tier before removing this one.'); return; }
+  if (t.id && !confirm(`Remove "${t.type || 'this tier'}"? This cannot be undone.`)) return;
+  const x=editEvt.tickets.filter((_,j)=>j!==i);
+  setEditEvt({...editEvt,tickets:x});
+}}>×</button></div>)}
           <button className="btn" style={{fontSize:11,marginTop:3}} onClick={()=>setEditEvt({...editEvt,tickets:[...editEvt.tickets,{type:"",price:0,available:100}]})}>+ Add Tier</button>
           <h3 className="dsp" style={{fontSize:16,margin:"20px 0 4px"}}>Add-ons <span style={{fontWeight:400,fontSize:11,color:"var(--text3)"}}>shown at checkout (drink tokens, VIP, etc.)</span></h3>
           {(editEvt.addons||[]).map((a,i)=>(
