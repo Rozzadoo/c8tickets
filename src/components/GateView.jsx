@@ -193,6 +193,13 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
       body: JSON.stringify({ groupTicketIds: unchecked.map(t => t.id), orderId: order.id }),
     });
     const ciData = await ciRes.json();
+    const actualCheckedIn = ciData.checkedIn ?? unchecked.length;
+    // If our request updated 0 rows, another staff already checked this order in — show "already_in" instead of a misleading success.
+    if (actualCheckedIn === 0) {
+      const firstIn = tickets.find(t => t.checked_in_at);
+      showResult({ type: 'already_in', name: order.buyer_name, ticketType: tickets[0]?.ticket_type_name, checkedInAt: firstIn?.checked_in_at });
+      return;
+    }
     // Build a per-type breakdown for the group overlay (e.g., "3× GA, 2× VIP")
     const typeCounts = {};
     for (const t of unchecked) typeCounts[t.ticket_type_name] = (typeCounts[t.ticket_type_name] || 0) + 1;
@@ -200,7 +207,7 @@ const GateView = ({ events, onLogout, venue, tenantId, updateOrders, updateEvent
     showResult({
       type: 'success', name: order.buyer_name,
       ticketType: Object.keys(typeCounts).length > 1 ? typeBreakdown : unchecked[0]?.ticket_type_name,
-      count: ciData.checkedIn ?? unchecked.length,
+      count: actualCheckedIn,
       checkedInAt: new Date().toISOString(),
     });
     loadStats();
