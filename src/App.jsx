@@ -1127,7 +1127,10 @@ const generateTicketPreviewHtml = async (ev, size, mode, venue) => {
   const r = (n) => Math.round(n * fs);
   const qrSz = mode === 'photo' ? r(72) : r(88);
   const qrDataUrl = await QRCodeLib.toDataURL(mockId, { width: qrSz, margin: 1 });
-  const sampleTicket = { id: mockId, type: ev.tickets[0]?.type || 'General Admission', price: ev.tickets[0]?.price, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), doors: fmtTime(ev.doors || ''), image: ev.image, focalX: ev.focalX, focalY: ev.focalY };
+  // Sample the FIRST tier that actually has physical tickets allocated, not just tickets[0].
+  // Fixes bug where preview showed the wrong tier name when e.g. GA (with physicalQty) came after VIP (without).
+  const sampleTier = ev.tickets.find(t => (t.physicalQty ?? 0) > 0) || ev.tickets[0];
+  const sampleTicket = { id: mockId, type: sampleTier?.type || 'General Admission', price: sampleTier?.price, eventTitle: ev.title, date: fmtDate(ev.date), time: fmtTime(ev.time), doors: fmtTime(ev.doors || ''), image: ev.image, focalX: ev.focalX, focalY: ev.focalY };
   const fmtP = p => p == null ? '' : '$' + (p % 1 === 0 ? Math.round(p) : Number(p).toFixed(2));
 
   if (mode === 'photo') {
